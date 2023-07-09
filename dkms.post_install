@@ -1,0 +1,6 @@
+#!/bin/bash
+
+echo "options mtgpu disable_driver=1" > /etc/modprobe.d/0-mtgpu.conf
+depmod
+modprobe mtgpu
+rm -f /etc/modprobe.d/0-mtgpu.conf

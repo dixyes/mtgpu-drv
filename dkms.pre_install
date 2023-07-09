@@ -1,0 +1,14 @@
+#!/bin/bash
+
+MODULE_DIR=/lib/modules/$1/
+
+for mtgpu in $(find ${MODULE_DIR} -name mtgpu.ko)
+do
+	echo "backup ${mtgpu} to ${mtgpu%.ko}.bak..."
+	mv $mtgpu ${mtgpu%.ko}.bak
+done
+
+# Add mtgpu module to hooks
+if [ ! -f /usr/share/initramfs-tools/hooks/mtgpu ];then
+	cp -p ./mtgpu_hook /usr/share/initramfs-tools/hooks/mtgpu
+fi

@@ -1,0 +1,13 @@
+#!/bin/bash
+
+MODULE_DIR=/lib/modules/$1/
+
+for mtgpu in $(find ${MODULE_DIR} -name mtgpu.bak)
+do
+	echo "restore $mtgpu..."
+	mv $mtgpu ${mtgpu%.bak}.ko
+done
+
+if [ -f /usr/share/initramfs-tools/hooks/mtgpu ];then
+	rm -f /usr/share/initramfs-tools/hooks/mtgpu
+fi
