@@ -855,12 +855,12 @@ struct workqueue_struct *os_alloc_workqueue(const char *fmt, int max_active)
 
 void os_wake_up(struct wait_queue_head *wq_head)
 {
-	return wake_up(wq_head);
+	wake_up(wq_head);
 }
 
 void os_wake_up_interruptible(struct wait_queue_head *wq_head)
 {
-	return wake_up_interruptible(wq_head);
+	wake_up_interruptible(wq_head);
 }
 
 void os_wake_up_all(struct wait_queue_head *wq_head)
