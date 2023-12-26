@@ -9,6 +9,7 @@
 #if defined(OS_DRM_DRMP_H_EXIST)
 #include <drm/drmP.h>
 #endif
+#include <linux/mod_devicetable.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_fourcc.h>

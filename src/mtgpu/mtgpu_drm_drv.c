@@ -12,6 +12,7 @@
 #include <drm/drmP.h>
 #else
 #include <drm/drm_ioctl.h>
+#include <linux/aperture.h>
 #endif
 #if defined(OS_DRM_DRM_APERTURE_H_EXIST)
 #include <drm/drm_aperture.h>

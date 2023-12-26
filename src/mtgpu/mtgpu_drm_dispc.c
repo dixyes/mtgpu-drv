@@ -15,6 +15,8 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_fourcc.h>
 #include <drm/drm_plane_helper.h>
+#include <drm/drm_framebuffer.h>
+#include <drm/drm_blend.h>
 #if defined(OS_DRM_DRM_DP_HELPER_H_EXIST)
 #include <drm/drm_dp_helper.h>
 #elif defined(OS_DRM_DP_DRM_DP_HELPER_H_EXIST)
