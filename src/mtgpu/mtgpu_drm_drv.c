@@ -60,28 +60,24 @@ module_param(display_debug, ulong, 0600);
 MODULE_PARM_DESC(display_debug,
 		 " H->L: global[8] dispc[8] hdmi[8] dp[8]. The default value is 0x07070707.");
 
+static struct drm_driver mtgpu_drm_driver;
 /* WARNING: This function should be called before pcie resize. */
 int mtgpu_kick_out_firmware_fb(struct pci_dev *pdev)
 {
-	struct apertures_struct *ap;
+// 	resource_size_t base = pci_resource_start(pdev, 0);
+// 	resource_size_t size = pci_resource_len(pdev, 0);
 
-	if (disable_fbdev)
-		return 0;
+// 	if (disable_fbdev)
+// 		return 0;
 
-	ap = alloc_apertures(1);
-	if (!ap)
-		return -ENOMEM;
+// 	printk("kick out firmware fb: base = 0x%llx, size = 0x%llx\n", base, size);
 
-	ap->ranges[0].base = pci_resource_start(pdev, 2);
-	ap->ranges[0].size = pci_resource_len(pdev, 2);
-#if defined(OS_FUNC_DRM_FB_HELPER_REMOVE_CONFLICTING_FRAMEBUFFERS_EXIST)
-	drm_fb_helper_remove_conflicting_framebuffers(ap, "mtgpudrmfb", false);
-#else
-	remove_conflicting_framebuffers(ap, "mtgpudrmfb", false);
-#endif
-	kfree(ap);
-
-	return 0;
+// #if KERNEL_VERSION(6, 5, 0) <= LINUX_VERSION_CODE
+// 	return aperture_remove_conflicting_devices(base, size, KBUILD_MODNAME);
+// #else
+// 	return aperture_remove_conflicting_devices(base, size, false, KBUILD_MODNAME);
+// #endif
+	return drm_aperture_remove_conflicting_pci_framebuffers(pdev, &mtgpu_drm_driver);
 }
 
 static void mtgpu_atomic_helper_commit_tail_rpm(struct drm_atomic_state *old_state)
