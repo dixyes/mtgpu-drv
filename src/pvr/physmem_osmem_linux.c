@@ -612,7 +612,7 @@ void LinuxInitPhysmem(void)
 	if (g_psLinuxPagePoolCache)
 	{
 		/* Only create the shrinker if we created the cache OK */
-		register_shrinker(&g_sShrinker);
+		register_shrinker(&g_sShrinker, "mtgpu-pp");
 	}
 
 	OSAtomicWrite(&g_iPoolCleanTasks, 0);
