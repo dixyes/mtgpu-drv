@@ -372,20 +372,62 @@ char *os_d_path(const struct path *p, char *param, int size)
 	return d_path(p, param, size);
 }
 
-struct vm_area_struct *os_get_mm_mmap(const struct mm_struct *mm)
+struct vm_area_struct_compat *os_get_mm_mmap(struct mm_struct *mm)
 {
-	return mm->mmap;
+	struct vm_area_struct *first_vma;
+	struct vm_area_struct_compat *vma_compat;
+	vma_compat = kmalloc(sizeof(*vma_compat), GFP_KERNEL);
+	if (!vma_compat) {
+		return NULL;
+	}
+	printk("alloc vma_compat: %p\n", vma_compat);
+
+	vma_iter_init(&vma_compat->iter, mm, 0);
+	
+	first_vma = vma_next(&vma_compat->iter);
+	if (!first_vma) {
+		kfree(vma_compat);
+		return NULL;
+	}
+
+	vma_compat->cur = first_vma;
+
+	return vma_compat;
+}
+struct vm_area_struct_compat *os_get_vm_area_struct_vm_next(struct vm_area_struct_compat *vma)
+{
+	struct vm_area_struct *next;
+	next = vma_next(&vma->iter);
+	if (!next) {
+		kfree(vma);
+		printk("free vma_compat: %p\n", vma);
+		return NULL;
+	}
+
+	vma->cur = next;
+
+	return vma;
 }
 
-IMPLEMENT_GET_OS_MEMBER_FUNC(vm_area_struct, vm_start)
-IMPLEMENT_GET_OS_MEMBER_FUNC(vm_area_struct, vm_end)
-IMPLEMENT_GET_OS_MEMBER_FUNC(vm_area_struct, vm_flags)
-IMPLEMENT_GET_OS_MEMBER_FUNC(vm_area_struct, vm_next)
-IMPLEMENT_GET_OS_MEMBER_FUNC(vm_area_struct, vm_file)
-
-void os_set_vm_area_struct_vm_flags(struct vm_area_struct *vma, unsigned long flag)
+unsigned long os_get_vm_area_struct_vm_start(struct vm_area_struct_compat *vma)
 {
-	vma->vm_flags = flag;
+	return vma->cur->vm_start;
+}
+unsigned long os_get_vm_area_struct_vm_end(struct vm_area_struct_compat *vma)
+{
+	return vma->cur->vm_end;
+}
+unsigned long os_get_vm_area_struct_vm_flags(struct vm_area_struct_compat *vma)
+{
+	return vma->cur->vm_flags;
+}
+struct file *os_get_vm_area_struct_vm_file(struct vm_area_struct_compat *vma)
+{
+	return vma->cur->vm_file;
+}
+void os_set_vm_area_struct_vm_flags(struct vm_area_struct_compat *vma, unsigned long flag)
+{
+	vma->cur->vm_flags = flag;
 }
 
 void *os_memcpy(void *dst, const void *src, size_t size)

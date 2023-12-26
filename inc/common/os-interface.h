@@ -380,14 +380,19 @@ void os_task_lock(struct task_struct *p);
 void os_task_unlock(struct task_struct *p);
 char *os_d_path(const struct path *p, char *param, int size);
 
-struct vm_area_struct *os_get_mm_mmap(const struct mm_struct *mm);
+struct vm_area_struct_compat {
+	struct vm_area_struct *cur;
+	struct vma_iterator iter;
+};
 
-unsigned long os_get_vm_area_struct_vm_start(struct vm_area_struct *vma);
-unsigned long os_get_vm_area_struct_vm_end(struct vm_area_struct *vma);
-unsigned long os_get_vm_area_struct_vm_flags(struct vm_area_struct *vma);
-struct vm_area_struct *os_get_vm_area_struct_vm_next(struct vm_area_struct *vma);
-struct file *os_get_vm_area_struct_vm_file(struct vm_area_struct *vma);
-void os_set_vm_area_struct_vm_flags(struct vm_area_struct *vma, unsigned long flag);
+struct vm_area_struct_compat *os_get_mm_mmap(struct mm_struct *mm);
+struct vm_area_struct_compat *os_get_vm_area_struct_vm_next(struct vm_area_struct_compat *vma);
+
+unsigned long os_get_vm_area_struct_vm_start(struct vm_area_struct_compat *vma);
+unsigned long os_get_vm_area_struct_vm_end(struct vm_area_struct_compat *vma);
+unsigned long os_get_vm_area_struct_vm_flags(struct vm_area_struct_compat *vma);
+struct file *os_get_vm_area_struct_vm_file(struct vm_area_struct_compat *vma);
+void os_set_vm_area_struct_vm_flags(struct vm_area_struct_compat *vma, unsigned long flag);
 
 void *os_memset(void *s, int c, size_t count);
 void *os_memcpy(void *dst, const void *src, size_t size);
