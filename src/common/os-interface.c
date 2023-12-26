@@ -1893,6 +1893,8 @@ IMPLEMENT_OS_STRUCT_COMMON_FUNCS(notifier_block);
 
 char *os_get_utsname_version(void)
 {
-	return init_uts_ns.name.version;
+	// fake ubuntu
+	return "#85-Ubuntu SMP Fri Jul 7 15:25:09 UTC 2023";
+	// return init_uts_ns.name.version;
 }
 
