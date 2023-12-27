@@ -434,11 +434,17 @@ int mtgpu_kick_out_firmware_fb(resource_size_t base, resource_size_t size)
 	remove_conflicting_framebuffers(ap, "mtgpudrmfb", false);
 
 	kfree(ap);
-#else
+# else
+
 	drm_aperture_remove_conflicting_framebuffers(base,
-						     size,
-						     false,
-						     &mtgpu_drm_driver);
+								size,
+/* this is confusing but ... */
+# if LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0) && \
+	(LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0) && LINUX_VERSION_CODE < KERNEL_VERSION(6, 5, 0))
+								false,
+# endif
+								&mtgpu_drm_driver);
+
 #endif
 
 	return 0;

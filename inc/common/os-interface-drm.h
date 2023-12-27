@@ -110,7 +110,7 @@ u32 os_get_videomode_vactive(struct videomode *vm);
 u32 os_get_videomode_vfront_porch(struct videomode *vm);
 u32 os_get_videomode_vback_porch(struct videomode *vm);
 u32 os_get_videomode_vsync_len(struct videomode *vm);
-u32 os_get_videomode_flags(struct videomode *vm);
+enum display_flags os_get_videomode_flags(struct videomode *vm);
 
 #define OS_VIDEOMODE_MEMBER(ptr, member)	(os_get_videomode_##member(ptr))
 
