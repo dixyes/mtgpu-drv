@@ -428,28 +428,10 @@ static struct platform_driver mtgpu_drm_platform_driver = {
 /* WARNING: This function should be called before pcie resize. */
 int mtgpu_kick_out_firmware_fb(struct pci_dev *pdev)
 {
-	struct apertures_struct *ap;
-
 	if (disable_fbdev)
 		return 0;
 
-	ap = alloc_apertures(1);
-	if (!ap)
-		return -ENOMEM;
-
-	ap->ranges[0].base = pci_resource_start(pdev, MTGPU_DDR_BAR);
-	ap->ranges[0].size = pci_resource_len(pdev, MTGPU_DDR_BAR);
-#if defined(OS_FUNC_REMOVE_CONFLICTING_FRAMEBUFFERS_EXIST)
-	remove_conflicting_framebuffers(ap, "mtgpudrmfb", false);
-#else
-	drm_aperture_remove_conflicting_framebuffers(ap->ranges[0].base,
-						     ap->ranges[0].size,
-						     false,
-						     &mtgpu_drm_driver);
-#endif
-	kfree(ap);
-
-	return 0;
+	return drm_aperture_remove_conflicting_pci_framebuffers(pdev, &mtgpu_drm_driver);
 }
 
 int mtgpu_drm_init(void)

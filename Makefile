@@ -83,6 +83,12 @@ mtgpu-$(CONFIG_LOONGARCH) += src/pvr/osfunc_loongarch.o \
 	src/mtgpu/dmi_loongarch.o
 mtgpu-$(CONFIG_X86) += src/pvr/osfunc_x86.o
 
+ifeq ($(CONFIG_DEBUG_FS),y)
+$(PVRSRV_MODNAME)-$(CONFIG_DEBUG_FS) += services/server/env/linux/pvr_debugfs.o
+else ifeq ($(CONFIG_PROC_FS),y)
+$(PVRSRV_MODNAME)-$(CONFIG_PROC_FS) += services/server/env/linux/pvr_procfs.o
+endif
+
 ccflags-y := -D__linux__ -include config_kernel.h
 ccflags-y += -include linux/version.h
 ccflags-y += -include conftest.h
