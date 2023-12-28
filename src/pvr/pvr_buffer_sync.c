@@ -545,6 +545,8 @@ pvr_buffer_sync_kick_succeeded(struct pvr_buffer_sync_append_data *data)
 		if (WARN_ON_ONCE(!resv))
 			continue;
 
+		dma_resv_reserve_fences(resv, 1);
+
 		if (data->pmr_flags[i] & PVR_BUFFER_FLAG_WRITE) {
 			PVR_FENCE_TRACE(&data->update_fence->base,
 					"added exclusive fence (%s) to resv %p\n",
