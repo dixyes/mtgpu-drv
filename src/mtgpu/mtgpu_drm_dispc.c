@@ -427,7 +427,7 @@ static int mtgpu_crtc_gamma_set(struct drm_crtc *crtc, u16 *red, u16 *green,
 #define drm_gem_object_put(obj) drm_gem_object_put_unlocked(obj)
 #endif
 
-static int mtgpu_legacy_cursor_set(struct drm_crtc *crtc, struct drm_file *file,
+int mtgpu_legacy_cursor_set(struct drm_crtc *crtc, struct drm_file *file,
 				   u32 handle, u32 width, u32 height)
 {
 	struct mtgpu_gem_object *mt_obj;
@@ -489,7 +489,7 @@ static int mtgpu_legacy_cursor_set(struct drm_crtc *crtc, struct drm_file *file,
 	return 0;
 }
 
-static int mtgpu_legacy_cursor_move(struct drm_crtc *crtc, int x, int y)
+int mtgpu_legacy_cursor_move(struct drm_crtc *crtc, int x, int y)
 {
 	struct mtgpu_layer_config config = {0};
 	struct mtgpu_dispc *dispc = to_mtgpu_dispc(crtc);
@@ -534,8 +534,8 @@ static const struct drm_crtc_funcs mtgpu_crtc_funcs = {
 	.enable_vblank		= mtgpu_crtc_enable_vblank,
 	.disable_vblank		= mtgpu_crtc_disable_vblank,
 	.gamma_set		= mtgpu_crtc_gamma_set,
-	.cursor_set		= mtgpu_legacy_cursor_set,
-	.cursor_move		= mtgpu_legacy_cursor_move,
+	// .cursor_set		= mtgpu_legacy_cursor_set,
+	// .cursor_move		= mtgpu_legacy_cursor_move,
 };
 
 static void mtgpu_plane_create_properties(struct drm_plane *plane,
