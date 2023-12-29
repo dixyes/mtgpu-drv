@@ -413,86 +413,86 @@ static int mtgpu_crtc_gamma_set(struct drm_crtc *crtc, u16 *red, u16 *green,
 #define drm_gem_object_put(obj) drm_gem_object_put_unlocked(obj)
 #endif
 
-static int mtgpu_legacy_cursor_set(struct drm_crtc *crtc, struct drm_file *file,
-				   u32 handle, u32 width, u32 height)
-{
-	struct mtgpu_gem_object *mt_obj;
-	struct drm_gem_object *cursor_bo = NULL;
-	struct mtgpu_layer_config config = {0};
-	struct mtgpu_dispc *dispc = to_mtgpu_dispc(crtc);
+// static int mtgpu_legacy_cursor_set(struct drm_crtc *crtc, struct drm_file *file,
+// 				   u32 handle, u32 width, u32 height)
+// {
+// 	struct mtgpu_gem_object *mt_obj;
+// 	struct drm_gem_object *cursor_bo = NULL;
+// 	struct mtgpu_layer_config config = {0};
+// 	struct mtgpu_dispc *dispc = to_mtgpu_dispc(crtc);
 
-	/* handle 0 means cursor hide */
-	if (!handle && dispc->core->cursor_config) {
-		dispc->cursor_info.dev_addr = 0;
-		dispc->cursor_info.width = 0;
-		dispc->cursor_info.height = 0;
-		dispc->core->cursor_config(&dispc->ctx, NULL);
-		return 0;
-	}
+// 	/* handle 0 means cursor hide */
+// 	if (!handle && dispc->core->cursor_config) {
+// 		dispc->cursor_info.dev_addr = 0;
+// 		dispc->cursor_info.width = 0;
+// 		dispc->cursor_info.height = 0;
+// 		dispc->core->cursor_config(&dispc->ctx, NULL);
+// 		return 0;
+// 	}
 
-	cursor_bo = drm_gem_object_lookup(file, handle);
-	if (!cursor_bo)
-		return -ENOENT;
+// 	cursor_bo = drm_gem_object_lookup(file, handle);
+// 	if (!cursor_bo)
+// 		return -ENOENT;
 
-	mt_obj = to_mtgpu_obj(cursor_bo);
-	if (!mt_obj->dev_addr) {
-		drm_gem_object_put(cursor_bo);
-		return -EINVAL;
-	}
+// 	mt_obj = to_mtgpu_obj(cursor_bo);
+// 	if (!mt_obj->dev_addr) {
+// 		drm_gem_object_put(cursor_bo);
+// 		return -EINVAL;
+// 	}
 
-	if (cursor_bo->size < width * height * 4) {
-		DRM_DEV_ERROR(dispc->dev, " cursor buffer is too small!\n");
-		drm_gem_object_put(cursor_bo);
-		return -ENOMEM;
-	}
+// 	if (cursor_bo->size < width * height * 4) {
+// 		DRM_DEV_ERROR(dispc->dev, " cursor buffer is too small!\n");
+// 		drm_gem_object_put(cursor_bo);
+// 		return -ENOMEM;
+// 	}
 
-	if (dispc->cursor_info.bo)
-		drm_gem_object_put(dispc->cursor_info.bo);
+// 	if (dispc->cursor_info.bo)
+// 		drm_gem_object_put(dispc->cursor_info.bo);
 
-	dispc->cursor_info.bo = cursor_bo;
-	config.addr[0] = mt_obj->dev_addr;
-	config.dst_x   = dispc->cursor_info.x;
-	config.dst_y   = dispc->cursor_info.y;
-	config.dst_w   = width;
-	config.dst_h   = height;
-	config.src_w   = width;
-	config.src_h   = height;
-	config.pitch[0] = width * 4;
-	config.alpha   = 255;
+// 	dispc->cursor_info.bo = cursor_bo;
+// 	config.addr[0] = mt_obj->dev_addr;
+// 	config.dst_x   = dispc->cursor_info.x;
+// 	config.dst_y   = dispc->cursor_info.y;
+// 	config.dst_w   = width;
+// 	config.dst_h   = height;
+// 	config.src_w   = width;
+// 	config.src_h   = height;
+// 	config.pitch[0] = width * 4;
+// 	config.alpha   = 255;
 
-	dispc->cursor_info.dev_addr = mt_obj->dev_addr;
-	dispc->cursor_info.width = width;
-	dispc->cursor_info.height = height;
+// 	dispc->cursor_info.dev_addr = mt_obj->dev_addr;
+// 	dispc->cursor_info.width = width;
+// 	dispc->cursor_info.height = height;
 
-	if (dispc->core->cursor_config)
-		dispc->core->cursor_config(&dispc->ctx, &config);
+// 	if (dispc->core->cursor_config)
+// 		dispc->core->cursor_config(&dispc->ctx, &config);
 
-	return 0;
-}
+// 	return 0;
+// }
 
-static int mtgpu_legacy_cursor_move(struct drm_crtc *crtc, int x, int y)
-{
-	struct mtgpu_layer_config config = {0};
-	struct mtgpu_dispc *dispc = to_mtgpu_dispc(crtc);
+// static int mtgpu_legacy_cursor_move(struct drm_crtc *crtc, int x, int y)
+// {
+// 	struct mtgpu_layer_config config = {0};
+// 	struct mtgpu_dispc *dispc = to_mtgpu_dispc(crtc);
 
-	config.addr[0] = dispc->cursor_info.dev_addr;
-	config.dst_x   = x;
-	config.dst_y   = y;
-	config.dst_w   = dispc->cursor_info.width;
-	config.dst_h   = dispc->cursor_info.height;
-	config.src_w   = dispc->cursor_info.width;
-	config.src_h   = dispc->cursor_info.height;
-	config.pitch[0] = dispc->cursor_info.width * 4;
-	config.alpha   = 255;
+// 	config.addr[0] = dispc->cursor_info.dev_addr;
+// 	config.dst_x   = x;
+// 	config.dst_y   = y;
+// 	config.dst_w   = dispc->cursor_info.width;
+// 	config.dst_h   = dispc->cursor_info.height;
+// 	config.src_w   = dispc->cursor_info.width;
+// 	config.src_h   = dispc->cursor_info.height;
+// 	config.pitch[0] = dispc->cursor_info.width * 4;
+// 	config.alpha   = 255;
 
-	dispc->cursor_info.x = x;
-	dispc->cursor_info.y = y;
+// 	dispc->cursor_info.x = x;
+// 	dispc->cursor_info.y = y;
 
-	if (dispc->core->cursor_config)
-		dispc->core->cursor_config(&dispc->ctx, &config);
+// 	if (dispc->core->cursor_config)
+// 		dispc->core->cursor_config(&dispc->ctx, &config);
 
-	return 0;
-}
+// 	return 0;
+// }
 
 static const struct drm_crtc_funcs mtgpu_crtc_funcs = {
 	.set_config             = drm_atomic_helper_set_config,
@@ -504,8 +504,8 @@ static const struct drm_crtc_funcs mtgpu_crtc_funcs = {
 	.enable_vblank		= mtgpu_crtc_enable_vblank,
 	.disable_vblank		= mtgpu_crtc_disable_vblank,
 	.gamma_set		= mtgpu_crtc_gamma_set,
-	.cursor_set		= mtgpu_legacy_cursor_set,
-	.cursor_move		= mtgpu_legacy_cursor_move,
+	// .cursor_set		= mtgpu_legacy_cursor_set,
+	// .cursor_move		= mtgpu_legacy_cursor_move,
 };
 
 static void mtgpu_plane_create_properties(struct drm_plane *plane,
