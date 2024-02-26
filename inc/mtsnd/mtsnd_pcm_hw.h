@@ -16,22 +16,23 @@ int mtsnd_copy_user(struct snd_pcm_substream *substream, int channel,
 int snd_pcm_lib_malloc_pages_inbound(struct snd_pcm_substream *substream, size_t size);
 #endif
 
-int mtsnd_hw_init(struct mtsnd_chip *chip);
-unsigned long mtsnd_pcm_ata_buffer(struct mtsnd_chip *chip, unsigned long dma_addr);
-int mtsnd_clock_set(struct mtsnd_chip *chip, struct pcm_info *pcm);
+int mtsnd_hw_init(struct mtsnd_chip *chip, unsigned int pcm_idx);
+void mtsnd_pcm_ata_buffer(struct mtsnd_chip *chip, unsigned int pcm_idx,
+				   unsigned long dma_addr);
+int mtsnd_clock_set(struct mtsnd_chip *chip, struct pcm_info *pcm, unsigned int pcm_idx);
 void codec_status_init(struct mtsnd_codec *codec);
 int check_hw_status(struct mtsnd_chip *chip, int index);
 bool codec_safety_check_start(struct mtsnd_chip *chip, unsigned int index);
 bool codec_safety_check_stop(struct mtsnd_chip *chip, unsigned int index);
 
-void mtsnd_snd_start(struct mtsnd_chip *chip);
-void mtsnd_snd_stop(struct mtsnd_chip *chip);
-unsigned int mtsnd_snd_pointer(struct mtsnd_chip *chip);
+void mtsnd_snd_start(struct mtsnd_chip *chip, unsigned int pcm_idx);
+void mtsnd_snd_stop(struct mtsnd_chip *chip, unsigned int pcm_idx);
+unsigned int mtsnd_snd_pointer(struct mtsnd_chip *chip, unsigned int pcm_idx);
 void mtsnd_snd_ack(struct mtsnd_chip *chip, unsigned long appl_ptr, unsigned long buffer_size,
-		   unsigned int dma_bytes, unsigned int bytes);
-unsigned int mtsnd_snd_irq_handle(struct mtsnd_chip *chip);
-void mtsnd_do_pcm_suspend(struct mtsnd_chip *chip);
-void mtsnd_do_pcm_resume(struct mtsnd_chip *chip, unsigned long dma_addr);
+		   unsigned int dma_bytes, unsigned int bytes, unsigned int pcm_idx);
+unsigned int mtsnd_snd_irq_handle(struct mtsnd_chip *chip, unsigned int pcm_idx);
+void mtsnd_do_pcm_suspend(struct mtsnd_chip *chip, unsigned int pcm_idx);
+void mtsnd_do_pcm_resume(struct mtsnd_chip *chip, unsigned long dma_addr, unsigned int pcm_idx);
 void pnp_post_handle(struct mtsnd_codec *codec);
 unsigned int check_codec_state1(struct mtsnd_codec *codec);
 int codec_status_changed(struct mtsnd_codec *codec, unsigned int old_state);

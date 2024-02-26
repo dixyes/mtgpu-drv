@@ -57,13 +57,51 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "pmr.h"
 
+struct sg_table;
+struct vm_area_struct;
 struct dma_buf_attachment;
+struct iosys_map;
 
 extern u32 gpu_page_size;
 extern u32 gpu_page_shift;
 
+struct sg_table *PVRDmaBufOpsMap(struct dma_buf_attachment *psAttachment,
+				 int eDirection);
+
+void PVRDmaBufOpsUnmap(struct dma_buf_attachment *psAttachment,
+		       struct sg_table *psSgTable,
+		       int eDirection);
+
+void PVRDmaBufOpsRelease(struct dma_buf *psDmaBuf);
+
+int DmaBufOpsVMap(struct dma_buf *psDmaBuf, void *pvKernAddr);
+
+void DmaBufOpsVUnmap(struct dma_buf *psDmaBuf);
+int PVRDmaBufOpsMMap(struct dma_buf *psDmaBuf, struct vm_area_struct *psVMA);
 typedef PVRSRV_ERROR (*PFN_DESTROY_DMABUF_PMR)(PHYS_HEAP *psHeap,
                                                struct dma_buf_attachment *psAttachment);
+
+typedef struct _PMR_DMA_BUF_DATA_ {
+	/* Filled in at PMR create time */
+	PHYS_HEAP *psPhysHeap;
+	struct dma_buf_attachment *psAttachment;
+	PFN_DESTROY_DMABUF_PMR pfnDestroy;
+	IMG_BOOL bPoisonOnFree;
+
+	/* Mapping information. */
+#if defined(OS_STRUCT_DMA_BUF_MAP_EXIST) || defined(OS_STRUCT_IOSYS_MAP_EXIST)
+	struct iosys_map *psMap;
+#else
+	void *vaddr;
+#endif
+
+	/* Modified by PMR lock/unlock */
+	struct sg_table *psSgTable;
+	IMG_DEV_PHYADDR *pasDevPhysAddr;
+	IMG_CPU_PHYADDR *pasCpuPhysAddr;
+	IMG_UINT32 ui32PhysPageCount;
+	IMG_UINT32 ui32VirtPageCount;
+} PMR_DMA_BUF_DATA;
 
 PVRSRV_ERROR
 PhysmemCreateNewDmaBufBackedPMR(PHYS_HEAP *psHeap,

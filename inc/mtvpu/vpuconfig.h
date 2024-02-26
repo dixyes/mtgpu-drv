@@ -20,6 +20,7 @@
 #define BODA950_CODE                    0x9500
 #define CODA960_CODE                    0x9600
 #define CODA980_CODE                    0x9800
+#define CODAJ12_CODE                    0x1200
 
 #define WAVE517_CODE                    0x5170
 #define WAVE537_CODE                    0x5370
@@ -30,9 +31,12 @@
 #define WAVE521E1_CODE                  0x5211
 #define WAVE627_CODE                    0x6270
 #define WAVE637_CODE                    0x6370
-#define PRODUCT_CODE_W6_SERIES(x)       (x == WAVE627_CODE || x == WAVE637_CODE)
+
+#define WAVE627B_CODE                   0x627B  // wave 627 but not support AV1 ENC
+
+#define PRODUCT_CODE_W6_SERIES(x)       (x == WAVE627_CODE || x == WAVE637_CODE || x == WAVE627B_CODE)
 #define PRODUCT_CODE_W5_SERIES(x)       (x == WAVE517_CODE || x == WAVE537_CODE || x == WAVE511_CODE || x == WAVE521_CODE || x == WAVE521E1_CODE || x == WAVE521C_CODE || x == WAVE521C_DUAL_CODE)
-#define PRODUCT_CODE_W_SERIES(x)        (x == WAVE627_CODE || x == WAVE637_CODE || x == WAVE517_CODE || x == WAVE537_CODE || x == WAVE511_CODE || x == WAVE521_CODE || x == WAVE521E1_CODE || x == WAVE521C_CODE || x == WAVE521C_DUAL_CODE)
+#define PRODUCT_CODE_W_SERIES(x)        (x == WAVE627_CODE || x == WAVE637_CODE || x == WAVE517_CODE || x == WAVE537_CODE || x == WAVE511_CODE || x == WAVE521_CODE || x == WAVE521E1_CODE || x == WAVE521C_CODE || x == WAVE521C_DUAL_CODE || x == WAVE627B_CODE)
 #define PRODUCT_CODE_CODA_SERIES(x)     (x == BODA950_CODE || x == CODA960_CODE || x == CODA980_CODE)
 
 #define WAVE627ENC_WORKBUF_SIZE         (132*1024)
@@ -108,7 +112,7 @@
 #define COMMAND_QUEUE_DEPTH             (4)
 #endif
 
-            #define ENC_SRC_BUF_NUM             20
+#define ENC_SRC_BUF_NUM                 20
 
 #define ONE_TASKBUF_SIZE_FOR_W5DEC_CQ         (8*1024*1024)   /* upto 8Kx4K, need 8Mbyte per task*/
 #define ONE_TASKBUF_SIZE_FOR_W5ENC_CQ         (8*1024*1024)  /* upto 8Kx8K, need 8Mbyte per task.*/

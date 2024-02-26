@@ -18,19 +18,15 @@
 #include "ion/ion.h"
 #endif
 
-#include "mtgpu_mdev.h"
+#include "mtgpu_drv.h"
 #include "mtgpu_drm_gem.h"
 #include "mtgpu_drm_drv.h"
-#include "mtgpu_drv.h"
-
-#include "osfunc.h"
+#include "mtgpu_drm_internal.h"
 
 #include "mtvpu_drv.h"
 #include "mtvpu_gem.h"
 #include "mtvpu_pool.h"
 #include "vpuapifunc.h"
-#include "mtvpu_pool.h"
-
 #include "misc.h"
 
 #ifdef SUPPORT_ION
@@ -69,12 +65,13 @@ int ion_free_node(struct mt_node *node)
 	return ion_free(ion_buf);
 }
 
-struct mt_node *ion_malloc_internal(struct mt_chip *chip, int idx, int drm_id, u64 size)
+struct mt_node *ion_malloc_node(struct mt_chip *chip, int idx, int drm_id, u64 size)
 {
 	struct mt_node *node;
 	struct dma_buf *ion_buf;
 
 	size = ALIGN(size, gpu_page_size);
+
 	node = kzalloc(sizeof(*node), GFP_KERNEL);
 	if (!node)
 		return NULL;
@@ -85,30 +82,35 @@ struct mt_node *ion_malloc_internal(struct mt_chip *chip, int idx, int drm_id, u
 		return NULL;
 	}
 
-	ion_buf = ion_alloc(chip->ion_dev[drm_id], size, 1 << chip->core[idx].heap_id, 0);
+	ion_buf = ion_alloc(chip->ions[drm_id], size, 1 << chip->core[idx].heap_id, 0);
 	if (!ion_buf) {
 		kfree(node->obj);
 		kfree(node);
-		pr_err("ion allocate size %lld failed\n", size);
+		pr_err("mtvpu ion allocate size %lld failed\n", size);
 		return NULL;
 	}
+
 	node->ion_buf = ion_buf;
 	node->dev_addr = get_dev_addr_dma_buf(ion_buf);
 	node->obj->size = ion_buf->size;
-	pr_info("core %d ion malloc internal 0x%llx\n", idx, node->dev_addr);
+	pr_info("mtvpu core %d ion malloc internal 0x%llx\n", idx, node->dev_addr);
 	return node;
 }
 #endif
 
-struct mt_node *gem_malloc_internal(struct mt_chip *chip, int idx, u32 pool_id, struct drm_device *drm, u64 size, u32 mem_type)
+struct mt_node *gem_malloc_node(struct mt_chip *chip, int idx, u32 pool_id, struct drm_device *drm, u64 size, u32 type)
 {
 	struct mt_core *core = &chip->core[idx];
 	struct mt_node *node;
-	u64 dev_addr;
-	size_t obj_size;
-	int ret = 0;
+	int ret = 0, host = 0;
+
+	if (pool_id > 0xFF000000) {
+		pool_id -= 0xFF000000;
+		host = 1;
+	}
 
 	size = ALIGN(size, gpu_page_size);
+
 	node = kzalloc(sizeof(*node), GFP_KERNEL);
 	if (!node)
 		return NULL;
@@ -119,25 +121,19 @@ struct mt_node *gem_malloc_internal(struct mt_chip *chip, int idx, u32 pool_id, 
 		return NULL;
 	}
 
-	if ((VPU_IS_POOL_ID_VALID(pool_id) && vpu_fixed_128M_mem(mem_type)) ||
-	    VDI_POOL_ID_VALID(pool_id)) {
-		node->pool_id = pool_id;
-		ret = vpu_alloc_mem_pool(chip, pool_id > 0xFF000000 ? (pool_id - 0xFF000000) :
-					 pool_id, size, &node->dev_addr);
-	} else
-		ret = mtgpu_vram_alloc(drm, core->mem_group_id, size,
-					  &node->dev_addr, &node->handle);
+	if (host || vpu_fixed_mem_qy2(chip, type))
+		ret = vpu_mem_pool_alloc(chip, pool_id, size, &node->dev_addr);
+	else
+		ret = mtgpu_vram_alloc(drm, core->mem_group_id, size, &node->dev_addr, &node->handle);
 
 	drm_gem_private_object_init(drm, node->obj, size);
 
 	if (ret) {
-		pr_err("error, mtgpu_vram_alloc\n");
+		pr_err("mtvpu Error mtgpu_vram_alloc\n");
 		goto unref;
 	}
 
-	dev_addr = get_mt_node_addr(node);
-	obj_size = get_mt_node_size(node);
-
+	node->pool_id = pool_id;
 	return node;
 
 unref:
@@ -150,28 +146,27 @@ unref:
 /* check work buffer, task buffer cross with code buffer.
  * refer: https://confluence.mthreads.com/display/VD/VPU+buf+require#
  */
-struct mt_node *gem_malloc(struct mt_chip *chip, int idx, int instIdx, u64 size,
-			u32 mem_type, struct list_head *mm_head)
+struct mt_node *gem_malloc(struct mt_chip *chip, int idx, int instIdx, u64 size, u32 type, struct list_head *mm_head)
 {
 	struct mt_node *node = NULL;
+	struct drm_device *drm;
 	int drm_id;
-	struct drm_device *drm_dev;
 #ifndef SUPPORT_ION
 	u32 pool_id = chip->core[idx].pool_ids[instIdx];
 #endif
 
 	drm_id = chip->core[idx].drm_ids[instIdx];
-	if (drm_id < 0 || drm_id > chip->drm_dev_cnt - 1)
+	if (drm_id < 0 || drm_id > chip->mpc_drm_cnt - 1)
 		return NULL;
 
-	drm_dev = chip->drm_dev[drm_id];
-	if (!drm_dev)
+	drm = chip->drms[drm_id];
+	if (!drm)
 		return NULL;
 
 #ifdef SUPPORT_ION
-	node = ion_malloc_internal(chip, idx, drm_id, size);
+	node = ion_malloc_node(chip, idx, drm_id, size);
 #else
-	node = gem_malloc_internal(chip, idx, pool_id, drm_dev, size, mem_type);
+	node = gem_malloc_node(chip, idx, pool_id, drm, size, type);
 #endif
 	if (!node)
 		return NULL;
@@ -184,8 +179,9 @@ struct mt_node *gem_malloc(struct mt_chip *chip, int idx, int instIdx, u64 size,
 	 * critical buffers. This will cause VPU hang.
 	 */
 	if ((node->dev_addr & 0xffffffffUL) < (WAVE5_MAX_CODE_BUF_SIZE + FW_LOG_BUFFER_SIZE) ||
-	    ((node->dev_addr + size) & 0xffffffffUL) >= W_VCPU_SPM_ADDR) {
-		pr_err("Illegal VRAM address(%llx) for VPU\n", node->dev_addr);
+	    ((node->dev_addr + size) & 0xffffffffUL) > W_VCPU_SPM_ADDR) {
+		pr_err("mtvpu Error address(%llx to %llx size:%llx)\n", node->dev_addr,
+		       node->dev_addr + size, size);
 
 		if (node->handle)
 			mtgpu_vram_free(node->handle);
@@ -194,8 +190,8 @@ struct mt_node *gem_malloc(struct mt_chip *chip, int idx, int instIdx, u64 size,
 			drm_gem_object_release(node->obj);
 			kfree(node->obj);
 		}
-		kfree(node);
 
+		kfree(node);
 		return NULL;
 	}
 
@@ -206,22 +202,8 @@ struct mt_node *gem_malloc(struct mt_chip *chip, int idx, int instIdx, u64 size,
 	return node;
 }
 
-/* for ANDROID, gem malloc cannot use ION during insmod */
-void gem_free_internal(struct mt_chip *chip, struct mt_node *node)
-{
-	if (node->vir_addr)
-		iounmap(node->vir_addr);
-
-	if (node->bak_addr)
-		vfree(node->bak_addr);
-
-	mtgpu_vram_free(node->handle);
-	drm_gem_object_release(node->obj);
-}
-
 void gem_free_node(struct mt_chip *chip, struct mt_node *node)
 {
-
 	if (node->vir_addr)
 		iounmap(node->vir_addr);
 
@@ -232,9 +214,9 @@ void gem_free_node(struct mt_chip *chip, struct mt_node *node)
 	ion_free_node(node);
 #else
 	/* VDI case will not destroy the pool here */
-	if VPU_IS_POOL_ID_VALID(node->pool_id)
-		vpu_destroy_mem_pool(chip, node->pool_id);
-	else if (!VDI_POOL_ID_VALID(node->pool_id))
+	if (node->pool_id > 0)
+		vpu_mem_pool_free(chip, node->pool_id);
+	else
 		mtgpu_vram_free(node->handle);
 
 	drm_gem_object_release(node->obj);
@@ -243,7 +225,7 @@ void gem_free_node(struct mt_chip *chip, struct mt_node *node)
 
 void gem_free_all(struct mt_chip *chip, struct list_head *mm_head)
 {
-	struct mt_node *node, *next;
+	struct mt_node *node = NULL, *next = NULL;
 
 	mutex_lock(chip->mm_lock);
 
@@ -261,7 +243,7 @@ void gem_free_all(struct mt_chip *chip, struct list_head *mm_head)
 
 void gem_free(struct mt_chip *chip, u64 dev_addr, struct list_head *mm_head)
 {
-	struct mt_node *node, *next;
+	struct mt_node *node = NULL, *next = NULL;
 
 	mutex_lock(chip->mm_lock);
 
@@ -282,7 +264,7 @@ void gem_free(struct mt_chip *chip, u64 dev_addr, struct list_head *mm_head)
 
 void gem_clear(struct mt_core *core, u64 dev_addr)
 {
-	struct mt_node *node;
+	struct mt_node *node = NULL;
 	int inst;
 
 	for (inst = 0; inst < INST_MAX_SIZE; inst ++) {

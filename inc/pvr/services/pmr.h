@@ -1102,4 +1102,7 @@ PMR_GetGpuPAByPageIndex(PMR_PA_INFO *psPMRPAInfo,
 
 IMG_BOOL PMR_NeedUnmapForPAInfo(PMR_PA_INFO *psPMRPAInfo);
 
+void *PMRGetDmaBuf(PMR *psPMR);
+void PMRSetDmaBuf(PMR *psPMR, void *pvDmabuf);
+
 #endif /* #ifdef SRVSRV_PMR_H */

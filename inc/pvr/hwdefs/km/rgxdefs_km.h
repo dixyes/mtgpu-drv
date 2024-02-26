@@ -47,12 +47,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include RGX_BNC_CONFIG_KM_HEADER
 #endif
 
-#define IMG_EXPLICIT_INCLUDE_HWDEFS
-#if defined(__KERNEL__)
-#include "rgx_cr_defs_km.h"
-#endif
-#undef IMG_EXPLICIT_INCLUDE_HWDEFS
-
 #include "rgx_heap_firmware.h"
 
 /* The following Macros are picked up through BVNC headers for no hardware

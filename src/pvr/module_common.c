@@ -90,6 +90,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "pvr_ion_stats.h"
 
+#include "mtlink.h"
+
 #if defined(SUPPORT_DMA_TRANSFER)
 #include "dma_km.h"
 #include "pmr.h"
@@ -117,14 +119,14 @@ bool disable_gpu;
 module_param(disable_gpu, bool, 0444);
 MODULE_PARM_DESC(disable_gpu, "0 - enable gpu, 1 - disable gpu. The default value is 0");
 
-bool enable_rdma;
-module_param(enable_rdma, bool, 0444);
-MODULE_PARM_DESC(enable_rdma, "0 - disable rdma,  1 - enable rdma. The default value is 0");
-
 int enable_large_mem_mode;
 module_param(enable_large_mem_mode, int, 0444);
 MODULE_PARM_DESC(enable_large_mem_mode,
                 "1:enable compute memory mode, 0:disable compute memory mode");
+
+bool enable_mmu_persistence = 0;
+module_param(enable_mmu_persistence, bool, 0444);
+MODULE_PARM_DESC(enable_mmu_persistence, "0 - disable mmu persistence,  1 - enable mmu persistence. The default value is 0");
 
 #if defined(SUPPORT_DISPLAY_CLASS)
 /* Display class interface */
@@ -188,6 +190,7 @@ EXPORT_SYMBOL(_RGXDumpRGXMMUFaultStatus);
 
 static int PVRSRVDeviceSyncOpen(struct _PVRSRV_DEVICE_NODE_ *psDeviceNode,
                                 struct drm_file *psDRMFile);
+void PVRSRVDeviceSyncRelease(void *pConnectionData);
 
 CONNECTION_DATA *LinuxServicesConnectionFromFile(struct file *pFile)
 {
@@ -218,6 +221,46 @@ CONNECTION_DATA *LinuxSyncConnectionFromFile(struct file *pFile)
 
 	return NULL;
 }
+
+struct apphint_state apphint = {
+/* statically initialise default values to ensure that any module_params
+ * provided on the command line are not overwritten by defaults.
+ */
+	.val = {
+#define UINT32Bitfield UINT32
+#define UINT32List UINT32
+#define X(a, b, c, d, e) \
+	{ {NULL}, {NULL}, NULL, NULL, {.b=d}, false },
+	APPHINT_LIST_ALL
+#undef X
+#undef UINT32Bitfield
+#undef UINT32List
+	},
+	.initialized = 0,
+	.num_devices = 0
+};
+
+
+__maybe_unused
+const struct kernel_param_ops apphint_kparam_fops = {
+	.set = apphint_kparam_set,
+	.get = apphint_kparam_get,
+};
+
+/*
+ * call module_param_cb() for all AppHints listed in APPHINT_LIST_MODPARAM_COMMON + APPHINT_LIST_MODPARAM
+ * apphint_modparam_class_ ## resolves to apphint_modparam_enable() except for
+ * AppHint classes that have been disabled.
+ */
+
+#define apphint_modparam_enable(name, number, perm) \
+	module_param_cb(name, &apphint_kparam_fops, &apphint.val[number], perm);
+
+#define X(a, b, c, d, e) \
+	apphint_modparam_class_ ##c(a, APPHINT_ID_ ## a, 0444)
+	APPHINT_LIST_MODPARAM_COMMON
+	APPHINT_LIST_MODPARAM
+#undef X
 
 /**************************************************************************/ /*!
 @Function     PVRSRVDriverInit
@@ -422,8 +465,7 @@ int PVRSRVDeviceSuspend(PVRSRV_DEVICE_NODE *psDeviceNode)
 	 * while it's suspended (this is needed for Android). Acquire the bridge
 	 * lock first to ensure the driver isn't currently in use.
 	 */
-	/* FIXME: this will block S4 resume in initramfs stage */
-	/* LinuxBridgeBlockClientsAccess(IMG_FALSE); */
+	LinuxBridgeBlockClientsAccess(IMG_FALSE);
 
 #if defined(SUPPORT_AUTOVZ)
 	/* To allow the driver to power down the GPU under AutoVz, the firmware must
@@ -458,8 +500,7 @@ int PVRSRVDeviceResume(PVRSRV_DEVICE_NODE *psDeviceNode)
 		return -EINVAL;
 	}
 
-	/* FIXME: this will block S4 resume in initramfs stage */
-	/* LinuxBridgeUnblockClientsAccess(); */
+	LinuxBridgeUnblockClientsAccess();
 
 	/*
 	 * Reprocess the device queues in case commands were blocked during
@@ -491,6 +532,24 @@ int PVRSRVDeviceServicesOpen(PVRSRV_DEVICE_NODE *psDeviceNode,
 	PVRSRV_CONNECTION_PRIV *psConnectionPriv;
 	PVRSRV_ERROR eError;
 	int iErr = 0;
+
+	/*
+	 * The initialization of mtlink takes a long time, and it
+	 * is forbidden to use mtlink before the initialization is
+	 * completed. When the mtlink function is enabled, the user
+	 * needs to check whether the mtlink initialization has been
+	 * completed before turning on the device; when the mtlink
+	 * function is not enabled, there is no need to care.
+	 */
+	if (mtlink_is_enabled())
+	{
+		if (!mtlink_is_init_finished())
+		{
+			PVR_DPF((PVR_DBG_WARNING, "%s: MT-Link initialization not completed.",
+				 __func__));
+			return -EAGAIN;
+		}
+	}
 
 	if (!psPVRSRVData)
 	{
@@ -661,7 +720,7 @@ static int PVRSRVDeviceSyncOpen(PVRSRV_DEVICE_NODE *psDeviceNode,
 
 #if defined(SUPPORT_NATIVE_FENCE_SYNC) && !defined(USE_PVRSYNC_DEVNODE)
 #if (PVRSRV_DEVICE_INIT_MODE == PVRSRV_LINUX_DEV_INIT_ON_CONNECT)
-	psConnectionPriv->pfDeviceRelease = pvr_sync_close;
+	psConnectionPriv->pfDeviceRelease = PVRSRVDeviceSyncRelease;
 #endif
 #endif
 	psDRMFile->driver_priv = psConnectionPriv;
@@ -677,6 +736,22 @@ fail_alloc_connection:
 	kfree(psConnectionPriv);
 out:
 	return iErr;
+}
+
+void PVRSRVDeviceSyncRelease(void *pConnectionData)
+{
+	CONNECTION_DATA *psConnection = pConnectionData;
+
+	pvr_sync_close(pConnectionData);
+
+	/* Call environment specific connection data deinit function */
+	if (psConnection->hOsPrivateData != NULL)
+	{
+		OSConnectionPrivateDataDeInit(psConnection->hOsPrivateData);
+		psConnection->hOsPrivateData = NULL;
+	}
+
+	OSFreeMemNoStats(psConnection);
 }
 
 /**************************************************************************/ /*!

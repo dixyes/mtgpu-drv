@@ -59,6 +59,8 @@
  * structures to this file.
  */
 
+struct drm_file;
+
 struct drm_pvr_srvkm_cmd {
 	__u32 bridge_id;
 	__u32 bridge_func_id;

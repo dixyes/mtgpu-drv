@@ -37,30 +37,20 @@ mtgpu-objs += src/common/os-interface.o \
 	src/mtgpu/phy-mthreads-dp.o \
 	src/mtgpu/p2pdma.o \
 	src/mtgpu/mtgpu_ipc_tty.o \
-	src/mtsnd/eld.o \
-	src/mtsnd/mtsnd_codec.o \
-	src/mtsnd/mtsnd_drv.o \
-	src/mtsnd/mtsnd_pcm.o \
 	src/mtvpu/mtvpu_api.o \
 	src/mtvpu/mtvpu_drv.o \
 	src/mtvpu/mtvpu_gem.o \
-	src/pvr/allocmem.o \
+	src/mtjpu/mtjpu_drv.o \
 	src/pvr/error_mapping.o \
-	src/pvr/event.o \
-	src/pvr/fwload.o \
-	src/pvr/handle_idr.o \
 	src/pvr/interrupt_support.o \
-	src/pvr/km_apphint.o \
 	src/pvr/module_common.o \
 	src/pvr/osconnection_server.o \
 	src/pvr/osfunc.o \
 	src/pvr/osmmap_stub.o \
 	src/pvr/pci_support.o \
-	src/pvr/physmem_dmabuf.o \
 	src/pvr/physmem_osmem_linux.o \
 	src/pvr/physmem_test.o \
 	src/pvr/pmr_os.o \
-	src/pvr/pvr_bridge_k.o \
 	src/pvr/pvr_buffer_sync.o \
 	src/pvr/pvr_counting_timeline.o \
 	src/pvr/pvr_debug.o \
@@ -75,6 +65,18 @@ mtgpu-objs += src/common/os-interface.o \
 	src/pvr/pvr_sync_ioctl_drm.o \
 	src/pvr/trace_events.o \
 	objs/$(ARCH)/mtgpu_core.o
+
+# build for audio
+mtgpu-objs += \
+	src/mtsnd/eld.o \
+	src/mtsnd/mtsnd_codec.o \
+	src/mtsnd/mtsnd_drv.o \
+	src/mtsnd/mtsnd_pcm.o
+
+# build for virtualization
+mtgpu-$(CONFIG_VZ_MOORE_THREADS) += \
+	src/mtgpu/vgpu/mtgpu_mdev_common.o \
+	src/mtgpu/vgpu/os-interface-vgpu.o
 
 mtgpu-$(CONFIG_RISCV) += src/pvr/osfunc_riscv.o
 mtgpu-$(CONFIG_ARM) += src/pvr/osfunc_arm.o
@@ -96,10 +98,13 @@ ccflags-y += -I$(OBJ_DIR)/inc \
 	-I$(OBJ_DIR)/inc/pvr/services \
 	-I$(OBJ_DIR)/inc/common \
 	-I$(OBJ_DIR)/inc/mtgpu \
+	-I$(OBJ_DIR)/inc/mtgpu-next \
+	-I$(OBJ_DIR)/inc/mtgpu/vgpu \
 	-I$(OBJ_DIR)/inc/mtgpu/ion \
 	-I$(OBJ_DIR)/inc/mtgpu/ion/ion \
 	-I$(OBJ_DIR)/inc/mtgpu/ion/ion/heaps \
 	-I$(OBJ_DIR)/inc/mtvpu \
+	-I$(OBJ_DIR)/inc/mtjpu \
 	-I$(OBJ_DIR)/inc/mtvpu/linux \
 	-I$(OBJ_DIR)/inc/mtvpu/linux/helper \
 	-I$(OBJ_DIR)/inc/mtsnd \
@@ -114,7 +119,7 @@ quiet_cmd_symlink = SYMLINK $@
 cmd_symlink = ln -sf $< $@
 
 all: $(MTGPU_BINARY_O) $(CONFTEST_H) $(MTGPU_ION_O)
-	make  -C $(KERNELDIR)   M=$(OBJ_DIR) modules
+	make -C $(KERNELDIR)   M=$(OBJ_DIR) modules
 	@echo "make all end"
 
 $(MTGPU_BINARY_O): $(MTGPU_BINARY)

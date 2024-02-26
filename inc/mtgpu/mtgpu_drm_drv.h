@@ -31,6 +31,5 @@ extern struct platform_driver mtgpu_phy_driver;
 
 int mtgpu_drm_init(void);
 void mtgpu_drm_fini(void);
-int mtgpu_kick_out_firmware_fb(struct pci_dev *pdev);
 
 #endif /* _MTGPU_DRM_DRV_H_ */

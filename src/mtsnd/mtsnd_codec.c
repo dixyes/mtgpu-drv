@@ -65,14 +65,14 @@ static int get_codec_index(struct mtsnd_chip *chip, struct snd_kcontrol *kcontro
 int mtsnd_mixer_switch_get(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
 	struct mtsnd_chip *chip = snd_kcontrol_chip(kcontrol);
-	int index = get_codec_index(chip, kcontrol);
+	int codec_idx = get_codec_index(chip, kcontrol);
 
-	if (index < 0) {
-		dev_err(chip->card->dev, "get error index\n");
+	if (codec_idx < 0) {
+		dev_err(chip->card->dev, "error get codec index: %d\n", codec_idx);
 		return -EIO;
 	}
 
-	ucontrol->value.integer.value[0] = check_codec_state2(&chip->codec[index]);
+	ucontrol->value.integer.value[0] = check_codec_state2(&chip->codec[codec_idx]);
 
 	SND_DEBUG("codec: %s get: %ld, comm:%s, pid:%d\n", kcontrol->id.name,
 		 ucontrol->value.integer.value[0], current->comm, current->pid);
@@ -82,17 +82,18 @@ int mtsnd_mixer_switch_get(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_va
 int mtsnd_mixer_switch_put(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
 	struct mtsnd_chip *chip = snd_kcontrol_chip(kcontrol);
-	int index = get_codec_index(chip, kcontrol);
+	int codec_idx = get_codec_index(chip, kcontrol);
+	int pcm_idx = get_codec_pcm_index(chip, codec_idx);
 	struct mtsnd_codec *codec;
 	int changed = 0;
 
 	SND_DEBUG("codec:%s set:%ld, comm:%s, pid:%d\n", kcontrol->id.name,
 		 ucontrol->value.integer.value[0], current->comm, current->pid);
 
-	if (index < 0)
+	if (codec_idx < 0 || pcm_idx < 0)
 		return -EIO;
 
-	codec = &chip->codec[index];
+	codec = &chip->codec[codec_idx];
 
 
 	changed = codec_status_changed(codec, ucontrol->value.integer.value[0]);
@@ -104,7 +105,7 @@ int mtsnd_mixer_switch_put(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_va
 		/* if the IIS is not working, we can't enable the monitor audio
 		 * but save the status
 		 */
-		if (!chip->pcm_running) {
+		if (!chip->pcm[pcm_idx].pcm_running) {
 			SND_DEBUG("IIS not running, mark enabled\n");
 			return changed;
 		}
@@ -113,16 +114,16 @@ int mtsnd_mixer_switch_put(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_va
 			int ret = -1;
 
 			ret = codec->hcd->ops->hw_params(codec->dev, codec->hcd->data,
-							 chip->daifmt, chip->params);
+							 codec->daifmt, codec->params);
 			update_codec_state3(codec, ret);
 		}
 
 		/* codec enable */
-		if (check_codec_start(chip, index) && codec->hcd->ops->audio_startup)
+		if (check_codec_start(chip, codec_idx) && codec->hcd->ops->audio_startup)
 			codec->hcd->ops->audio_startup(codec->dev, codec->hcd->data);
 	} else {
 		/* codec disable */
-		if (check_hw_status(chip, index) && codec->hcd->ops->audio_shutdown)
+		if (check_hw_status(chip, codec_idx) && codec->hcd->ops->audio_shutdown)
 			codec->hcd->ops->audio_shutdown(codec->dev, codec->hcd->data);
 	}
 
@@ -176,7 +177,7 @@ static void report_pnp_event(struct timer_list *t)
 				int ret = -1;
 
 				ret = codec->hcd->ops->hw_params(codec->dev, codec->hcd->data,
-								chip->daifmt, chip->params);
+								codec->daifmt, codec->params);
 				update_codec_state3(codec, ret);
 			}
 			/* start the display audio */

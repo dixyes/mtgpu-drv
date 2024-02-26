@@ -364,6 +364,9 @@ RA_Free(RA_ARENA *pArena, RA_BASE_T base);
 IMG_INTERNAL void
 RA_Get_Usage_Stats(RA_ARENA *pArena, PRA_USAGE_STATS psRAStats);
 
+IMG_INTERNAL void
+RA_Print_Usage_Stats(RA_ARENA *pArena, IMG_INT32 i32SegmentID);
+
 IMG_INTERNAL RA_ARENA_ITERATOR *
 RA_IteratorAcquire(RA_ARENA *pArena, IMG_BOOL bIncludeFreeSegments);
 

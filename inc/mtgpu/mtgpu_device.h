@@ -21,6 +21,7 @@ enum hw_module_type {
 	MTGPU_HW_MODULE_DP_PHY,
 	MTGPU_HW_MODULE_HDMI,
 	MTGPU_HW_MODULE_VPU,
+	MTGPU_HW_MODULE_JPU,
 	MTGPU_HW_MODULE_AUDIO,
 };
 
@@ -108,6 +109,7 @@ struct mtgpu_driver_data {
 	struct mtgpu_sriov_ops *sriov_ops;
 	struct mtgpu_pcie_perf_ops *pcie_perf_ops;
 	const struct mtgpu_smc_ops *smc_ops;
+	const struct mtgpu_fec_ops *fec_ops;
 	struct mtgpu_llc_ops *llc_ops;
 	struct mtlink_ops *link_ops;
 	struct mtgpu_ob_ops *ob_ops;
@@ -115,7 +117,7 @@ struct mtgpu_driver_data {
 	int (*get_platform_device_info)(struct mtgpu_device *mtdev, u32 hw_module, u32 hw_id,
 					struct mtgpu_resource **mtgpu_res, u32 *num_res,
 					void **data, size_t *size_data);
-	void (*get_vendor_info)(struct mtgpu_device *mtdev, u32 *vendor);
+	int (*register_access_check)(struct mtgpu_device *mtdev);
 };
 
 #define MT_OPS_DECLARE(name) \
@@ -128,6 +130,7 @@ extern struct mtgpu_pcie_perf_ops name##_pcie_perf_ops; \
 extern struct mtgpu_display_ops name##_display_ops; \
 extern struct mtgpu_pcie_local_mgmt_ops name##_pcie_local_mgmt_ops; \
 extern struct mtgpu_smc_ops name##_smc_ops; \
+extern struct mtgpu_fec_ops name##_fec_ops; \
 extern struct mtlink_ops name##_mtlink_ops; \
 extern struct mtgpu_ob_ops name##_ob_ops; \
 extern struct mtgpu_gpu_ss_ops name##_gpu_ss_ops;
@@ -142,7 +145,7 @@ int mtgpu_get_primary_core_count(struct mtgpu_device *mtdev);
 int mtgpu_register_devices(struct mtgpu_device *mtdev);
 void mtgpu_unregister_devices(struct mtgpu_device *mtdev);
 int mtgpu_device_pm_resume(struct mtgpu_device *mtdev);
-int mtgpu_device_pm_suspend(struct mtgpu_device *mtdev);
+int mtgpu_vram_backup(struct mtgpu_device *mtdev);
 void mtgpu_device_alloc_buffer_for_suspend(struct mtgpu_device *mtdev);
 int mtgpu_device_memory_fixup(struct mtgpu_device *mtdev,
 			      struct mtgpu_module_param *param);
@@ -169,6 +172,8 @@ int mtgpu_register_audio_device(struct mtgpu_device *mtdev);
 void mtgpu_unregister_audio_device(struct mtgpu_device *mtdev);
 int mtgpu_register_video_device(struct mtgpu_device *mtdev);
 void mtgpu_unregister_video_device(struct mtgpu_device *mtdev);
+int mtgpu_register_jpu_device(struct mtgpu_device *mtdev);
+void mtgpu_unregister_jpu_device(struct mtgpu_device *mtdev);
 int mtgpu_register_gpu_device_with_coreid(struct mtgpu_device *mtdev, int logic_core_id,
 					  int physical_core_id);
 void mtgpu_unregister_gpu_device(struct mtgpu_device *mtdev);

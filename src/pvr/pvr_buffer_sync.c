@@ -188,7 +188,10 @@ pvr_buffer_sync_pmrs_fence_count(u32 nr_pmrs, struct _PMR_ **pmrs,
 	struct dma_fence *fence_excl, **shared_fences;
 	u32 fence_count = 0;
 	u32 num_fences;
-	bool exclusive;
+	/* We use "all_in_shared_fences" to judge whether the obtained
+	 * fences are all stored in "shared_fences".
+	 */
+	bool exclusive, all_in_shared_fences;
 	int i, j;
 
 	for (i = 0; i < nr_pmrs; i++) {
@@ -201,16 +204,19 @@ pvr_buffer_sync_pmrs_fence_count(u32 nr_pmrs, struct _PMR_ **pmrs,
 		fence_excl = NULL;
 		num_fences = 0;
 
-		(void)pvr_dma_resv_get_fences(resv, &fence_excl, &num_fences, &shared_fences);
+		(void)pvr_dma_resv_get_fences(resv, &fence_excl, &num_fences,
+					      &shared_fences, exclusive, &all_in_shared_fences);
 
-		if (fence_excl && (!exclusive || !num_fences))
-			fence_count++;
+		if (!all_in_shared_fences) {
+			if (fence_excl && (!exclusive || !num_fences))
+				fence_count++;
 
-		if (exclusive)
+			if (fence_excl)
+				dma_fence_put(fence_excl);
+		}
+
+		if (exclusive || all_in_shared_fences)
 			fence_count += num_fences;
-
-		if (fence_excl)
-			dma_fence_put(fence_excl);
 
 		for (j = 0; j < num_fences; j++)
 			dma_fence_put(shared_fences[j]);
@@ -232,7 +238,10 @@ pvr_buffer_sync_check_fences_create(struct pvr_fence_context *fence_ctx,
 	struct dma_fence *fence_excl, **shared_fences;
 	u32 fence_count;
 	u32 num_fences;
-	bool exclusive;
+	/* We use "all_in_shared_fences" to judge whether the obtained
+	 * fences are all stored in "shared_fences".
+	 */
+	bool exclusive, all_in_shared_fences;
 	int i, j;
 	int err;
 
@@ -264,24 +273,31 @@ pvr_buffer_sync_check_fences_create(struct pvr_fence_context *fence_ctx,
 		fence_excl = NULL;
 		num_fences = 0;
 
-		(void)pvr_dma_resv_get_fences(resv, &fence_excl, &num_fences, &shared_fences);
+		(void)pvr_dma_resv_get_fences(resv, &fence_excl, &num_fences,
+					      &shared_fences, exclusive, &all_in_shared_fences);
 
-		if (fence_excl && (!exclusive || !num_fences)) {
-			data->fences[data->nr_fences++] =
-				pvr_fence_create_from_fence(fence_ctx,
-							    sync_checkpoint_ctx,
-							    fence_excl,
-							    PVRSRV_NO_FENCE,
-							    "exclusive check fence");
-			if (!data->fences[data->nr_fences - 1]) {
-				data->nr_fences--;
-				PVR_FENCE_TRACE(fence_excl,
-						"waiting on exclusive fence\n");
-				WARN_ON(dma_fence_wait(fence_excl, true) <= 0);
+		if (!all_in_shared_fences) {
+			if (fence_excl && (!exclusive || !num_fences)) {
+				data->fences[data->nr_fences++] =
+					pvr_fence_create_from_fence(fence_ctx,
+								    sync_checkpoint_ctx,
+								    fence_excl,
+								    PVRSRV_NO_FENCE,
+								    "exclusive check fence");
+
+				if (!data->fences[data->nr_fences - 1]) {
+					data->nr_fences--;
+					PVR_FENCE_TRACE(fence_excl,
+							"waiting on exclusive fence\n");
+					WARN_ON(dma_fence_wait(fence_excl, true) <= 0);
+				}
 			}
+
+			if (fence_excl)
+				dma_fence_put(fence_excl);
 		}
 
-		if (exclusive) {
+		if (exclusive || all_in_shared_fences) {
 			for (j = 0; j < num_fences; j++) {
 				data->fences[data->nr_fences++] =
 					pvr_fence_create_from_fence(fence_ctx,
@@ -297,9 +313,6 @@ pvr_buffer_sync_check_fences_create(struct pvr_fence_context *fence_ctx,
 				}
 			}
 		}
-
-		if (fence_excl)
-			dma_fence_put(fence_excl);
 
 		for (j = 0; j < num_fences; j++)
 			dma_fence_put(shared_fences[j]);

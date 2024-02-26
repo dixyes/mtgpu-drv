@@ -92,12 +92,6 @@ typedef struct _pvr_ion_stats_state_ {
 PVRSRV_ERROR PVRSRVIonStatsInitialise(struct _PVRSRV_DEVICE_NODE_ *psDeviceNode);
 
 void PVRSRVIonStatsDestroy(struct _PVRSRV_DEVICE_NODE_ *psDeviceNode);
-
-void PVRSRVIonAddMemAllocRecord(struct dma_buf *psDmaBuf,
-				struct _PVRSRV_DEVICE_NODE_ *psDeviceNode);
-
-void PVRSRVIonRemoveMemAllocRecord(struct dma_buf *psDmaBuf,
-				   struct _PVRSRV_DEVICE_NODE_ *psDeviceNode);
 #else
 static INLINE PVRSRV_ERROR PVRSRVIonStatsInitialise(struct _PVRSRV_DEVICE_NODE_ *psDeviceNode)
 {
@@ -106,18 +100,6 @@ static INLINE PVRSRV_ERROR PVRSRVIonStatsInitialise(struct _PVRSRV_DEVICE_NODE_ 
 
 static INLINE void PVRSRVIonStatsDestroy(struct _PVRSRV_DEVICE_NODE_ *psDeviceNode)
 {
-}
-
-static INLINE void PVRSRVIonAddMemAllocRecord(struct dma_buf *psDmaBuf,
-					      struct _PVRSRV_DEVICE_NODE_ *psDeviceNode)
-{
-	PVR_UNREFERENCED_PARAMETER(psDmaBuf);
-}
-
-static INLINE void PVRSRVIonRemoveMemAllocRecord(struct dma_buf *psDmaBuf,
-						 struct _PVRSRV_DEVICE_NODE_ *psDeviceNode)
-{
-	PVR_UNREFERENCED_PARAMETER(psDmaBuf);
 }
 #endif /* defined(PVRSRV_ENABLE_PVR_ION_STATS) */
 

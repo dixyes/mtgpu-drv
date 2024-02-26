@@ -47,6 +47,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <linux/dma-buf.h>
 #include <linux/sched/task.h>
 #include "pvr_ion_stats.h"
+#include "pvr_ion_mem.h"
 #include "img_types.h"
 #include "pvr_debug.h"
 #include "allocmem.h"

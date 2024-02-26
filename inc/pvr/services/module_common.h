@@ -91,6 +91,7 @@ extern long vram_lower_limit;
 extern bool disable_gpu;
 extern bool enable_rdma;
 extern int enable_large_mem_mode;
+extern bool enable_mmu_persistence;
 #if defined(DEBUG)
 extern IMG_UINT32 gPMRAllocFail;
 #endif /* DEBUG */

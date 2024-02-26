@@ -122,6 +122,20 @@ void RGXMemSet(const void *hPrivate,
 /*!
 *******************************************************************************
 
+ @Function       RGXGetMMUVersion
+
+ @Description    Get mmu version
+
+ @Input          hPrivate   : Implementation specific data
+
+ @Return         IMG_UINT32
+
+******************************************************************************/
+IMG_UINT32 RGXGetMMUVersion(const void *hPrivate);
+
+/*!
+*******************************************************************************
+
  @Function       RGXCommentLog
 
  @Description    Generic log function used for debugging or other purposes
@@ -398,6 +412,38 @@ void RGXWriteKernelMMUPC32(const void *hPrivate,
 #else  /* defined(PDUMP) */
 #define RGXWriteKernelMMUPC32(priv, pcreg, alignshift, shift, pcval) \
 	RGXWriteReg32(priv, pcreg, pcval)
+#endif /* defined(PDUMP) */
+
+/*!
+*******************************************************************************
+
+ @Function        RGXWriteKernelMMUPC32/64
+
+ @Description     Write the Kernel MMU Page Catalogue to the 32/64 bit
+                  RGX register passed as argument.
+                  In a driver-live scenario without PDump these functions
+                  are the same as RGXWriteReg32/64 and they don't need
+                  to be reimplemented.
+
+ @Input           hPrivate        : Implementation specific data
+ @Input           ui32PCReg       : Register offset inside the register bank
+ @Input           ui32AlignShift  : PC register alignshift
+ @Input           ui32Shift       : PC register shift
+ @Input           ui32/64PCVal    : Page catalog value (aligned and shifted)
+
+ @Return          void
+
+******************************************************************************/
+#if defined(PDUMP)
+void RGXWriteKernelMMUPC64(const void *hPrivate,
+                           IMG_UINT32 ui32PCReg,
+                           IMG_UINT32 ui32PCRegAlignShift,
+                           IMG_UINT32 ui32PCRegShift,
+                           IMG_UINT64 ui64PCVal);
+
+#else  /* defined(PDUMP) */
+#define RGXWriteKernelMMUPC64(priv, pcreg, alignshift, shift, pcval) \
+        RGXWriteReg64(priv, pcreg, pcval)
 #endif /* defined(PDUMP) */
 
 /*!

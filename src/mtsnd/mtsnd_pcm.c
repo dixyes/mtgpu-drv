@@ -29,6 +29,9 @@
 #define MT_HW_PERIOD_MIN	2
 #define MT_HW_PERIOD_MAX	4
 
+#define snd_pcm_substream_get_chip(substream)	(((struct mtsnd_pcm*)substream->private_data)->private_data)
+#define snd_pcm_substream_get_index(substream)	(((struct mtsnd_pcm*)substream->private_data)->index)
+
 //#define USING_INBOUND   //this is just for test
 
 static const struct snd_pcm_hardware mtsnd_pcm_hw_gen1 = {
@@ -45,7 +48,7 @@ static const struct snd_pcm_hardware mtsnd_pcm_hw_gen1 = {
 	.rate_min =		8000,
 	.rate_max =		192000,
 	.channels_min =		2,
-	.channels_max =		8,
+	.channels_max =		2,
 	.buffer_bytes_max =	MT_HW_BUFBYTE_MAX,
 	.period_bytes_min =	MT_HW_BUFBYTE_SIZE / MT_HW_PERIOD_MAX,
 	.period_bytes_max =	MT_HW_BUFBYTE_MAX / MT_HW_PERIOD_MIN,
@@ -54,7 +57,7 @@ static const struct snd_pcm_hardware mtsnd_pcm_hw_gen1 = {
 	.fifo_size =		0,
 };
 
-static const struct snd_pcm_hardware mtsnd_pcm_hw_gen2 = {
+static const struct snd_pcm_hardware mtsnd_pcm_hw_gen2_gen3 = {
 	.info =			SNDRV_PCM_INFO_INTERLEAVED,
 	.formats =		SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S16_BE |
 				SNDRV_PCM_FMTBIT_U16_LE | SNDRV_PCM_FMTBIT_U16_BE |
@@ -72,7 +75,7 @@ static const struct snd_pcm_hardware mtsnd_pcm_hw_gen2 = {
 	.rate_min =		32000,
 	.rate_max =		192000,
 	.channels_min =		2,
-	.channels_max =		8,
+	.channels_max =		2,
 	.buffer_bytes_max =	MT_HW_BUFBYTE_MAX,
 	.period_bytes_min =	MT_HW_BUFBYTE_SIZE / MT_HW_PERIOD_MAX,
 	.period_bytes_max =	MT_HW_BUFBYTE_MAX / MT_HW_PERIOD_MIN,
@@ -84,51 +87,54 @@ static const struct snd_pcm_hardware mtsnd_pcm_hw_gen2 = {
 static int mtsnd_pcm_open(struct snd_pcm_substream *substream)
 {
 	int gen = -1;
-	struct mtsnd_chip *chip = snd_pcm_substream_chip(substream);
+	unsigned int pcm_idx = snd_pcm_substream_get_index(substream);
+	struct mtsnd_chip *chip = snd_pcm_substream_get_chip(substream);
 	struct snd_pcm_runtime *runtime = substream->runtime;
 
-	dev_info(chip->card->dev, "PCM open, comm:%s, pid:%d\n", current->comm, current->pid);
+	dev_info(chip->card->dev, "PCM%d open, comm:%s, pid:%d\n", pcm_idx, current->comm, current->pid);
 
-	if (chip->open_pcm || chip->open_compr) {
+	if (chip->pcm[pcm_idx].open_pcm || chip->open_compr) {
 		dev_err(chip->card->dev, "Already open pcm/compr\n");
 		return -EBUSY;
 	}
 
 	/* pcm hw init */
-	gen = mtsnd_hw_init(chip);
+	gen = mtsnd_hw_init(chip, pcm_idx);
 	switch (gen) {
 	case CHIP_GEN1:
 		runtime->hw = mtsnd_pcm_hw_gen1;
 		break;
 	case CHIP_GEN2:
-		runtime->hw = mtsnd_pcm_hw_gen2;
+	case CHIP_GEN3:
+		runtime->hw = mtsnd_pcm_hw_gen2_gen3;
 		break;
 	default:
 		return -ENXIO;
 	}
 
-	chip->open_pcm = 1;
-	chip->substream = substream;
+	chip->pcm[pcm_idx].open_pcm = 1;
+	chip->pcm[pcm_idx].substream = substream;
 
 	snd_pcm_hw_constraint_integer(runtime, SNDRV_PCM_HW_PARAM_PERIODS);
 	snd_pcm_hw_constraint_step(runtime, 0, SNDRV_PCM_HW_PARAM_BUFFER_BYTES, 128);
 	snd_pcm_hw_constraint_step(runtime, 0, SNDRV_PCM_HW_PARAM_PERIOD_BYTES, 128);
 #ifdef INTERRUPT_DEBUG
-	mtsnd_pcm_irq_enable(chip);
+	mtsnd_pcm_irq_enable(chip, pcm_idx);
 #endif
 	return 0;
 }
 
 static int mtsnd_pcm_close(struct snd_pcm_substream *substream)
 {
-	struct mtsnd_chip *chip = snd_pcm_substream_chip(substream);
+	unsigned int pcm_idx = snd_pcm_substream_get_index(substream);
+	struct mtsnd_chip *chip = snd_pcm_substream_get_chip(substream);
 
-	dev_info(chip->card->dev, "PCM close\n");
+	dev_info(chip->card->dev, "PCM%d close\n", pcm_idx);
 
-	chip->substream = NULL;
-	chip->open_pcm = 0;
+	chip->pcm[pcm_idx].substream = NULL;
+	chip->pcm[pcm_idx].open_pcm = 0;
 #ifdef INTERRUPT_DEBUG
-	mtsnd_pcm_irq_disable(chip);
+	mtsnd_pcm_irq_disable(chip, pcm_idx);
 #endif
 	return 0;
 }
@@ -136,11 +142,12 @@ static int mtsnd_pcm_close(struct snd_pcm_substream *substream)
 static int mtsnd_pcm_hw_params(struct snd_pcm_substream *substream,
 			       struct snd_pcm_hw_params *params)
 {
-	struct mtsnd_chip *chip = snd_pcm_substream_chip(substream);
+	unsigned int pcm_idx = snd_pcm_substream_get_index(substream);
+	struct mtsnd_chip *chip = snd_pcm_substream_get_chip(substream);
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	int err;
 
-	dev_info(chip->card->dev, "PCM params, %u bytes\n", params_buffer_bytes(params));
+	dev_info(chip->card->dev, "PCM%d params, %u bytes\n", pcm_idx, params_buffer_bytes(params));
 
 #ifndef USING_INBOUND
 	err = snd_pcm_lib_malloc_pages(substream, params_buffer_bytes(params));
@@ -154,7 +161,7 @@ static int mtsnd_pcm_hw_params(struct snd_pcm_substream *substream,
 	}
 
 	/* set the hw buffer */
-	chip->pcm_device_addr = mtsnd_pcm_ata_buffer(chip, runtime->dma_addr);
+	mtsnd_pcm_ata_buffer(chip, pcm_idx, runtime->dma_addr);
 
 	return 0;
 }
@@ -170,14 +177,15 @@ static int mtsnd_pcm_hw_free(struct snd_pcm_substream *substream)
 
 static int mtsnd_pcm_prepare(struct snd_pcm_substream *substream)
 {
-	struct mtsnd_chip *chip = snd_pcm_substream_chip(substream);
+	unsigned int pcm_idx = snd_pcm_substream_get_index(substream);
+	struct mtsnd_chip *chip = snd_pcm_substream_get_chip(substream);
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct pcm_info pcm;
 	int i, err;
 
 	dev_info(chip->card->dev,
-		 "PCM prepare, %d%s ch %d rate %d, period_bytes:%ld, HW_bytes:%ld\n",
-		 runtime->sample_bits,
+		 "PCM%d prepare, %d%s ch %d rate %d, period_bytes:%ld, HW_bytes:%ld\n",
+		 pcm_idx, runtime->sample_bits,
 		 snd_pcm_format_signed(runtime->format) ? "S" : "U", runtime->channels,
 		 runtime->rate, snd_pcm_lib_period_bytes(substream), runtime->dma_bytes);
 
@@ -188,16 +196,11 @@ static int mtsnd_pcm_prepare(struct snd_pcm_substream *substream)
 	pcm.dma_bytes = runtime->dma_bytes;
 	pcm.big_endian = snd_pcm_format_big_endian(runtime->format);
 
-	err = mtsnd_clock_set(chip, &pcm);
+	err = mtsnd_clock_set(chip, &pcm, pcm_idx);
 	if (err < 0) {
 		dev_err(chip->card->dev, "prepare step fail to set the clock\n");
 		return err;
 	}
-
-	chip->daifmt->fmt = HDMI_I2S;
-	chip->params->sample_rate = runtime->rate;
-	chip->params->channels = runtime->channels;
-	chip->params->sample_width = runtime->sample_bits;
 
 	/*
 	 * In some cases, pulseaudio will prepare the IIS once, but on/off the monitor more than
@@ -206,18 +209,24 @@ static int mtsnd_pcm_prepare(struct snd_pcm_substream *substream)
 	 * set put 1 and then trigger start. If we dont't set pcm_running here, put interface can't
 	 * config for monitors successfully.
 	 */
-	chip->pcm_running = 1;
+	chip->pcm[pcm_idx].pcm_running = 1;
 
 	for (i = 0; i < get_codec_count(chip); i++) {
-		struct mtsnd_codec *codec = &chip->codec[i];
+		struct mtsnd_codec *codec = chip->pcm[pcm_idx].codec[i];
+		if (codec) {
+			codec->daifmt->fmt = HDMI_I2S;
+			codec->params->sample_rate = runtime->rate;
+			codec->params->channels = runtime->channels;
+			codec->params->sample_width = runtime->sample_bits;
 
-		/* set the audio config for monitors */
-		if (check_codec_state1(codec) && codec->hcd->ops->hw_params) {
-			int ret = -1;
+			/* set the audio config for monitors */
+			if (check_codec_state1(codec) && codec->hcd->ops->hw_params) {
+				int ret = -1;
 
-			ret = codec->hcd->ops->hw_params(codec->dev, codec->hcd->data,
-							 chip->daifmt, chip->params);
-			update_codec_state3(codec, ret);
+				ret = codec->hcd->ops->hw_params(codec->dev, codec->hcd->data,
+								codec->daifmt, codec->params);
+				update_codec_state3(codec, ret);
+			}
 		}
 	}
 
@@ -226,41 +235,43 @@ static int mtsnd_pcm_prepare(struct snd_pcm_substream *substream)
 
 static int mtsnd_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 {
-	struct mtsnd_chip *chip = snd_pcm_substream_chip(substream);
-	int i, err = 0;
+	unsigned int pcm_idx = snd_pcm_substream_get_index(substream);
+	struct mtsnd_chip *chip = snd_pcm_substream_get_chip(substream);
+	int i;
+	int err = 0;
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
-		mtsnd_snd_start(chip);
+		mtsnd_snd_start(chip, pcm_idx);
 		/* enable the monitor audio */
 		for (i = 0; i < get_codec_count(chip); i++) {
-			struct mtsnd_codec *codec = &chip->codec[i];
+			struct mtsnd_codec *codec = chip->pcm[pcm_idx].codec[i];
 
-			if (codec_safety_check_start(chip, i) && codec->hcd->ops->audio_startup)
+			if (codec && codec_safety_check_start(chip, i) && codec->hcd->ops->audio_startup)
 				codec->hcd->ops->audio_startup(codec->dev, codec->hcd->data);
 		}
-		dev_info(chip->card->dev, "trigger start\n");
+		dev_info(chip->card->dev, "PCM%d trigger start\n", pcm_idx);
 		break;
 
 #if defined (OS_ENUM_SNDRV_PCM_TRIGGER_SUSPEND_EXIST)
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 #endif
 	case SNDRV_PCM_TRIGGER_STOP:
-		chip->pcm_running = 0;
+		chip->pcm[pcm_idx].pcm_running = 0;
 		/* disable the monitor audio output because of IIS closing */
 		for (i = 0; i < get_codec_count(chip); i++) {
-			struct mtsnd_codec *codec = &chip->codec[i];
+			struct mtsnd_codec *codec = chip->pcm[pcm_idx].codec[i];
 
-			if (codec_safety_check_stop(chip, i) &&
+			if (codec && codec_safety_check_stop(chip, i) &&
 			    codec->hcd->ops->audio_shutdown)
 				codec->hcd->ops->audio_shutdown(codec->dev, codec->hcd->data);
 		}
-		mtsnd_snd_stop(chip);
-		dev_info(chip->card->dev, "trigger stop/suspend %d\n", cmd);
+		mtsnd_snd_stop(chip, pcm_idx);
+		dev_info(chip->card->dev, "PCM%d trigger stop/suspend %d\n", pcm_idx, cmd);
 		break;
 
 	default:
-		dev_info(chip->card->dev, "trigger %d\n", cmd);
+		dev_info(chip->card->dev, "PCM%d trigger %d\n", pcm_idx, cmd);
 		err = -EINVAL;
 		break;
 	}
@@ -270,9 +281,10 @@ static int mtsnd_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 
 static snd_pcm_uframes_t mtsnd_pcm_pointer(struct snd_pcm_substream *substream)
 {
-	struct mtsnd_chip *chip = snd_pcm_substream_chip(substream);
+	unsigned int pcm_idx = snd_pcm_substream_get_index(substream);
+	struct mtsnd_chip *chip = snd_pcm_substream_get_chip(substream);
 	struct snd_pcm_runtime *runtime = substream->runtime;
-	unsigned int bytes = mtsnd_snd_pointer(chip);
+	unsigned int bytes = mtsnd_snd_pointer(chip, pcm_idx);
 
 	if (bytes >= runtime->dma_bytes)
 		bytes = 0;
@@ -282,13 +294,14 @@ static snd_pcm_uframes_t mtsnd_pcm_pointer(struct snd_pcm_substream *substream)
 
 static int mtsnd_pcm_ack(struct snd_pcm_substream *substream)
 {
-	struct mtsnd_chip *chip = snd_pcm_substream_chip(substream);
+	unsigned int pcm_idx = snd_pcm_substream_get_index(substream);
+	struct mtsnd_chip *chip = snd_pcm_substream_get_chip(substream);
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	unsigned int appl_ofs = runtime->control->appl_ptr % runtime->buffer_size;
 	unsigned int bytes = frames_to_bytes(runtime, appl_ofs);
 
 	mtsnd_snd_ack(chip, runtime->control->appl_ptr, runtime->buffer_size,
-		      runtime->dma_bytes, bytes);
+		      runtime->dma_bytes, bytes, pcm_idx);
 
 	return 0;
 }
@@ -311,30 +324,35 @@ static const struct snd_pcm_ops mtsnd_pcm_ops = {
 int mtsnd_create_pcm(struct mtsnd_chip *chip)
 {
 	struct snd_pcm *pcm = NULL;
-	int dev = 0, err = 0;
+	int i = 0, err = 0;
 
-	err = snd_pcm_new(chip->card, "MooreThreads", dev, 1, 0, &pcm);
-	if (err < 0) {
-		dev_err(chip->card->dev, "Error snd_pcm_new\n");
-		return err;
+	for (i = 0; i < get_pcm_count(chip); i++) {
+		err = snd_pcm_new(chip->card, "MooreThreads", i, 1, 0, &pcm);
+		if (err < 0) {
+			dev_err(chip->card->dev, "Error snd_pcm_new\n");
+			return err;
+		}
+		chip->pcm[i].index = i;
+		chip->pcm[i].private_data = chip;
+		strcpy(pcm->name, "Display");
+		pcm->private_data = &chip->pcm[i];
+
+		snd_pcm_set_ops(pcm, SNDRV_PCM_STREAM_PLAYBACK, &mtsnd_pcm_ops);
+		/* buffer pre-allocation */
+		snd_pcm_lib_preallocate_pages_for_all(pcm, SNDRV_DMA_TYPE_DEV,
+							&chip->pci->dev,
+							MT_HW_BUFBYTE_SIZE, MT_HW_BUFBYTE_MAX);
 	}
 
-	chip->params = kzalloc(sizeof(*chip->params), GFP_KERNEL);
-	if (!chip->params)
-		return -ENOMEM;
+	for (i = 0; i < get_codec_count(chip); i++) {
+		chip->codec[i].params = kzalloc(sizeof(*chip->codec[i].params), GFP_KERNEL);
+		if (!chip->codec[i].params)
+			return -ENOMEM;
 
-	chip->daifmt = kzalloc(sizeof(*chip->daifmt), GFP_KERNEL);
-	if (!chip->daifmt)
-		return -ENOMEM;
-
-	strcpy(pcm->name, "Display");
-	pcm->private_data = chip;
-
-	snd_pcm_set_ops(pcm, SNDRV_PCM_STREAM_PLAYBACK, &mtsnd_pcm_ops);
-	/* buffer pre-allocation */
-	snd_pcm_lib_preallocate_pages_for_all(pcm, SNDRV_DMA_TYPE_DEV,
-						&chip->pci->dev,
-						MT_HW_BUFBYTE_SIZE, MT_HW_BUFBYTE_MAX);
+		chip->codec[i].daifmt = kzalloc(sizeof(*chip->codec[i].daifmt), GFP_KERNEL);
+		if (!chip->codec[i].daifmt)
+			return -ENOMEM;
+	}
 
 	return 0;
 }
@@ -342,29 +360,34 @@ int mtsnd_create_pcm(struct mtsnd_chip *chip)
 #define I2S_INT_STAT_EMPTY 1
 #define I2S_INT_STAT_COUNT 2
 
-void mtsnd_handle_pcm(struct mtsnd_chip *chip)
+void mtsnd_handle_pcm(struct mtsnd_pcm *pcm)
 {
-	unsigned int handle = 0;
+	unsigned int pcm_idx = snd_pcm_substream_get_index(pcm->substream);
+	struct mtsnd_chip *chip = snd_pcm_substream_get_chip(pcm->substream);
+	unsigned int handle = mtsnd_snd_irq_handle(chip, pcm_idx);
 
-	handle = mtsnd_snd_irq_handle(chip);
-
-	if (!chip->pcm_running)
+	if (!chip->pcm[pcm_idx].pcm_running)
 		return;
 
 	if (handle & I2S_INT_STAT_EMPTY) {
-		snd_pcm_stop_xrun(chip->substream);
+		snd_pcm_stop_xrun(chip->pcm[pcm_idx].substream);
 		pr_warn_ratelimited("mtsnd pcm, xrun\n");
 	} else if (handle & I2S_INT_STAT_COUNT)
-		snd_pcm_period_elapsed(chip->substream);
+		snd_pcm_period_elapsed(chip->pcm[pcm_idx].substream);
 }
 
 void mtsnd_free_pcm(struct mtsnd_chip *chip)
 {
+	int i = 0;
 #ifdef INTERRUPT_DEBUG
-	mtsnd_pcm_irq_disable(chip);
+	for (i = 0; i < get_pcm_count(chip); i++) {
+		mtsnd_pcm_irq_disable(chip, i);
+	}
 #endif
-	kfree(chip->params);
-	kfree(chip->daifmt);
+	for (i = 0; i < get_codec_count(chip); i++) {
+		kfree(chip->codec[i].params);
+		kfree(chip->codec[i].daifmt);
+	}
 }
 
 void mtsnd_reset_pcm(struct mtsnd_chip *chip)
@@ -374,37 +397,43 @@ void mtsnd_reset_pcm(struct mtsnd_chip *chip)
 #ifdef CONFIG_PM_SLEEP
 void mtsnd_suspend_pcm(struct mtsnd_chip *chip)
 {
+	int i = 0;
 	dev_info(chip->card->dev, "PCM suspend\n");
 
 	cancel_all_pnp_event(chip);
 
-	if (!chip->substream || !chip->substream->runtime) {
-		SND_DEBUG("no substream or not running, just skip\n");
-		return;
-	}
+	for (i = 0; i < get_pcm_count(chip); i++) {
+		if (!chip->pcm[i].substream || !chip->pcm[i].substream->runtime) {
+			SND_DEBUG("no substream or not running, just skip\n");
+			continue;
+		}
 #ifdef INTERRUPT_DEBUG
-	mtsnd_pcm_irq_disable(chip);
+		mtsnd_pcm_irq_disable(chip, i);
 #endif
-	if (chip->substream->runtime->status->suspended_state == SNDRV_PCM_STATE_RUNNING)
-		mtsnd_pcm_trigger(chip->substream, SNDRV_PCM_TRIGGER_STOP);
+		if (chip->pcm[i].substream->runtime->status->suspended_state == SNDRV_PCM_STATE_RUNNING)
+			mtsnd_pcm_trigger(chip->pcm[i].substream, SNDRV_PCM_TRIGGER_STOP);
 
-	mtsnd_do_pcm_suspend(chip);
+		mtsnd_do_pcm_suspend(chip, i);
+	}
 }
 
 void mtsnd_resume_pcm(struct mtsnd_chip *chip)
 {
+	int i = 0;
 	dev_info(chip->card->dev, "PCM resume\n");
 
-	/* The card will lose power during S3, so clear the SW status */
-	chip->iis_clock = 0;
-	if (!chip->substream || !chip->substream->runtime) {
-		SND_DEBUG("no substream or not running, just skip\n");
-		return;
-	}
+	for (i = 0; i < get_pcm_count(chip); i++) {
+		/* The card will lose power during S3, so clear the SW status */
+		chip->pcm[i].iis_clock = 0;
+		if (!chip->pcm[i].substream || !chip->pcm[i].substream->runtime) {
+			SND_DEBUG("no substream or not running, just skip\n");
+			continue;
+		}
 
-	mtsnd_do_pcm_resume(chip, chip->substream->runtime->dma_addr);
+		mtsnd_do_pcm_resume(chip, chip->pcm[i].substream->runtime->dma_addr, i);
 #ifdef INTERRUPT_DEBUG
-	mtsnd_pcm_irq_enable(chip);
-#endif
+		mtsnd_pcm_irq_enable(chip, i);
+#endif		
+	}
 }
 #endif

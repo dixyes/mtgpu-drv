@@ -33,6 +33,7 @@
 #include "mtgpu_drv.h"
 #include "mtgpu_drm_drv.h"
 #include "mtgpu_drm_gem.h"
+#include "mtgpu_drm_internal.h"
 #include "pvr_drv.h"
 #include "mtgpu_vpu.h"
 
@@ -61,6 +62,8 @@ ulong display_debug = 0x07070707;
 module_param(display_debug, ulong, 0600);
 MODULE_PARM_DESC(display_debug,
 		 " H->L: global[8] dispc[8] hdmi[8] dp[8]. The default value is 0x07070707.");
+
+static int mtgpu_kick_out_firmware_fb(resource_size_t base, resource_size_t size);
 
 static void mtgpu_atomic_helper_commit_tail_rpm(struct drm_atomic_state *old_state)
 {
@@ -201,10 +204,10 @@ static struct drm_driver mtgpu_drm_driver = {
 
 static int mtgpu_component_bind(struct device *dev)
 {
+	struct mtgpu_drm_platform_data *pdata = dev_get_platdata(dev);
 	struct drm_device *drm;
 	struct mtgpu_drm_private *private;
 	int ret;
-	int org_max_width, org_max_height;
 
 	drm = drm_dev_alloc(&mtgpu_drm_driver, dev->parent);
 	if (IS_ERR(drm))
@@ -250,20 +253,9 @@ static int mtgpu_component_bind(struct device *dev)
 		goto err_kms_helper_poll_fini;
 
 	if (!disable_fbdev) {
-		/*
-		 * FIXME:
-		 *
-		 * Display controller don't support pitch, as a result,
-		 * we choose a fixed resolution: 1024x768 for fb.
-		 * It should be removed when we have a better workaround.
-		 */
-		org_max_width = drm->mode_config.max_width;
-		org_max_height = drm->mode_config.max_height;
-		drm->mode_config.max_width = 1024;
-		drm->mode_config.max_height = 768;
+		mtgpu_kick_out_firmware_fb(pdata->fb_base, pdata->fb_size);
+
 		drm_fbdev_generic_setup(drm, 32);
-		drm->mode_config.max_width = org_max_width;
-		drm->mode_config.max_height = org_max_height;
 	}
 
 	DRM_INFO("MooreThreads GPU drm driver loaded successfully\n");
@@ -312,7 +304,8 @@ static struct platform_driver *const component_drivers[] = {
 	&mtgpu_dp_driver,
 	&pvr_platform_driver,
 #ifdef VPU_ENABLE
-	&vpu_driver
+	&vpu_driver,
+	&jpu_driver
 #endif
 };
 
@@ -425,29 +418,28 @@ static struct platform_driver mtgpu_drm_platform_driver = {
 	.id_table	= mtgpu_device_id,
 };
 
-/* WARNING: This function should be called before pcie resize. */
-int mtgpu_kick_out_firmware_fb(struct pci_dev *pdev)
+/* WARNING: fb base/size should be acquired from pcie bar before pcie resize. */
+int mtgpu_kick_out_firmware_fb(resource_size_t base, resource_size_t size)
 {
+#if defined(OS_FUNC_REMOVE_CONFLICTING_FRAMEBUFFERS_EXIST)
 	struct apertures_struct *ap;
-
-	if (disable_fbdev)
-		return 0;
 
 	ap = alloc_apertures(1);
 	if (!ap)
 		return -ENOMEM;
 
-	ap->ranges[0].base = pci_resource_start(pdev, MTGPU_DDR_BAR);
-	ap->ranges[0].size = pci_resource_len(pdev, MTGPU_DDR_BAR);
-#if defined(OS_FUNC_REMOVE_CONFLICTING_FRAMEBUFFERS_EXIST)
+	ap->ranges[0].base = base;
+	ap->ranges[0].size = size;
+
 	remove_conflicting_framebuffers(ap, "mtgpudrmfb", false);
+
+	kfree(ap);
 #else
-	drm_aperture_remove_conflicting_framebuffers(ap->ranges[0].base,
-						     ap->ranges[0].size,
+	drm_aperture_remove_conflicting_framebuffers(base,
+						     size,
 						     false,
 						     &mtgpu_drm_driver);
 #endif
-	kfree(ap);
 
 	return 0;
 }

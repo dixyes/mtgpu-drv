@@ -48,6 +48,7 @@
 
 #include "pvr_fence.h"
 #include "services_kernel_client.h"
+#include "sync_checkpoint_internal.h"
 #include "sync_checkpoint_external.h"
 
 #define CREATE_TRACE_POINTS
@@ -831,7 +832,8 @@ pvr_fence_foreign_signal_sync(struct dma_fence *fence, struct dma_fence_cb *cb)
 	struct pvr_fence *pvr_fence = container_of(cb, struct pvr_fence, cb);
 	struct pvr_fence_context *fctx = pvr_fence->fctx;
 
-	WARN_ON_ONCE(is_pvr_fence(fence));
+	if (is_pvr_fence(fence))
+		pr_warn_once("%s: this foreign fence is created by another mtgpu device\n", __func__);
 
 	/* Callback registered by dma_fence_add_callback can be called from an atomic ctx */
 	pvr_fence_sync_signal(pvr_fence, PVRSRV_FENCE_FLAG_CTX_ATOMIC);
@@ -886,11 +888,22 @@ pvr_fence_create_from_fence(struct pvr_fence_context *fctx,
 	if (pvr_fence) {
 		if (WARN_ON(fence->ops == &pvr_fence_foreign_ops))
 			return NULL;
-		dma_fence_get(fence);
 
-		PVR_FENCE_TRACE(fence, "created fence from MTGPU fence (%s)\n",
-				name);
-		return pvr_fence;
+		/*
+		 * Check whether the input pvr_fence is created from current gpu device node.
+		 * If not, the current gpu fw can not directly access this pvr_fence,
+		 * since its checkpoint has not been mapped to current gpu fw, and we
+		 * should create a foreign fence for it.
+		 * Otherwise, return the input pvr_fence immediately.
+		 */
+		if (pvr_fence->sync_checkpoint->psSyncCheckpointBlock->psDevNode ==
+		    sync_checkpoint_ctx->psDevNode) {
+			dma_fence_get(fence);
+
+			PVR_FENCE_TRACE(fence, "created fence from MTGPU fence (%s)\n", name);
+
+			return pvr_fence;
+		}
 	}
 
 	if (!try_module_get(THIS_MODULE))

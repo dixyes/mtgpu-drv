@@ -244,9 +244,10 @@ int GpuMemStatDumpShow(PVRSRV_DEVICE_NODE *psDeviceNode, OSDI_IMPL_ENTRY *psEntr
 
 #if (RGX_NUM_OS_SUPPORTED > 1)
 /* Functions used to update the host and guest LMA memory usage */
-void VgpuIncreaseGlobalStatValue(size_t val);
-void VgpuDecreaseGlobalStatValue(size_t val);
+void VgpuIncreaseStatValue(PVRSRV_DEVICE_NODE *psDeviceNode, size_t byte);
+void VgpuDecreaseStatValue(PVRSRV_DEVICE_NODE *psDeviceNode, size_t byte);
 IMG_UINT64 VgpuGetHostUsedLMAMem(PVRSRV_DEVICE_NODE *psDeviceNode);
+IMG_UINT32 VgpuGetFWTraceBackcup(PVRSRV_DEVICE_NODE *psDeviceNode);
 #endif
 
 #endif /* PROCESS_STATS_H */

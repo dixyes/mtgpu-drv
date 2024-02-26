@@ -91,9 +91,18 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  * feature.
  *
  */
-#if defined(CONFIG_X86) || defined(PVR_MMAP_USE_VM_INSERT)
+#if defined(CONFIG_X86) || defined(PVR_MMAP_USE_VM_INSERT) || ((defined(CONFIG_ARM) || defined(CONFIG_ARM64)) && defined(CONFIG_ARCH_HAS_PTE_SPECIAL))
 #define PMR_OS_USE_VM_INSERT_PAGE 1
 #endif
+
+static void OSSetVMAFlags(struct vm_area_struct *psVma, unsigned long ulFlags)
+{
+#ifdef OS_VM_FLAGS_IS_NOT_CONST
+	psVma->vm_flags |= ulFlags;
+#else
+	vm_flags_set(psVma, (vm_flags_t)ulFlags);
+#endif
+}
 
 static void MMapPMROpen(struct vm_area_struct *ps_vma)
 {
@@ -338,7 +347,7 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 	PVRSRV_ERROR eError;
 	size_t uiLength;
 	IMG_INT32 iStatus;
-	IMG_DEVMEM_OFFSET_T uiOffset;
+	IMG_DEVMEM_OFFSET_T ui64OffsetByGPUPage;
 	IMG_UINT32 ui32CPUCacheFlags;
 	pgprot_t sPageProt;
 	IMG_CPU_PHYADDR asCpuPAddr[PMR_MAX_TRANSLATION_STACK_ALLOC];
@@ -350,6 +359,10 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 	IMG_BOOL *pbValid;
 	IMG_BOOL bUseMixedMap = IMG_FALSE;
 	IMG_BOOL bUseVMInsertPage = IMG_FALSE;
+	IMG_UINT32 i;
+	IMG_UINT32 ui32LoopCount = 1;
+	IMG_UINT64 ui64VmOffset;
+	IMG_CPU_PHYADDR sCpuPAddr;
 
 	eError = PMRLockSysPhysAddresses(psPMR);
 	if (eError != PVRSRV_OK)
@@ -381,19 +394,19 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 
 	ps_vma->vm_page_prot = sPageProt;
 
-	ps_vma->vm_flags |= VM_IO;
+	OSSetVMAFlags(ps_vma, VM_IO);
 
 	/* Don't include the mapping in core dumps */
-	ps_vma->vm_flags |= VM_DONTDUMP;
+	OSSetVMAFlags(ps_vma, VM_DONTDUMP);
 
 	/*
 	 * Disable mremap because our nopage handler assumes all
 	 * page requests have already been validated.
 	 */
-	ps_vma->vm_flags |= VM_DONTEXPAND;
+	OSSetVMAFlags(ps_vma, VM_DONTEXPAND);
 
 	/* Don't allow mapping to be inherited across a process fork */
-	ps_vma->vm_flags |= VM_DONTCOPY;
+	OSSetVMAFlags(ps_vma, VM_DONTCOPY);
 
 	uiLength = ps_vma->vm_end - ps_vma->vm_start;
 
@@ -406,9 +419,15 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 	 * user memory is an anonymous page, and cannot be remapped with insert page,
 	 * and remap_pfn_range must be used.
 	 */
-	if (!PMR_IsUser(psPMR))
-		bUseVMInsertPage = (uiLog2PageSize == PAGE_SHIFT) && (PMR_GetType(psPMR) !=
-				    PMR_TYPE_EXTMEM);
+	if (PMR_IsVram(psPMR))
+	{
+		bUseVMInsertPage = (uiLog2PageSize == PAGE_SHIFT) &&
+				   (PMR_GetType(psPMR) != PMR_TYPE_EXTMEM);
+	}
+	else if (PMR_IsSystem(psPMR))
+	{
+		bUseVMInsertPage = (PMR_GetType(psPMR) != PMR_TYPE_EXTMEM);
+	}
 #endif
 
 	/* Can we use stack allocations */
@@ -486,18 +505,32 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 
 		if (bUseMixedMap)
 		{
-			ps_vma->vm_flags |= VM_MIXEDMAP;
+			OSSetVMAFlags(ps_vma, VM_MIXEDMAP);
 		}
 	}
 	else
 	{
-		ps_vma->vm_flags |= VM_PFNMAP;
+		OSSetVMAFlags(ps_vma, VM_PFNMAP);
+	}
+
+	/*
+	 * For SYSTEM PMR, VM_PFNMAP should not be included,
+	 * ui32LoopCount could be bigger than 1.
+	 */
+	if (PMR_IsSystem(psPMR))
+	{
+		ps_vma->vm_flags &= ~VM_PFNMAP;
+		ui32LoopCount = (1 << (uiLog2PageSize - PAGE_SHIFT));
 	}
 
 	/* For each PMR page-size contiguous bytes, map page(s) into user VMA */
-	for (uiOffset = 0; uiOffset < uiLength; uiOffset += 1ULL<<uiLog2PageSize)
+	for (ui64OffsetByGPUPage = 0; ui64OffsetByGPUPage < uiLength; ui64OffsetByGPUPage += (1ULL << uiLog2PageSize))
 	{
-		uiOffsetIdx = uiOffset >> uiLog2PageSize;
+		PVR_ASSERT(uiLog2PageSize >= PAGE_SHIFT);
+		uiOffsetIdx = ui64OffsetByGPUPage >> uiLog2PageSize;
+		ui64VmOffset = ui64OffsetByGPUPage;
+		sCpuPAddr.uiAddr = psCpuPAddr[uiOffsetIdx].uiAddr;
+
 		/*
 		 * Only map in pages that are valid, any that aren't will be
 		 * picked up by the nopage handler which will return a zeroed
@@ -505,22 +538,24 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 		 */
 		if (pbValid[uiOffsetIdx])
 		{
-			if (PMR_IsSystem(psPMR))
-				ps_vma->vm_flags &= ~VM_PFNMAP;
-
-			iStatus = _OSMMapPMR(psDevNode,
-								 ps_vma,
-								 uiOffset,
-								 &psCpuPAddr[uiOffsetIdx],
-								 uiLog2PageSize,
-								 bUseVMInsertPage,
-								 bUseMixedMap);
-			if (iStatus)
+			for (i = 0; i < ui32LoopCount; i++)
 			{
-				/* Failure error code doesn't get propagated */
-				eError = PVRSRV_ERROR_PMR_CPU_PAGE_MAP_FAILED;
-				PVR_ASSERT(0);
-				goto e3;
+				iStatus = _OSMMapPMR(psDevNode,
+						     ps_vma,
+						     ui64VmOffset,
+						     &sCpuPAddr,
+						     uiLog2PageSize,
+						     bUseVMInsertPage,
+						     bUseMixedMap);
+				ui64VmOffset += PAGE_SIZE;
+				sCpuPAddr.uiAddr += PAGE_SIZE;
+				if (iStatus)
+				{
+					/* Failure error code doesn't get propagated */
+					eError = PVRSRV_ERROR_PMR_CPU_PAGE_MAP_FAILED;
+					PVR_ASSERT(0);
+					goto e3;
+				}
 			}
 		}
 #if defined(PVRSRV_ENABLE_PROCESS_STATS) && defined(PVRSRV_ENABLE_MEMORY_STATS)
@@ -532,7 +567,7 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 					IMG_CAST_TO_CPUPHYADDR_UINT(PMR_OS_BAD_CPUADDR);
 
 			PVRSRVStatsAddMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_MAP_UMA_LMA_PAGES,
-						     (void *)(uintptr_t)(ps_vma->vm_start + uiOffset),
+						     (void *)(uintptr_t)(ps_vma->vm_start + ui64OffsetByGPUPage),
 						     sPAddr,
 						     1 << uiLog2PageSize,
 						     NULL,

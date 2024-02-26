@@ -143,4 +143,24 @@ PVRSRV_ERROR SysUninstallDeviceLISR(IMG_HANDLE hLISRData);
 void SysRGXErrorNotify(IMG_HANDLE hSysData,
                        PVRSRV_ROBUSTNESS_NOTIFY_DATA *psErrorData);
 
+/*************************************************************************/ /*!
+@Description    Check if host enable sriov
+@Input  psDevConfig  pointer to device configuration info.
+@Return         True if host enable sriov, false otherwise.
+*/ /**************************************************************************/
+bool IsHostEnableIommu(PVRSRV_DEVICE_CONFIG *psDevConfig);
+
+/**************************************************************************/ /*!
+@Function	GuestDevicePAddrToHostDevicePAddr
+@Description	Guest device physical address is a virtual device address.
+		Translate it into real device physical address on host to
+		fill in the page table.
+@Input		psDevConfig   pointer to device configuration info
+@Input		ui64Gdpa      guest device physical address
+@Output		Real device physical address on host
+@Return		None.
+*/ /***************************************************************************/
+IMG_UINT64 GuestDevicePAddrToHostDevicePAddr(PVRSRV_DEVICE_CONFIG *psDevConfig,
+					     const IMG_UINT64 ui64Gdpa);
+
 #endif /* !defined(SYSCOMMON_H) */

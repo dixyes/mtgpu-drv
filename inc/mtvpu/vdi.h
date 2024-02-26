@@ -65,7 +65,6 @@ typedef enum {
     DEC_MV        = 7,
     DEC_ETC       = 8,
     DEC_COMMON    = 9,
-    FB_COMPRESSED = 10,
     ENC_TASK      = 50,
     ENC_WORK      = 51,
     ENC_FBC       = 52,
@@ -106,6 +105,7 @@ int vdi_init(Uint32 coreIdx);
 int vdi_release(Uint32 coreIdx);
 
 int vdi_lock(Uint32 coreIdx);
+int vdi_trylock(Uint32 coreIdx);
 void vdi_unlock(Uint32 coreIdx);
 int vdi_disp_lock(Uint32 coreIdx);
 void vdi_disp_unlock(Uint32 coreIdx);
@@ -144,6 +144,7 @@ int vdi_set_bit_firmware_to_pm(Uint32 coreIdx, const Uint16 *code);
 int vdi_wait_interrupt(Uint32 coreIdx, Uint32 instIdx, int timeout);
 int vdi_wait_interrupt_poll(Uint32 coreIdx, Uint32 instIdx, int timeout);
 int vdi_wait_vpu_busy(Uint32 coreIdx, int timeout, Uint32 busy_flag);
+void vdi_delayms(int timeout);
 int vdi_wait_bus_busy(Uint32 coreIdx, int timeout, Uint32 busy_flag);
 int vdi_wait_vcpu_bus_busy(Uint32 coreIdx, int timeout, Uint32 busy_flag);
 

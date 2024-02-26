@@ -50,6 +50,7 @@
 #include "mtgpu_ipc.h"
 
 MODULE_DESCRIPTION("MooreThreads mtgpu drm driver");
+MODULE_AUTHOR("MooreThreads Corporation");
 MODULE_LICENSE("Dual MIT/GPL");
 
 struct dentry *mtgpu_dentry;
@@ -79,6 +80,14 @@ const struct proc_ops mtlink_test_proc_ops = {
 	.proc_lseek = os_seq_lseek,
 	.proc_release = os_single_release,
 };
+
+const struct proc_ops process_util_proc_ops = {
+	.proc_open = mtgpu_proc_util_open,
+	.proc_read = os_seq_read,
+	.proc_write = mtgpu_proc_util_write,
+	.proc_lseek = os_seq_lseek,
+	.proc_release = os_single_release,
+};
 #else
 const struct file_operations config_proc_ops = {
 	.open = mtgpu_proc_config_open,
@@ -103,9 +112,17 @@ const struct file_operations mtlink_test_proc_ops = {
 	.llseek = os_seq_lseek,
 	.release = os_single_release,
 };
+
+const struct file_operations process_util_proc_ops = {
+	.open = mtgpu_proc_util_open,
+	.read = os_seq_read,
+	.write = mtgpu_proc_util_write,
+	.llseek = os_seq_lseek,
+	.release = os_single_release,
+};
 #endif
 
-static u64 mtgpu_get_vram_size(struct mtgpu_device *mtdev)
+u64 mtgpu_get_vram_size(struct mtgpu_device *mtdev)
 {
 	struct pci_dev *pdev = os_to_pci_dev(mtdev->dev);
 
@@ -202,8 +219,6 @@ static struct pci_device_id mtgpu_pci_tbl[] = {
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&sudi_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S1000M, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&sudi_drvdata},
-	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S4000, PCI_ANY_ID, PCI_ANY_ID,
-	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&sudi_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S50, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&sudi_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S60, PCI_ANY_ID, PCI_ANY_ID,
@@ -215,7 +230,7 @@ static struct pci_device_id mtgpu_pci_tbl[] = {
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S2000, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&sudi_drvdata},
 	{ PCI_VDEVICE(XIX, DEVICE_ID_HAPS_SUDI104) },
-#ifdef CONFIG_SUDI104_VPS
+#ifdef CONFIG_VPS
 	{ PCI_VDEVICE(MT, DEVICE_ID_SUDI104), .driver_data = (unsigned long)&sudi_drvdata},
 #endif
 	{ PCI_VDEVICE(MT, DEVICE_ID_QUYUAN1), .driver_data = (unsigned long)&quyuan1_drvdata},
@@ -227,19 +242,19 @@ static struct pci_device_id mtgpu_pci_tbl[] = {
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan1_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S3000, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan1_drvdata},
-	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S600, PCI_ANY_ID, PCI_ANY_ID,
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_X300, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan1_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_QUYUAN2, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
-	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_G3D90, PCI_ANY_ID, PCI_ANY_ID,
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S90, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_G3D80, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
-	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_G3S80, PCI_ANY_ID, PCI_ANY_ID,
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S4000, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_G3S90, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
-	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_G3S50, PCI_ANY_ID, PCI_ANY_ID,
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S4000i, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S10, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&sudi_drvdata},
@@ -255,26 +270,38 @@ static struct pci_device_id mtgpu_pci_tbl[] = {
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan1_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S70, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan1_drvdata},
-	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S600, PCI_ANY_ID, PCI_ANY_ID,
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S3000, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan1_drvdata},
-	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_G3D90, PCI_ANY_ID, PCI_ANY_ID,
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_X300, PCI_ANY_ID, PCI_ANY_ID,
+	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan1_drvdata},
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_QUYUAN2, PCI_ANY_ID, PCI_ANY_ID,
+	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S90, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_G3D80, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
-	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_G3S80, PCI_ANY_ID, PCI_ANY_ID,
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S4000, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_G3S90, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
-	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_G3S50, PCI_ANY_ID, PCI_ANY_ID,
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S4000i, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
+#if (RGX_NUM_OS_SUPPORTED > 1)
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S1000, PCI_ANY_ID, PCI_ANY_ID,
+	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&sudi_drvdata},
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S2000, PCI_ANY_ID, PCI_ANY_ID,
+	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&sudi_drvdata},
+#endif
 	{ },
 };
 
 static const struct dev_pm_ops mtgpu_pm_ops = {
 	.suspend = mtgpu_pm_suspend,
+	.suspend_late = mtgpu_pm_suspend_late,
 	.resume  = mtgpu_pm_resume,
 	.resume_early = mtgpu_pm_resume_early,
 	.freeze  = mtgpu_pm_suspend,
+	.freeze_late = mtgpu_pm_suspend_late,
 	.restore = mtgpu_pm_resume,
 	.restore_early = mtgpu_pm_resume_early,
 };
@@ -289,13 +316,14 @@ static struct pci_driver mtgpu_pci_driver = {
 };
 
 MODULE_DEVICE_TABLE(pci, mtgpu_pci_tbl);
+MODULE_INFO(build_version, MT_BUILD_TAG);
 
 static int __init mtgpu_driver_init(void)
 {
 	int ret;
 
-	pr_info("MTGPU Driver Version: %s %s build\n",
-		MT_BUILD_TAG, PVR_BUILD_TYPE);
+	pr_info("MTGPU Driver Version: %s %s build for %s\n",
+		MT_BUILD_TAG, PVR_BUILD_TYPE, MT_BUILD_OS_TYPE);
 
 	if (disable_driver) {
 		pr_info("mtgpu: driver was disabled\n");
@@ -313,13 +341,17 @@ static int __init mtgpu_driver_init(void)
 	if (unlikely(ret))
 		goto mtgpu_misc_init_err;
 
-	ret = mtgpu_ipc_init();
-	if (unlikely(ret))
-		goto mtgpu_ipc_init_err;
+	if (mtgpu_get_driver_mode() != MTGPU_DRIVER_MODE_GUEST) {
+		ret = mtgpu_ipc_init();
+		if (unlikely(ret))
+			goto mtgpu_ipc_init_err;
+	}
 
-	ret = mtlink_driver_init();
-	if (unlikely(ret))
-		goto mtlink_driver_init_err;
+	if (mtgpu_get_driver_mode() == MTGPU_DRIVER_MODE_NATIVE) {
+		ret = mtlink_driver_init();
+		if (unlikely(ret))
+			goto mtlink_driver_init_err;
+	}
 
 	ret = mtgpu_ob_res_init();
 	if (unlikely(ret))
@@ -344,9 +376,11 @@ mtgpu_drm_init_err:
 pci_register_driver_err:
 	mtgpu_ob_res_deinit();
 ob_res_fail:
-	mtlink_driver_exit();
+	if (mtgpu_get_driver_mode() == MTGPU_DRIVER_MODE_NATIVE)
+		mtlink_driver_exit();
 mtlink_driver_init_err:
-	mtgpu_ipc_exit();
+	if (mtgpu_get_driver_mode() != MTGPU_DRIVER_MODE_GUEST)
+		mtgpu_ipc_exit();
 mtgpu_ipc_init_err:
 	mtgpu_misc_deinit();
 mtgpu_misc_init_err:
@@ -365,8 +399,13 @@ static void __exit mtgpu_driver_exit(void)
 	mtgpu_drm_fini();
 	pci_unregister_driver(&mtgpu_pci_driver);
 	mtgpu_ob_res_deinit();
-	mtlink_driver_exit();
-	mtgpu_ipc_exit();
+
+	if (mtgpu_get_driver_mode() == MTGPU_DRIVER_MODE_NATIVE)
+		mtlink_driver_exit();
+
+	if (mtgpu_get_driver_mode() != MTGPU_DRIVER_MODE_GUEST)
+		mtgpu_ipc_exit();
+
 	mtgpu_misc_deinit();
 	mtgpu_proc_musa_dir_remove();
 	debugfs_remove_recursive(mtgpu_dentry);

@@ -45,6 +45,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef PVR_BRIDGE_K_H
 #define PVR_BRIDGE_K_H
 
+struct drm_device;
+
 #include "pvrsrv_error.h"
 
 /*!
@@ -78,6 +80,9 @@ void LinuxBridgeForceUnblockClientsAccess(void);
 
 void LinuxBridgeNumActiveKernelThreadsIncrement(void);
 void LinuxBridgeNumActiveKernelThreadsDecrement(void);
+
+int PVRSRV_BridgeDispatchKM(struct drm_device *dev, void *arg,
+			    struct drm_file *file);
 
 /*!
 ******************************************************************************

@@ -431,6 +431,7 @@ typedef enum
 	RGX_HWRTYPE_MIPSTLBFAULT   = 8, /*!< MIPS TLB fault */
 	RGX_HWRTYPE_ECCFAULT       = 9, /*!< ECC fault */
 	RGX_HWRTYPE_MMURISCVFAULT  = 10, /*!< MMU RISCV fault */
+	RGX_HWRTYPE_CEFAULT        = 11, /*!< CE fault */
 } RGX_HWRTYPE;
 
 #define RGXFWIF_HWRTYPE_BIF_BANK_GET(eHWRType) (((eHWRType) == RGX_HWRTYPE_BIF0FAULT) ? 0 : 1)
@@ -616,7 +617,7 @@ typedef struct
 #define RGXFWIF_INICFG_OS_CTXSWITCH_GEOM_EN					(IMG_UINT32_C(0x1) << 1) /*!< Enables GEOM-TA and GEOM-SHG context switch */
 #define RGXFWIF_INICFG_OS_CTXSWITCH_3D_EN					(IMG_UINT32_C(0x1) << 2) /*!< Enables FRAG DM context switch */
 #define RGXFWIF_INICFG_OS_CTXSWITCH_CDM_EN					(IMG_UINT32_C(0x1) << 3) /*!< Enables CDM context switch */
-#define RGXFWIF_INICFG_OS_CTXSWITCH_RDM_EN					(IMG_UINT32_C(0x1) << 4)
+#define RGXFWIF_INICFG_OS_CTXSWITCH_CE_EN					(IMG_UINT32_C(0x1) << 4) /*!< Enables CE context switch */
 
 #define RGXFWIF_INICFG_OS_LOW_PRIO_CS_TDM					(IMG_UINT32_C(0x1) << 5)
 #define RGXFWIF_INICFG_OS_LOW_PRIO_CS_GEOM					(IMG_UINT32_C(0x1) << 6)
@@ -630,12 +631,12 @@ typedef struct
 															 RGXFWIF_INICFG_OS_CTXSWITCH_3D_EN | \
 															 RGXFWIF_INICFG_OS_CTXSWITCH_CDM_EN | \
 															 RGXFWIF_INICFG_OS_CTXSWITCH_TDM_EN | \
-															 RGXFWIF_INICFG_OS_CTXSWITCH_RDM_EN)
+															 RGXFWIF_INICFG_OS_CTXSWITCH_CE_EN)
 
 #define RGXFWIF_INICFG_OS_CTXSWITCH_DM_NO3D					(RGXFWIF_INICFG_OS_CTXSWITCH_GEOM_EN | \
 															 RGXFWIF_INICFG_OS_CTXSWITCH_CDM_EN | \
 															 RGXFWIF_INICFG_OS_CTXSWITCH_TDM_EN | \
-															 RGXFWIF_INICFG_OS_CTXSWITCH_RDM_EN)
+															 RGXFWIF_INICFG_OS_CTXSWITCH_CE_EN)
 
 #define RGXFWIF_INICFG_OS_CTXSWITCH_CLRMSK					~(RGXFWIF_INICFG_OS_CTXSWITCH_DM_ALL)
 
@@ -1370,9 +1371,68 @@ typedef enum
 #if defined(SUPPORT_VALIDATION)
 	RGXFWIF_KCCB_CMD_GPUMAP								= 219U | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Request a FW GPU mapping which is written into by the FW with a pattern */
 #endif
+	RGXFWIF_KCCB_CMD_HWPERF_PFM								= 220U | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< PFM */
 } RGXFWIF_KCCB_CMD_TYPE;
 
 #define RGXFWIF_LAST_ALLOWED_GUEST_KCCB_CMD (RGXFWIF_KCCB_CMD_REGCONFIG - 1)
+
+/*
+ * Performance monitor (PFM) data structures
+ */
+typedef enum _PFM_REQUEST_TYPE_
+{
+	PFM_REQUEST_SET_MEM_CTX,
+	PFM_REQUEST_POLL_IDLE,
+	PFM_REQUEST_GLOBAL_CONFIG,	// Performs setting memory context and polling idle at the beginning
+	PFM_REQUEST_INSTANCE_CONFIG,	// Performs polling idle at the beginning
+	PFM_REQUEST_WRAPPER_CONFIG,	// Performs polling idle at the beginning
+	PFM_REQUEST_SWITCH_PFM,
+	PFM_REQUEST_RESET_ALL,		// Restores PFM registers to default
+} PFM_REQUEST_TYPE;
+
+typedef struct _RGXFWIF_PFM_GLOBAL_CONFIG_
+{
+	IMG_BOOL bEnablePFM;       	// Enable perf_event counting
+	IMG_UINT64 ui64PcBaseAddr;      	// Page table physical address
+	IMG_UINT32 ui32TimeInterval;    	// Cycle unit of interval mode dump
+	IMG_UINT32 ui32NumPages;        	// Number of 4KB pages
+	IMG_UINT32 ui32PointerUpdateFreq; // Frequency of counter pointer dump
+} RGXFWIF_PFM_GLOBAL_CONFIG;
+
+typedef struct _RGXFWIF_PFM_INSTANCE_CONFIG_
+{
+	IMG_UINT32 ui32CoreId;
+	IMG_UINT64 ui64GroupSelc;			// 0 for group 0
+	IMG_UINT32 ui32WrapperSelc;		// Mind the validity of the combination of wrapper and instance
+	IMG_UINT32 ui32InstanceSelc;		// One-hot encoding, takes effect for all the wrappers selected
+	IMG_UINT64 ui64CounterBufferAddr;		// Unique for each instance
+	IMG_UINT64 ui64PointerBufferAddr;		// Unique for each instance
+} RGXFWIF_PFM_INSTANCE_CONFIG;
+
+/*
+ * The values of the enumerators are the exact signals of the trigger register in HW design
+ * Do NOT alter
+ */
+typedef enum _RGXFWIF_PFM_DUMP_TRIG_
+{
+	PFM_DUMP_IDLE       = 0x0, // No operation
+	PFM_NORM_DUMP_START = 0x1, // SET_NORM and DUMP_START
+	PFM_NORM_DUMP_ONCE  = 0x2, // Only works for normal mode
+	PFM_NORM_DUMP_END   = 0x3, // SET_NORM and DUMP_END
+	PFM_INTV_DUMP_START = 0x5, // SET_INTV and DUMP_START
+	PFM_INTV_DUMP_END   = 0x7, // SET_INTV and DUMP_END
+} RGXFWIF_PFM_DUMP_TRIG;
+
+typedef struct _RGXFWIF_HWPERF_PFM_DATA_
+{
+	PFM_REQUEST_TYPE eType;
+	union
+	{
+		RGXFWIF_PFM_GLOBAL_CONFIG	sPFMGlobalCfg;
+		RGXFWIF_PFM_INSTANCE_CONFIG	sPFMInstanceCfg;
+		RGXFWIF_PFM_DUMP_TRIG		ePFMDumpTrig;
+	} uCmdData;
+} RGXFWIF_HWPERF_PFM_CTRL;
 
 /*! @Brief Kernel CCB command packet */
 typedef struct
@@ -1396,6 +1456,7 @@ typedef struct
 		RGXFWIF_HWPERF_CTRL					sHWPerfCtrl;			/*!< Data for HWPerf control command */
 		RGXFWIF_HWPERF_CONFIG_ENABLE_BLKS	sHWPerfCfgEnableBlks;	/*!< Data for HWPerf configure, clear and enable performance counter block command */
 		RGXFWIF_HWPERF_CTRL_BLKS			sHWPerfCtrlBlks;		/*!< Data for HWPerf enable or disable performance counter block commands */
+		RGXFWIF_HWPERF_PFM_CTRL			sPFMData;            /*!< Data for PFM configure*/
 		RGXFWIF_CORECLKSPEEDCHANGE_DATA		sCoreClkSpeedChangeData;/*!< Data for core clock speed change */
 		RGXFWIF_ZSBUFFER_BACKING_DATA		sZSBufferBackingData;	/*!< Feedback for Z/S Buffer backing/unbacking */
 		RGXFWIF_FREELIST_GS_DATA			sFreeListGSData;		/*!< Feedback for Freelist grow/shrink */
@@ -2356,13 +2417,14 @@ typedef struct
 	IMG_UINT32			ui32TRPState;
 #endif
 
-	IMG_DEV_VIRTADDR		RGXFW_ALIGN sPMRenderStateDevVAddrMcg[RGX_WGP_MAX_NUM_CORES - 1];		/*!< Series8 PM State buffers */
+	IMG_DEV_VIRTADDR		RGXFW_ALIGN sPMRenderStateDevVAddrMcg[RGX_WGP_MAX_NUM_CORES - 1];
 	IMG_DEV_VIRTADDR		RGXFW_ALIGN sTailPtrsDevVAddrMcg[RGX_WGP_MAX_NUM_CORES - 1];
-	IMG_UINT32				RGXFW_ALIGN ui32McgCoreNum;
-	IMG_UINT32				RGXFW_ALIGN ui32GTACIMCounter[RGX_WGP_MAX_NUM_CORES];
-	IMG_UINT32				RGXFW_ALIGN ui32DCEWritePipeline[RGX_WGP_MAX_NUM_CORES];
-	IMG_UINT64				RGXFW_ALIGN ui64DCEPimCounter[RGX_WGP_MAX_NUM_CORES];
-	IMG_DEV_PHYADDR 		RGXFW_ALIGN aPCCatbaseMCG[3];
+	IMG_UINT32			RGXFW_ALIGN bMCGHWRTEnable;			/* pm use in fw, init when mcg kick */
+	IMG_UINT32			RGXFW_ALIGN ui32McgCoreNum;
+	IMG_UINT32			RGXFW_ALIGN ui32GTACIMCounter[RGX_WGP_MAX_NUM_CORES];
+	IMG_UINT32			RGXFW_ALIGN ui32DCEWritePipeline[RGX_WGP_MAX_NUM_CORES];
+	IMG_UINT64			RGXFW_ALIGN ui64DCEPimCounter[RGX_WGP_MAX_NUM_CORES];
+	IMG_DEV_PHYADDR			RGXFW_ALIGN aPCCatbaseMCG[3];
 
 } UNCACHED_ALIGN RGXFWIF_HWRTDATA;
 

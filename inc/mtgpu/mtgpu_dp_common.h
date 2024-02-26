@@ -7,10 +7,14 @@
 
 #include "mtgpu_display_debug.h"
 #include "mtgpu_dpcd_defs.h"
+#include "mtgpu_phy_common.h"
 #include "os-interface-drm.h"
 
-#define MTGPU_DP_IRQ_TYPE_HPD_EVENT	BIT(0)
-#define MTGPU_DP_IRQ_TYPE_HPD_IRQ	BIT(1)
+#define MTGPU_DP_IRQ_TYPE_PLUG_EVENT	BIT(0)
+#define MTGPU_DP_IRQ_TYPE_UNPLUG_EVENT	BIT(1)
+#define MTGPU_DP_IRQ_TYPE_HPD_IRQ	BIT(2)
+
+#define DELAY_ON_DP_PLUGOUT_DET_MS (1000)
 
 #define DP_SINGLE_PIX_MODE	0
 #define DP_DUAL_PIX_MODE	1
@@ -109,8 +113,8 @@ struct mtgpu_dp {
 	struct mtgpu_dp_ctx ctx;
 	struct mtgpu_dp_ops *core;
 	struct mtgpu_dp_glb_ops *glb;
-	struct phy *phy;
-	struct work_struct *hpd_work;
+	struct mtgpu_phy *phy;
+	struct delayed_work *hpd_work;
 	struct work_struct *hpd_irq_work;
 	u8 dpcd[DP_RECEIVER_CAP_SIZE];
 	u8 train_set[4];
@@ -138,7 +142,7 @@ void dptx_reg_write(struct mtgpu_dp_ctx *ctx, int offset, u32 val)
 	os_writel(val, ctx->regs + offset);
 	/* dummy read to make post write take effect */
 	os_readl(ctx->regs + offset);
-	DP_DEBUG("offset = 0x%04x value = 0x%08x\n", offset, val);
+	DP_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
 }
 
 static inline
@@ -146,7 +150,7 @@ u32 dptx_reg_read(struct mtgpu_dp_ctx *ctx, int offset)
 {
 	u32 val = os_readl(ctx->regs + offset);
 
-	DP_DEBUG("offset = 0x%04x value = 0x%08x\n", offset, val);
+	DP_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
 	return val;
 }
 
@@ -156,7 +160,7 @@ void dptx_tzc_reg_write(struct mtgpu_dp_ctx *ctx, int offset, u32 val)
 	os_writel(val, ctx->tzc_regs + offset);
 	/* dummy read to make post write take effect */
 	os_readl(ctx->tzc_regs + offset);
-	DP_DEBUG("offset = 0x%04x value = 0x%08x\n", offset, val);
+	DP_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
 }
 
 static inline
@@ -165,7 +169,7 @@ void dptx_amt_reg_write(struct mtgpu_dp_ctx *ctx, int offset, u32 val)
 	os_writel(val, ctx->amt_regs + offset);
 	/* dummy read to make post write take effect */
 	os_readl(ctx->amt_regs + offset);
-	DP_DEBUG("offset = 0x%04x value = 0x%08x\n", offset, val);
+	DP_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
 }
 
 static inline
@@ -174,7 +178,7 @@ void dptx_glb_reg_write(struct mtgpu_dp_ctx *ctx, int offset, u32 val)
 	os_writel(val, ctx->glb_regs + offset);
 	/* dummy read to make post write take effect */
 	os_readl(ctx->glb_regs + offset);
-	DP_DEBUG("offset = 0x%04x value = 0x%08x\n", offset, val);
+	GLB_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
 }
 
 static inline
@@ -182,7 +186,7 @@ u32 dptx_glb_reg_read(struct mtgpu_dp_ctx *ctx, int offset)
 {
 	u32 val = os_readl(ctx->glb_regs + offset);
 
-	DP_DEBUG("offset = 0x%04x value = 0x%08x\n", offset, val);
+	GLB_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
 	return val;
 }
 
@@ -212,6 +216,12 @@ static inline
 struct mtgpu_dp *work_to_mtgpu_dp(struct work_struct *work)
 {
 	return os_get_work_drvdata(work);
+}
+
+static inline
+struct mtgpu_dp *dwork_to_mtgpu_dp(struct work_struct *work)
+{
+	return os_get_dwork_drvdata(work);
 }
 
 void mtgpu_dp_encoder_enable(struct drm_encoder *encoder);

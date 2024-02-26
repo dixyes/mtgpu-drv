@@ -289,6 +289,10 @@ struct _PVRSRV_DEVICE_CONFIG_
 	 *     QY1 SR-IOV MC1*8:  osid_count = 3; (osid0, 4, 5)
 	 */
 	u32 osid_count;
+
+	void (*vgpu_int_cb)(u32 int_id, bool is_osid0, void *priv_data, u32 mpc_id);
+
+	void *priv_data;
 #endif
 
 #if defined(SUPPORT_SW_OSID_EXTENSION)
@@ -299,8 +303,6 @@ struct _PVRSRV_DEVICE_CONFIG_
 	 */
 	void (*set_master_kick_reg)(void *master_kick_reg, void *priv_data, u32 mpc_id);
 	void (*vgpu_kick)(int osid, u32 kick_value, void *priv_data);
-	void (*vgpu_int_cb)(u32 int_id, bool is_osid0, void *priv_data);
-	void *osid_sw_ext_priv_data;
 #endif
 
 	/*! Device interrupt number */

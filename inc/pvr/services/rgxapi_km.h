@@ -45,7 +45,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define RGXAPI_KM_H
 
 #include "rgx_hwperf.h"
-
+#include "device.h"
 
 /******************************************************************************
  * RGX HW Performance Profiling Control API(s)
@@ -296,6 +296,16 @@ PVRSRV_ERROR RGXHWPerfReleaseEvents(
 		IMG_HANDLE hDevData,
 		RGX_HWPERF_STREAM_ID eStreamId);
 
+/*************************************************************************/ /*!
+@Function       RGXHWPerfIsReleased
+@Description    HWPerf stream if can be released.
+@Input          hDevData     Handle to connection/device object
+@Input          eStreamId    ID of the HWPerf stream
+@Return         IMG_BOOL     HWPerf stream if can be released
+*/ /**************************************************************************/
+IMG_BOOL RGXHWPerfIsReleased(
+		IMG_HANDLE  hDevData,
+		RGX_HWPERF_STREAM_ID eStreamId);
 
 /*************************************************************************/ /*!
 @Function       RGXHWPerfConvertCRTimeStamp
@@ -315,6 +325,14 @@ IMG_UINT64 RGXHWPerfConvertCRTimeStamp(
 		IMG_UINT64 ui64CorrCRTimeStamp,
 		IMG_UINT64 ui64CorrOSTimeStamp,
 		IMG_UINT64 ui64CRTimeStamp);
+
+/*************************************************************************/ /*!
+@Function       RGXHWPerfGetDeviceNode
+@Description    Get the device node pointer.
+@Input          hDevData     Handle to connection/device object
+@Return         PVRSRV_DEVICE_NODE*  Device node pointer
+*/ /**************************************************************************/
+PVRSRV_DEVICE_NODE *RGXHWPerfGetDeviceNode(IMG_HANDLE  hDevData);
 
 #endif /* RGXAPI_KM_H */
 

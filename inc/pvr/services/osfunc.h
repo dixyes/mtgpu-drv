@@ -67,10 +67,86 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvrsrv_device.h"
 #include "cache_ops.h"
 #include "osfunc_common.h"
+#include "pmr_impl.h"
+
+#define OS_PVR_VAL(index)	(OSPvrValue[OS_PVR_##index])
+#define DECLEAR_OS_PVR_VALUE \
+	X(PAGE_SIZE) \
+	X(ENOMEM) \
+	X(TASK_INTERRUPTIBLE) \
+	X(EBADMSG) \
+	X(ENOPKG) \
+	X(ENOENT) \
+	X(EFAULT) \
+	X(DRM_UT_CORE) \
+	X(VERIFYING_UNSPECIFIED_SIGNATURE) \
+	X(ENOSPC) \
+	X(EINVAL) \
+	X(ENOSYS) \
+	X(EAGAIN) \
+	X(EINTR) \
+	X(DMA_BIDIRECTIONAL) \
+	X(DMA_FROM_DEVICE) \
+	X(EMFILE) \
+	X(ERANGE) \
+	X(EEXIST) \
+	X(EIO) \
+	X(WQ_UNBOUND) \
+	X(WQ_FREEZABLE)
+
+enum {
+#define X(VALUE) OS_PVR_##VALUE,
+	DECLEAR_OS_PVR_VALUE
+#undef X
+	OS_PVR_VALUE_MAX,
+};
+
+extern const IMG_UINT64 OSPvrValue[];
+
+#ifndef KERN_SOH
+#define KERN_SOH	"\001"		/* ASCII Start Of Header */
+#define KERN_SOH_ASCII	'\001'
+
+#define KERN_EMERG	KERN_SOH "0"	/* system is unusable */
+#define KERN_ALERT	KERN_SOH "1"	/* action must be taken immediately */
+#define KERN_CRIT	KERN_SOH "2"	/* critical conditions */
+#define KERN_ERR	KERN_SOH "3"	/* error conditions */
+#define KERN_WARNING	KERN_SOH "4"	/* warning conditions */
+#define KERN_NOTICE	KERN_SOH "5"	/* normal but significant condition */
+#define KERN_INFO	KERN_SOH "6"	/* informational */
+#define KERN_DEBUG	KERN_SOH "7"	/* debug-level messages */
+
+#define KERN_DEFAULT	""		/* the default kernel loglevel */
+#endif
+
+#define OSPrintFmt(fmt) fmt
+
+#define OSPrintEmerg(fmt, ...)							\
+	OSPrintk(KERN_EMERG OSPrintFmt(fmt), ##__VA_ARGS__)
+#define OSPrintAlert(fmt, ...)							\
+	OSPrintk(KERN_ALERT OSPrintFmt(fmt), ##__VA_ARGS__)
+#define OSPrintCrit(fmt, ...)							\
+	OSPrintk(KERN_CRIT OSPrintFmt(fmt), ##__VA_ARGS__)
+#define OSPrintErr(fmt, ...)							\
+	OSPrintk(KERN_ERR OSPrintFmt(fmt), ##__VA_ARGS__)
+#define OSPrintWarn(fmt, ...)						        \
+	OSPrintk(KERN_WARNING OSPrintFmt(fmt), ##__VA_ARGS__)
+#define OSPrintNotice(fmt, ...)							\
+	OSPrintk(KERN_NOTICE OSPrintFmt(fmt), ##__VA_ARGS__)
+#define OSPrintInfo(fmt, ...)							\
+	OSPrintk(KERN_INFO OSPrintFmt(fmt), ##__VA_ARGS__)
 
 /******************************************************************************
  * Static defines
  *****************************************************************************/
+
+#ifndef OSAlign
+#define __OSAlignMask(x, mask)	(((x) + (mask)) & ~(mask))
+#define __OSAlign(x, a)		__OSAlignMask(x, (typeof(x))(a) - 1)
+#define OSAlign(x, a)		__OSAlign((x), (a))
+#define OSAlignDown(x, a)	__OSAlign((x) - ((a) - 1), (a))
+#endif
+
 /*!
  * Returned by OSGetCurrentProcessID() and OSGetCurrentThreadID() if the OS
  * is currently operating in the interrupt context.
@@ -815,6 +891,25 @@ IMG_INT32 OSStringCompare(const IMG_CHAR *pStr1, const IMG_CHAR *pStr2);
 */ /**************************************************************************/
 IMG_INT32 OSStringNCompare(const IMG_CHAR *pStr1, const IMG_CHAR *pStr2,
                            size_t uiSize);
+
+/*************************************************************************/ /*!
+@Function       OSStringSeparate
+@Description    OS function to support the standard C strsep() function.
+*/ /**************************************************************************/
+IMG_CHAR *OSStringSeparate(IMG_CHAR **pStr1, const IMG_CHAR *pStr2);
+
+/*************************************************************************/ /*!
+@Function       OSStringCaseCompare
+@Description    OS function to support the standard C strcasecmp() function.
+*/ /**************************************************************************/
+int OSStringCaseCompare(const IMG_CHAR *pStr1, const IMG_CHAR *pStr2);
+
+/*************************************************************************/ /*!
+@Function       OSStringToUINT64
+@Description    Changes string to IMG_UINT64.
+*/ /**************************************************************************/
+PVRSRV_ERROR OSStringToUINT64(const IMG_CHAR *pStr, IMG_UINT64 ui64Base,
+			      IMG_UINT64 *ui64Result);
 
 /*************************************************************************/ /*!
 @Function       OSStringToUINT32
@@ -1602,7 +1697,7 @@ void OSUserModeAccessToPerfCountersEn(void);
 PVRSRV_ERROR OSDebugSignalPID(IMG_UINT32 ui32PID);
 
 #if defined(__linux__) && defined(__KERNEL__) && !defined(DOXYGEN)
-void OSWarnOn(IMG_BOOL bCondition);
+int OSWarnOn(IMG_BOOL bCondition);
 #else
 /*************************************************************************/ /*!
 @Function       OSWarnOn
@@ -1763,6 +1858,8 @@ struct resource;
 void *OSGetMtgpuDevice(struct platform_device *pdev);
 
 struct platform_device *OSGetPlatformDevice(void *pvOSDevice);
+struct resource *OSPlatformGetResourceIRQ(struct platform_device *psPlatformDevice, IMG_UINT32 uiIndex);
+IMG_UINT64 OSGetResourceStart(struct resource *psResource);
 void *OSGetPlatformDeviceParent(struct platform_device *pdev);
 void *OSGetPlatformData(struct platform_device *pdev);
 
@@ -1781,18 +1878,19 @@ struct page;
 
 struct page *OSGetPageByIndex(struct page *psPage, IMG_UINT32 ui32Index);
 struct page *OSPhysToPage(IMG_UINT64 ui64Paddr);
+struct page *OSPfnToPage(IMG_UINT64 ui64Paddr);
 IMG_UINT64 OSPageToPhys(struct page *psPage);
 void *OSVMapCached(struct page **ppsPage, IMG_UINT32 ui32PageNums);
 void *OSVMapNoncached(struct page **ppsPage, IMG_UINT32 ui32PageNums);
 void OSVUnmap(void *pvPtr);
-IMG_UINT64 OSDmaMapPage(struct device *psDev, struct page *psPage, size_t uiOffset, size_t uiSize);
-void OSDmaUnmapPage(struct device *psDev, IMG_UINT64 ui64DmaAddr, size_t uiSize);
-IMG_UINT64 OSDmaMapResource(struct device *psDev,
-			    IMG_UINT64 ui64CpuPhysAddr,
-			    size_t uiSize);
-void OSDmaUnmapResource(struct device *psDev,
-			IMG_UINT64 uiDmaAddr,
-			size_t uiSize);
+IMG_UINT64 OSDmaMapPage(struct device *psDev, struct page *psPage,
+			size_t uiOffset, size_t uiSize, int eDirection);
+void OSDmaUnmapPage(struct device *psDev, IMG_UINT64 ui64DmaAddr, size_t uiSize, int eDirection);
+IMG_UINT64 OSDmaMapResource(struct device *psDev, IMG_UINT64 ui64CpuPhysAddr,
+			    size_t uiSize, int eDirection,
+			    unsigned long ulAttrs);
+void OSDmaUnmapResource(struct device *psDev, IMG_UINT64 ui64DmaAddr,
+			size_t uiSize, int eDirection);
 IMG_INT OSDmaMappingError(struct device *psDev, IMG_UINT64 ui64DmaAddr);
 void OSSetPageReserved(struct page *psPage);
 void OSClearPageReserved(struct page *psPage);
@@ -1820,11 +1918,14 @@ IMG_BOOL OSIsErr(const void *pvPtr);
 long OSPtrErr(const void *pvPtr);
 IMG_INT OSSScanf(const IMG_CHAR *pcBuf, const IMG_CHAR *pcFmt, ...);
 struct device *OSGetPcieDeviceFromDeviceNode(PVRSRV_DEVICE_NODE *psDevNode);
+bool OSDeviceIsPCI(struct device *psDev);
+struct device *OSGetOSDeviceFromDeviceNode(PVRSRV_DEVICE_NODE *psDevNode);
 
 struct bus_type;
 struct bus_type *OSGetDevBusType(struct device *psDev);
 IMG_BOOL OSIsIOMMUOn(struct bus_type *psBusType);
 IMG_BOOL OSIsPcieEndpoint(struct device *psDdev);
+IMG_BOOL OSIsPcieRootPort(const struct device *psDev);
 struct device *OSPciUpStreamBridge(struct device *psDev);
 IMG_BOOL OSIsPciSiblingDownstreamPort(struct device *psDev1, struct device *psDev2);
 
@@ -1833,8 +1934,209 @@ IMG_INT64 OSGetKernelRealTimeSeconds(void);
 void OSHardwareResetLockAcquire(void);
 void OSHardwareResetLockRelease(void);
 
-#endif /* OSFUNC_H */
+void OSMMapLockAcquire(void);
+void OSMMapLockRelease(void);
 
+struct file *OSGetFileFromDrmFile(void *pDRMFile);
+
+void OSPvrDrmDbg(unsigned int category, const char *format, ...);
+void OSPvrDrmPrintk(const char *level, const char *format, ...);
+#define OS_PVR_DRM_DEBUG(fmt, ...)							\
+	OSPvrDrmDbg(OS_PVR_VAL(DRM_UT_CORE), fmt, ##__VA_ARGS__)
+#define OS_PVR_DRM_INFO(fmt, ...)							\
+	OSPvrDrmPrintk(KERN_INFO, fmt, ##__VA_ARGS__)
+#define OS_PVR_DRM_WARN(fmt, ...)							\
+	OSPvrDrmPrintk(KERN_WARNING, fmt, ##__VA_ARGS__)
+#define OS_PVR_DRM_ERROR(fmt, ...)							\
+	OSPvrDrmPrintk(KERN_ERR, "*ERROR* " fmt, ##__VA_ARGS__)
+
+IMG_ULONG OSGetVMAreaPageOffset(void *ps_vma);
+
+struct idr;
+int OSIdrCreate(struct idr **ppsIdr);
+void OSIdrDestroy(struct idr *psIdr);
+void OSIdrPreload(void);
+void OSIdrPreloadEnd(void);
+int OSIdrAlloc(struct idr *psIdr, void *pv, int iStart, int iEnd, gfp_t gfpFlags);
+void *OSIdrFind(const struct idr *psIdr, unsigned long ulId);
+void *OSIdrRemove(struct idr *psIdr, unsigned long ulId);
+void *OSIdrReplace(struct idr *psIdr, void *pv, unsigned long ulId);
+int OSIdrForEach(const struct idr *psIdr,
+		 int (*pFn)(int iId, void *pv, void *pvData),
+		 void *pvData);
+
+struct wait_queue_head;
+
+PVRSRV_ERROR OSWaitQueueHeadCreate(struct wait_queue_head **psWaitQHead);
+void OSWakeUp(struct wait_queue_head *ppsWaitQHead);
+void OSWakeUpInterruptible(struct wait_queue_head *psWaitQHead);
+void OSWakeUpAll(struct wait_queue_head *psWaitQHead);
+void OSWaitQueueHeadDestroy(struct wait_queue_head *psWaitQHead);
+
+PVRSRV_ERROR OSReadWritelockCreate(void **ppvReadWriteLock);
+void OSReadWriteLockInit(void *pvReadWriteLock);
+void OSWriteLockBottomHalfDisable(void *pvReadWriteLock);
+void OSWriteUnlockBottomHalfEnable(void *pvReadWriteLock);
+void OSReadLockBottomHalfDisable(void *pvReadWriteLock);
+void OSReadUnlockBottomHalfEnable(void *pvReadWriteLock);
+void OSReadWriteLockDestroy(void *pvReadWriteLock);
+
+bool OSTryToFreeze(void);
+
+unsigned long OSMsecsToJiffies(const unsigned int msec);
+unsigned long OSUsecsToJiffies(const unsigned int usec);
+
+struct wait_queue_entry;
+
+PVRSRV_ERROR OSWaitQueueEntryCreate(struct wait_queue_entry **ppsWaitQEntry);
+void OSWaitQueueEntryDestroy(struct wait_queue_entry *psWaitQEntry);
+void OSFinishWait(struct wait_queue_head *psWaitQHead, struct wait_queue_entry *psWaitQEntry);
+void OSPrepareToWait(struct wait_queue_head *psWaitQHead, struct wait_queue_entry *psWaitQEntry, int state);
+
+int OSSignalPending(void);
+long OSScheduleTimeout(long timeout);
+void OSSchedule(void);
+
+int OSPrintk(const char *fmt, ...);
+
+void OSVFree(const void *addr);
+size_t OSKSize(const void *objp);
+void OSKFree(const void *x);
+bool OSIsVMallocAddr(const void *x);
+void *OSKMalloc(size_t size);
+void *OSKZalloc(size_t size);
+void *OSVMalloc(unsigned long size);
+void *OSVZalloc(unsigned long size);
+
+unsigned int OSBigEndian32ToCPU(unsigned int uiNum);
+
+struct key;
+enum key_being_used_for;
+int OSVerifyPkcs7Signature(const void *pvData, size_t uiLen,
+			   const void *pvRawPkcs7, size_t uiPkcs7Len,
+			   struct key *psTrusted_keys,
+			   enum key_being_used_for eUsage,
+			   int (*pfnViewContent)(void *pvCtx,
+						 const void *pvData, size_t uilen,
+						 size_t uiAsn1hdrlen),
+			   void *pvCtx);
+
+struct firmware;
+int OSRequestFirmware(const struct firmware **ppsFw, const char *pszName, struct device *psDevice);
+void OSReleaseFirmware(const struct firmware *psFw);
+size_t OSGetFirmwareSize(const struct firmware *psFw);
+const IMG_UINT8 *OSGetFirmwareData(const struct firmware *psFw);
+
+ssize_t OSKernelWrite(void *pvFile, const char __user *pszBuf, size_t count, loff_t *psPos);
+
+struct kernel_param;
+void *OSGetKernelParamArg(const struct kernel_param *psKernelParam);
+
+struct work_struct;
+struct workqueue_struct;
+typedef void (*work_func_t)(struct work_struct *work);
+bool OSQueueWork(struct workqueue_struct *psWorkQueue, struct work_struct *psWork);
+struct workqueue_struct *OSAllocWorkqueue(const char *pszFormat, unsigned int flags, int max_active);
+void OSDestroyWorkqueue(struct workqueue_struct *psWorkQueue);
+void *OSCreateWork(work_func_t pfnFunc);
+void OSDestroyWork(struct work_struct *psWork);
+void OSSetWorkDrvdata(struct work_struct *psWork, void *pvData);
+void *OSGetWorkDrvdata(struct work_struct *psWork);
+
+void *OSGetDmaBufPrivateData(struct dma_buf *psDmaBuf);
+size_t OSGetDmaBufSize(struct dma_buf *psDmaBuf);
+const struct dma_buf_ops *OSGetDmaBufOps(struct dma_buf *psDmaBuf);
+
+struct sg_table;
+unsigned int OSGetSgTableNents(struct sg_table *psSgTable);
+struct scatterlist *OSGetSgTableSglist(struct sg_table *psSgTable);
+struct scatterlist *OSGetSglistNext(struct scatterlist *psSg);
+IMG_UINT64 OSGetSglistDmaAddress(struct scatterlist *psSg);
+void OSSetSglistDmaAddress(struct scatterlist *psSg, IMG_UINT64 ui64DmaAddr);
+IMG_UINT64 OSGetSglistDmaLength(struct scatterlist *psSg);
+void OSSetSglistDmaLength(struct scatterlist *psSg, IMG_INT64 ui64DmaLength);
+int OSSgTableCreate(struct sg_table **ppsSgTable);
+int OSSgTableAllocList(struct sg_table *psTable, unsigned int uiNents);
+void OSSgTableFreeList(struct sg_table *psSgTable);
+
+struct dma_buf_attachment;
+void *OSGetDmaBufPrivateDataByAttachment(struct dma_buf_attachment *psAttachment);
+struct device *OSGetDmaBufAttachmentDev(struct dma_buf_attachment *psAttachment);
+const struct dma_buf_ops *OSGetPvrDmaBufOps(void);
+
+#if defined(OS_STRUCT_DMA_BUF_OPS_HAS_MAP_ATOMIC) || \
+    defined(OS_STRUCT_DMA_BUF_OPS_HAS_MAP) || \
+    defined(OS_STRUCT_DMA_BUF_OPS_HAS_KMAP_ATOMIC) || \
+    defined(OS_STRUCT_DMA_BUF_OPS_HAS_KMAP)
+void *PVRDmaBufOpsKMap(struct dma_buf *psDmaBuf, unsigned long uiPageNum);
+#endif
+
+int OSDmaBufBeginCpuAccess(struct dma_buf *psDmBuf, int eDirection);
+
+#if defined(OS_STRUCT_DMA_BUF_MAP_EXIST)
+#define iosys_map		dma_buf_map
+#define iosys_map_set_vaddr	dma_buf_map_set_vaddr
+#endif
+
+#if defined(OS_STRUCT_DMA_BUF_MAP_EXIST) || defined(OS_STRUCT_IOSYS_MAP_EXIST)
+struct iosys_map;
+int PVRDmaBufOpsVMap(struct dma_buf *psDmaBuf, struct iosys_map *psMap);
+#else
+void *PVRDmaBufOpsVMap(struct dma_buf *psDmaBuf);
+#endif
+
+#if defined(OS_STRUCT_DMA_BUF_MAP_EXIST) || defined(OS_STRUCT_IOSYS_MAP_EXIST)
+void PVRDmaBufOpsVUnmap(struct dma_buf *psDmaBuf, struct iosys_map *psMap);
+#else
+void PVRDmaBufOpsVUnmap(struct dma_buf *psDmaBuf, void *pvKernAddr);
+#endif
+
+void *OSGetDmaBufAddrFromPrivdata(void *pvPriv, size_t uiOffset);
+int PVRDmaBufOpsAttach(struct dma_buf *psDmaBuf,
+#if defined(OS_DMA_BUF_OPS_ATTACH_HAS_DEVICE_ARG)
+		       struct device *psDev,
+#endif
+		       struct dma_buf_attachment *psAttachment);
+int OSDmaBufVmap(struct dma_buf *psDmaBuf, void *pvPriv, void *pvMap, void **vaddr);
+int OSDmaBufKmap(struct dma_buf *psDmaBuf, int iValue, const char *szFunc);
+int OSSetDmaBufValue(struct dma_buf *psDmaBuf, int iValue, void *pvMap, void *vaddr);
+void OSDmaBufKunmap(struct dma_buf *psDmaBuf, unsigned long ulPageNum,
+		    void *pvAddr);
+void OSDmaBufVunmap(struct dma_buf *psDmBuf, void *pvPriv);
+int OSIosysMapCreate(void *pvPriv);
+void OSIosysMapDestroy(void *pvPriv);
+
+int OSDmaBufEndCpuAccessDmaToDevice(struct dma_buf *psDmBuf);
+int OSDmaBufEndCpuAccessDmaBidirectional(struct dma_buf *psDmBuf);
+void OSDmaBufUnmapAttachment(struct dma_buf_attachment *psAttach,
+			     struct sg_table *psSgTable);
+struct sg_table *OSDmaBufMapAttachment(struct dma_buf_attachment *psAttach);
+
+struct vm_area_struct;
+int OSDmaBufMMap(struct dma_buf *psDmBuf, struct vm_area_struct *psVma,
+		 unsigned long ulPgOff);
+
+struct _PMR_DMA_BUF_DATA_;
+struct dma_buf_attachment *OSGetAttachmentFromPrivData(struct _PMR_DMA_BUF_DATA_ *psPrivData);
+struct dma_buf *OSGetDmaBufFromAttachment(struct dma_buf_attachment *psAttachment);
+void OSDmaBufDetach(struct dma_buf *psDmBuf, struct dma_buf_attachment *psAttach);
+void OSDmaBufPut(struct dma_buf *psDmBuf);
+
+struct dma_buf_export_info;
+int OSDmaBufExportInfoCreate(struct dma_buf_export_info **ppsDmaBufExportInfo);
+void OSDmaBufExportInfoDestroy(struct dma_buf_export_info *psDmaBufExportInfo);
+void OSSetDmaBufExportInfo(struct dma_buf_export_info *psDmaBufExportInfo, PMR *psPMR,
+			   const struct dma_buf_ops *psOps, IMG_DEVMEM_SIZE_T uiPMRSize);
+struct dma_buf *OSDmaBufExport(const struct dma_buf_export_info *psExpInfo);
+int OSGetDmaBufFd(struct dma_buf *psDmBuf);
+struct dma_buf *OSDmaBufGet(int iFd);
+struct dma_buf_attachment *OSDmaBufAttach(struct dma_buf *psDmBuf,
+					  struct device *psDev);
+
+bool OSIsErrOrNull(__force const void *pvPtr);
+
+#endif /* OSFUNC_H */
 /******************************************************************************
  End of file (osfunc.h)
 ******************************************************************************/
+

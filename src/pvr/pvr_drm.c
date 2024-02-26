@@ -66,9 +66,17 @@
 #include "module_common.h"
 #include "pvr_drm.h"
 #include "pvr_drv.h"
+#include "pvr_bridge_k.h"
 #include "pvrversion.h"
 #include "services_kernel_client.h"
 #include "pvr_sync_ioctl_drm.h"
+
+#include "uapi/mtgpu_drm.h"
+#include "mtgpu_vm.h"
+#include "mtgpu_bo.h"
+#include "mtgpu_dma_next.h"
+#include "mtgpu_drv_next.h"
+#include "mtgpu_info.h"
 
 #include "kernel_compatibility.h"
 
@@ -268,6 +276,32 @@ struct drm_ioctl_desc pvr_drm_ioctls[128] = {
 	DRM_IOCTL_DEF_DRV(PVR_SW_SYNC_CREATE_FENCE_CMD, pvr_sw_sync_create_fence_ioctl,
 			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
 	DRM_IOCTL_DEF_DRV(PVR_SW_SYNC_INC_CMD, pvr_sw_sync_inc_ioctl,
+			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
+#endif
+#if !defined(NO_HARDWARE)
+	DRM_IOCTL_DEF_DRV(MTGPU_DEVICE_INIT, mtgpu_device_init_ioctl,
+			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(MTGPU_BO_CREATE, mtgpu_bo_create_ioctl,
+			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(MTGPU_BO_DESTROY, mtgpu_bo_destroy_ioctl,
+			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(MTGPU_BO_FROM_USERPTR, mtgpu_bo_from_userptr_ioctl,
+			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(MTGPU_BO_GET_MMAP_OFFSET, mtgpu_bo_get_mmap_offset_ioctl,
+			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(MTGPU_VM_CONTEXT_CREATE, mtgpu_vm_context_create_ioctl,
+			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(MTGPU_VM_CONTEXT_DESTROY, mtgpu_vm_context_destroy_ioctl,
+			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(MTGPU_VM_MAP, mtgpu_vm_map_ioctl,
+			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(MTGPU_VM_UNMAP, mtgpu_vm_unmap_ioctl,
+			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
+#if defined SUPPORT_DMA_TRANSFER
+	DRM_IOCTL_DEF_DRV(MTGPU_DMA_TRANSFER, mtgpu_dma_transfer_ioctl,
+			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
+#endif /* SUPPORT_DMA_TRANSFER */
+	DRM_IOCTL_DEF_DRV(MTGPU_QUERY_INFO, mtgpu_query_info_ioctl,
 			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
 #endif
 };

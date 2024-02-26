@@ -22,7 +22,6 @@ enum reset_type;
 enum mtgpu_subsys_id;
 struct mtgpu_resource;
 typedef struct spinlock spinlock_t;
-struct efuse_data;
 struct mtlink_ops;
 struct mtlink_private_data;
 enum mtgpu_clk_domain;
@@ -32,8 +31,10 @@ struct mtgpu_ob_conf;
 struct mtgpu_ob_map_table;
 struct mtgpu_pcie_perf_bw;
 struct mtgpu_pcie_link_monitor;
+struct vgpu_info;
+struct vgpu_share_mem;
 
-#if defined(CONFIG_SUDI104_VPS)
+#if defined(CONFIG_VPS)
 struct vps_dma;
 #endif
 
@@ -143,6 +144,7 @@ struct mtgpu_display_ops {
 };
 
 struct mtgpu_smc_ops {
+	int (*smc_check_efuse)(struct mtgpu_device *mtdev);
 	int (*smc_get_board_cfg)(struct mtgpu_device *mtdev);
 	int (*smc_get_ddr_clock)(struct mtgpu_device *mtdev, u32 *ddr_clock, u32 *max_ddr_clk);
 	int (*smc_set_gpu_cfg)(struct mtgpu_device *mtdev, struct gpu_cfg_req *gpu_req);
@@ -153,6 +155,26 @@ struct mtgpu_smc_ops {
 	int (*smc_set_gpu_eata_cfg)(struct mtgpu_device *mtdev,
 				    struct gpu_eata_cfg_info *eata_cfg_info);
 	s32 (*smc_get_clk_id)(enum mtgpu_clk_domain domain, u16 sub_id);
+};
+
+struct mtgpu_fec_ops {
+	/*
+	 * Verify memory data signature. Once the verify passed,
+	 * this range can not be accessed by KMD.
+	 */
+	int (*protect_mem)(struct mtgpu_device *mtdev, uint64_t addr, size_t len,
+			   const char *signature, size_t sig_len);
+	/*
+	 * Remove the memory protention.
+	 * The `addr` and `len` must be same as the protect_mem() call.
+	 */
+	int (*unprotect_mem)(struct mtgpu_device *mtdev, uint64_t addr, size_t len);
+	/* Start FEC on specific PC address. Note that this address must be protectted. */
+	int (*startup)(struct mtgpu_device *mtdev, uint64_t pc);
+	/* Clock gating FEC. Can only be called when FEC is already started. */
+	int (*clock_gating_ctl)(struct mtgpu_device *mtdev, bool clock_en);
+	/* Force FEC cluster stop. May cause data loss. */
+	int (*force_stop)(struct mtgpu_device *mtdev);
 };
 
 struct mtgpu_llc_ops {
@@ -178,6 +200,16 @@ struct pci_dev_config {
 	u8 pci_config_data[256];
 };
 
+struct mtgpu_device;
+
+struct mtgpu_irq_data {
+	/* The interrupt vector sequence number applied by msi-x, which represents the number
+	 * of interrupts applied.
+	 */
+	int index;
+	struct mtgpu_device *mtdev;
+};
+
 struct mtgpu_device {
 	struct device *dev;
 
@@ -187,11 +219,14 @@ struct mtgpu_device {
 
 	struct mtgpu_region bar[PCI_STD_NUM_BARS];
 	struct mtgpu_region pcie_mem;
+	struct mtgpu_region bar2_check_mem;
 	struct mtgpu_region vpu_mem;
+	struct mtgpu_region jpu_mem;
 	struct mtgpu_region smc_mem;
 	struct mtgpu_region pcie_dma;
 	struct mtgpu_region gpu_mem;
 	struct mtgpu_region cursor_mem;
+	struct mtgpu_region efifb_mem;
 	struct mtgpu_io_region llc_reg;
 	struct mtgpu_io_region intc_reg;
 	struct mtgpu_io_region pcie_config_reg;
@@ -203,6 +238,7 @@ struct mtgpu_device {
 	struct platform_device *disp_dev[MTGPU_DISP_DEV_NUM];
 	struct platform_device *drm_dev[MTGPU_CORE_COUNT_MAX];
 	struct platform_device *video_dev;
+	struct platform_device *jpu_dev;
 	struct platform_device *audio_dev;
 
 	u64 real_vram_size;
@@ -223,6 +259,7 @@ struct mtgpu_device {
 	struct mtgpu_pcie_perf_ops *pcie_perf_ops;
 	struct mtgpu_display_ops *disp_ops;
 	const struct mtgpu_smc_ops *smc_ops;
+	const struct mtgpu_fec_ops *fec_ops;
 	struct mtgpu_llc_ops *llc_ops;
 	struct mtlink_ops *link_ops;
 	struct mtgpu_ob_ops *ob_ops;
@@ -233,8 +270,8 @@ struct mtgpu_device {
 	spinlock_t *interrupt_enable_lock;
 	struct mtgpu_interrupt_desc interrupt_desc[MTGPU_INTERRUPT_COUNT];
 	u32 irq_type;
-	int start_irq;
 	int irq_count;
+	struct mtgpu_irq_data irq_data[MTGPU_PCIE_IRQ_NUM];
 
 	void *dma_private;
 	void *ipc_private;
@@ -247,7 +284,7 @@ struct mtgpu_device {
 	struct mtgpu_local_mgmt_info *local_mgmt;
 	struct mtgpu_misc_info *miscinfo[MTGPU_CORE_COUNT_MAX];
 
-#if defined(CONFIG_SUDI104_VPS)
+#if defined(CONFIG_VPS)
 	struct vps_dma *vps_dma;
 #endif
 #if defined(SUPPORT_ION)
@@ -256,19 +293,16 @@ struct mtgpu_device {
 
 	/* virtualization related members */
 
-	/* vpu_guest_mem.base store the card address of VPU heap of VM 1 */
-	struct mtgpu_region vpu_guest_mem;
-
-	/* mem_card_base store the card address of MMU table of VM 1*/
-	resource_size_t mem_card_base;
+	/* mmu_heap_card_base store the card address of MMU table of VM */
+	resource_size_t mmu_heap_card_base;
 
 	/* gpu_mem_card_base store the card address of GPU memory base */
 	resource_size_t gpu_mem_card_base;
 
-	/* mmu_heap store the region of BAR4 in VM*/
+	/* mmu_heap store the region of BAR4 in VM */
 	struct mtgpu_region mmu_heap;
 
-	/* mmu_heap store the region of BAR1 in VM*/
+	/* virtual custom register store the region of BAR1 in VM */
 	struct mtgpu_io_region vgpu_custom_reg;
 
 	void *mdev_device_state;
@@ -302,6 +336,12 @@ struct mtgpu_device {
 	 */
 	u32 osid_count;
 
+	/* store vgpu_info passed by host */
+	struct vgpu_info *vgpu_info;
+
+	/* shared memory part of guest and host */
+	struct vgpu_share_mem *vgpu_shm;
+
 	void *pm_vddr;
 	resource_size_t pm_vddr_size;
 
@@ -320,7 +360,7 @@ struct mtgpu_device {
 
 	struct mtgpu_segment_info *segment_info;
 	int segment_info_cnt;
-	u8 video_group_idx[MTGPU_CORE_COUNT_MAX];
+	u8 video_mpc_group_ids[MTGPU_CORE_COUNT_MAX];
 	u8 video_group_cnt;
 
 	/* related to the procfs file directory */
@@ -332,17 +372,18 @@ struct mtgpu_device {
 	struct proc_dir_entry *proc_mpc_enable;
 	struct proc_dir_entry *proc_gpu_instance_dir[MTGPU_CORE_COUNT_MAX];
 	struct proc_dir_entry *proc_mpc_dir;
+	struct proc_dir_entry *proc_gpu_process_util;
 
 	/*get platform device information including platform data and recoueses*/
 	int (*get_platform_device_info)(struct mtgpu_device *mtdev, u32 hw_module, u32 hw_id,
 					struct mtgpu_resource **mtgpu_res, u32 *num_res,
 					void **data, size_t *size_data);
 
-	/* get chip vendor and device info */
-	void (*get_vendor_info)(struct mtgpu_device *mtdev, u32 *vendor);
+	/* query if the driver can access registers */
+	int (*register_access_check)(struct mtgpu_device *mtdev);
 
 	struct pci_dev_config *pci_dev_config_data;
-	struct efuse_data *efuse;
+
 	bool pstate_supported;
 
 	struct mtgpu_pcie_perf_bw *pcie_perf_data;

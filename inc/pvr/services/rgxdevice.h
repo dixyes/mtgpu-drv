@@ -56,6 +56,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #if defined(SUPPORT_WORKLOAD_ESTIMATION)
 #include "hash.h"
 #endif
+#include "musapfm.h"
+
 typedef struct _RGX_SERVER_COMMON_CONTEXT_ RGX_SERVER_COMMON_CONTEXT;
 
 typedef struct {
@@ -384,6 +386,8 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 
 	IMG_BOOL				bDevInit2Done;
 
+	IMG_INT32				ui32MemoryOptimization;
+
 	IMG_BOOL				bFirmwareInitialised;
 	IMG_BOOL				bPDPEnabled;
 
@@ -393,6 +397,10 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 	void __iomem			*pvRegsBaseKM;
 
 	void __iomem			*pvVirtRegsBaseKM;
+
+	/* lock to protect guest gpa to hpa processing in virtualization */
+	POS_LOCK			hGpaToHpaLock;
+
 #if defined(SUPPORT_SW_OSID_EXTENSION)
 	/* 
 	 * TODO:
@@ -401,8 +409,6 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 	 */
 	void (*set_master_kick_reg)(void *master_kick_reg, void *priv_data, u32 mpc_id);
 	void (*vgpu_kick)(int osid, u32 kick_value, void *priv_data);
-	void (*vgpu_int_cb)(u32 int_id, bool is_osid0, void *priv_data);
-	void *osid_sw_ext_priv_data;
 #endif
 
 	IMG_HANDLE				hRegMapping;
@@ -819,14 +825,20 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 
 	IMG_UINT32              ui32Log2Non4KPgSize; /* Page size of Non4k heap in log2 form */
 
+	IMG_UINT32              ui32Log2SVMPgSize; /* Page size of SVM heap in log2 form */
+
 #if (RGX_NUM_OS_SUPPORTED > 1)
 	u32					mpc_id;
 	void					*psWinFwInfo;
-	void					*pcie_dev;
+	void					(*vgpu_int_cb)(u32 int_id, bool is_osid0,
+							       void *priv_data, u32 mpc_id);
+	void					*priv_data;
 #endif
 
 	IMG_UINT64			ui64DummyCpuPAddr;
 	IMG_UINT64			ui64DummyDmaAddr;
+
+	PFM_CONTEXT			*psPFMContext;
 } PVRSRV_RGXDEV_INFO;
 
 

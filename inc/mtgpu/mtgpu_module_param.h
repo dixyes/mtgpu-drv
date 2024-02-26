@@ -27,8 +27,20 @@ extern unsigned char mtgpu_pstate_mode;
 extern unsigned int mtgpu_page_size;
 extern int mtgpu_vpu_mode;
 extern int disable_vpu;
+extern int disable_jpu;
+extern int vpu_group_max;
 extern bool disable_driver;
 extern int irq_vector_cnt;
 extern bool disable_pcie_link_monitor;
+#if (RGX_NUM_OS_SUPPORTED > 1)
+extern int mtgpu_vgpu_scheduling_policy;
+extern int mtgpu_vgpu_time_sliced_value;
+extern unsigned long mtgpu_vgpu_host_mem_size;
+extern bool mtgpu_vgpu_force_mmio_in_4g;
+extern bool mtgpu_load_windows_firmware;
+extern bool mtgpu_vgpu_full_vgpu_types;
+extern int vgpu_mm_mapping_mode;
+extern int mtgpu_vdma_enable;
+#endif
 
 #endif /*__MTGPU_MODULE_PARAM_H__*/

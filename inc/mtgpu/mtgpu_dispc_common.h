@@ -60,7 +60,7 @@ struct mtgpu_layer_config {
 	u16 dst_w;
 	u16 dst_h;
 	u32 format;
-	u32 addr[4];
+	u64 addr[4];
 	u32 pitch[4];
 	u8 num_planes;
 	u8 alpha;
@@ -89,6 +89,31 @@ struct mtgpu_dispc_ctx {
 	bool update_done;
 	bool disable_done;
 	wait_queue_head_t *waitq;
+	u16 *gamma_store;
+	u32 gamma_size;
+	/* Whether to restore csc when updating plane. */
+	bool gamma_restore;
+	/* Whether to configure csc when setting gamma. */
+	bool gamma_visiable;
+};
+
+struct mtgpu_cursor_info {
+	struct drm_gem_object *bo;
+	dma_addr_t dev_addr;
+	u32 width;
+	u32 height;
+	u32 x;
+	u32 y;
+};
+
+struct mtgpu_dispc {
+	struct drm_crtc *crtc;
+	struct mtgpu_dispc_ctx ctx;
+	struct mtgpu_dispc_ops *core;
+	struct mtgpu_dispc_glb_ops *glb;
+	struct device *dev;
+	struct mtgpu_cursor_info cursor_info;
+	struct mtgpu_dispc_debugfs debugfs;
 };
 
 struct mtgpu_dispc_ops {
@@ -137,7 +162,7 @@ void dispc_reg_write(struct mtgpu_dispc_ctx *ctx, int offset, u32 val)
 	os_writel(val, ctx->regs + offset);
 	/* dummy read to make post write take effect */
 	os_readl(ctx->regs + offset);
-	DISPC_DEBUG("offset = 0x%04x value = 0x%08x\n", offset, val);
+	DISPC_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
 }
 
 static inline
@@ -145,7 +170,7 @@ u32 dispc_reg_read(struct mtgpu_dispc_ctx *ctx, int offset)
 {
 	u32 val = os_readl(ctx->regs + offset);
 
-	DISPC_DEBUG("offset = 0x%04x value = 0x%08x\n", offset, val);
+	DISPC_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
 	return val;
 }
 
@@ -188,7 +213,7 @@ void dispc_glb_reg_write(struct mtgpu_dispc_ctx *ctx, int offset, u32 val)
 	os_writel(val, ctx->glb_regs + offset);
 	/* dummy read to make post write take effect */
 	os_readl(ctx->glb_regs + offset);
-	DISPC_DEBUG("offset = 0x%04x value = 0x%08x\n", offset, val);
+	GLB_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
 }
 
 static inline
@@ -196,7 +221,7 @@ u32 dispc_glb_reg_read(struct mtgpu_dispc_ctx *ctx, int offset)
 {
 	u32 val = os_readl(ctx->glb_regs + offset);
 
-	DISPC_DEBUG("offset = 0x%04x value = 0x%08x\n", offset, val);
+	GLB_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
 	return val;
 }
 

@@ -46,6 +46,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <drm/drm_device.h>
 #include <drm/drm_file.h>
 #include <drm/drm_ioctl.h>
+#include <drm/drm_print.h>
 #endif
 #include <asm/page.h>
 #include <asm/div64.h>
@@ -83,6 +84,20 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <linux/iommu.h>
 #include <linux/module.h>
 #include <linux/timekeeping.h>
+#include <linux/firmware.h>
+#include <linux/version.h>
+#include <linux/kernel.h>
+#include <linux/err.h>
+#include <linux/verification.h>
+#include <crypto/public_key.h>
+
+#if defined(OS_LINUX_MODULE_SIGNATURE_H_EXIST)
+#include <linux/module_signature.h>
+#else
+#define PKEY_ID_PKCS7 2
+#endif /* OS_LINUX_MODULE_SIGNATURE_H_EXIST */
+
+#include <linux/dma-buf.h>
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0))
 #include <linux/pfn_t.h>
 #include <linux/pfn.h>
@@ -108,6 +123,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvr_drv.h"
 #include "pvr_bridge_k.h"
 #include "pvrsrv_memallocflags.h"
+#include "physmem_dmabuf.h"
+#include "module_common.h"
 #if defined(PVRSRV_ENABLE_PROCESS_STATS)
 #include "process_stats.h"
 #endif
@@ -146,6 +163,26 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define EVENT_OBJECT_TIMEOUT_US		(100000ULL)
 #endif /* EMULATOR */
 #endif
+
+const IMG_UINT64 OSPvrValue[] =
+{
+#define X(VALUE) VALUE,
+	DECLEAR_OS_PVR_VALUE
+#undef X
+};
+
+static void OSSetVMAFlags(struct vm_area_struct *psVma, unsigned long ulFlags)
+{
+#ifdef OS_VM_FLAGS_IS_NOT_CONST
+	psVma->vm_flags |= ulFlags;
+#else
+	vm_flags_set(psVma, (vm_flags_t)ulFlags);
+#endif
+}
+
+#if defined(RGX_FW_SIGNED)
+#define OS_MODULE_SIG_STRING MODULE_SIG_STRING
+#endif /* RGX_FW_SIGNED */
 
 typedef struct {
 	struct task_struct *kthread;
@@ -593,6 +630,25 @@ IMG_INT32 OSStringNCompare(const IMG_CHAR *pStr1, const IMG_CHAR *pStr2,
 #endif
 }
 
+IMG_CHAR *OSStringSeparate(IMG_CHAR **pStr1, const IMG_CHAR *pStr2)
+{
+	return strsep(pStr1, pStr2);
+}
+
+int OSStringCaseCompare(const IMG_CHAR *pStr1, const IMG_CHAR *pStr2)
+{
+	return strcasecmp(pStr1, pStr2);
+}
+
+PVRSRV_ERROR OSStringToUINT64(const IMG_CHAR *pStr, IMG_UINT64 ui64Base,
+			      IMG_UINT64 *ui64Result)
+{
+	if (kstrtou64(pStr, ui64Base, ui64Result) != 0)
+		return PVRSRV_ERROR_CONVERSION_FAILED;
+
+	return PVRSRV_OK;
+}
+
 PVRSRV_ERROR OSStringToUINT32(const IMG_CHAR *pStr, IMG_UINT32 ui32Base,
                               IMG_UINT32 *ui32Result)
 {
@@ -795,7 +851,7 @@ PVRSRV_ERROR OSClockMonotonicus64(IMG_UINT64 *pui64Time)
 	return PVRSRV_OK;
 }
 
-#if defined(OS_FUNC_GETRAWMONOTONIC_EXIST)
+#if defined(OS_FUNC_GETRAWMONOTONIC_EXIST) && defined(OS_STRUCT_TIMESPEC_EXIST)
 IMG_UINT64 OSClockMonotonicRawns64(void)
 {
 	struct timespec ts;
@@ -1186,9 +1242,9 @@ PVRSRV_ERROR OSThreadDestroy(IMG_HANDLE hThread)
 }
 
 #if defined(__linux__) && defined(__KERNEL__) && !defined(DOXYGEN)
-void OSWarnOn(IMG_BOOL bCondition)
+int OSWarnOn(IMG_BOOL bCondition)
 {
-	WARN_ON(bCondition);
+	return WARN_ON(bCondition);
 }
 #endif
 
@@ -1764,7 +1820,7 @@ PVRSRV_ERROR OSChangeSparseMemCPUAddrMap(void **psPageArray,
 
 	if ((psVMA->vm_flags & VM_MIXEDMAP) || bIsLMA)
 	{
-		psVMA->vm_flags |= VM_MIXEDMAP;
+		OSSetVMAFlags(psVMA, VM_MIXEDMAP);
 		bMixedMap = IMG_TRUE;
 	}
 	else
@@ -1785,8 +1841,7 @@ PVRSRV_ERROR OSChangeSparseMemCPUAddrMap(void **psPageArray,
 				if (!pfn_valid(uiPFN) || (page_count(pfn_to_page(uiPFN)) == 0))
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)) */
 				{
-					bMixedMap = IMG_TRUE;
-					psVMA->vm_flags |= VM_MIXEDMAP;
+					OSSetVMAFlags(psVMA, VM_MIXEDMAP);
 					break;
 				}
 			}
@@ -2772,6 +2827,18 @@ struct device *OSGetPcieDeviceFromDeviceNode(PVRSRV_DEVICE_NODE *psDevNode)
 	return osDevice->parent->parent;
 }
 
+bool OSDeviceIsPCI(struct device *psDev)
+{
+	return dev_is_pci(psDev);
+}
+
+struct device *OSGetOSDeviceFromDeviceNode(PVRSRV_DEVICE_NODE *psDevNode)
+{
+	PVR_ASSERT(psDevNode);
+	PVR_ASSERT(psDevNode->psDevConfig);
+	return (struct device *)psDevNode->psDevConfig->pvOSDevice;
+}
+
 #if defined(SUPPORT_DMA_TRANSFER)
 
 PVRSRV_ERROR OSDmaTransferP2P(PVRSRV_DEVICE_NODE *psLocalDevNode,
@@ -2903,6 +2970,16 @@ struct platform_device *OSGetPlatformDevice(void *pvOSDevice)
 	return to_platform_device((struct device *)pvOSDevice);
 }
 
+struct resource *OSPlatformGetResourceIRQ(struct platform_device *psPlatformDevice, IMG_UINT32 uiIndex)
+{
+	return platform_get_resource(psPlatformDevice, IORESOURCE_IRQ, uiIndex);
+}
+
+IMG_UINT64 OSGetResourceStart(struct resource *psResource)
+{
+	return psResource->start;
+}
+
 void *OSGetPlatformDeviceParent(struct platform_device *pdev)
 {
 	return pdev->dev.parent->parent;
@@ -3026,6 +3103,9 @@ IMG_BOOL OSTryLockAcquire(POS_LOCK hLock)
 {
 	return mutex_trylock(hLock) ? IMG_TRUE : IMG_FALSE;
 }
+
+DEFINE_SPINLOCK(g_sOSKMallocSpinLock);
+DEFINE_SPINLOCK(g_sOSKMallocLeakSpinLock);
 
 PVRSRV_ERROR OSSpinLockCreate(POS_SPINLOCK *_ppsLock)
 {
@@ -3151,6 +3231,11 @@ struct page *OSPhysToPage(IMG_UINT64 ui64Paddr)
 	return pfn_to_page(ui64Paddr >> PAGE_SHIFT);
 }
 
+struct page *OSPfnToPage(IMG_UINT64 ui64PageFrameNum)
+{
+	return pfn_to_page(ui64PageFrameNum);
+}
+
 IMG_UINT64 OSPageToPhys(struct page *psPage)
 {
 	return page_to_phys(psPage);
@@ -3171,32 +3256,32 @@ void OSVUnmap(void *pvPtr)
 	return vunmap(pvPtr);
 }
 
-IMG_UINT64 OSDmaMapPage(struct device *psDev, struct page *psPage, size_t uiOffset, size_t uiSize)
+IMG_UINT64 OSDmaMapPage(struct device *psDev, struct page *psPage,
+			size_t uiOffset, size_t uiSize, int eDirection)
 {
 	IMG_UINT64 ui64DmaAddr;
 
-	ui64DmaAddr = dma_map_page(psDev, psPage, uiOffset, uiSize, DMA_BIDIRECTIONAL);
+	ui64DmaAddr = dma_map_page(psDev, psPage, uiOffset, uiSize, eDirection);
 
 	return ui64DmaAddr;
 }
 
-void OSDmaUnmapPage(struct device *psDev, IMG_UINT64 ui64DmaAddr, size_t uiSize)
+void OSDmaUnmapPage(struct device *psDev, IMG_UINT64 ui64DmaAddr, size_t uiSize, int eDirection)
 {
-	return dma_unmap_page(psDev, ui64DmaAddr, uiSize, DMA_BIDIRECTIONAL);
+	return dma_unmap_page(psDev, ui64DmaAddr, uiSize, eDirection);
 }
 
-IMG_UINT64 OSDmaMapResource(struct device *psDev,
-			    IMG_UINT64 ui64CpuPhysAddr,
-			    size_t uiSize)
+IMG_UINT64 OSDmaMapResource(struct device *psDev, IMG_UINT64 ui64CpuPhysAddr,
+			    size_t uiSize, int eDirection,
+			    unsigned long ulAttrs)
 {
-	return dma_map_resource(psDev, ui64CpuPhysAddr, uiSize, DMA_BIDIRECTIONAL, 0);
+	return dma_map_resource(psDev, ui64CpuPhysAddr, uiSize, eDirection, ulAttrs);
 }
 
-void OSDmaUnmapResource(struct device *psDev,
-			IMG_UINT64 ui64DmaAddr,
-			size_t uiSize)
+void OSDmaUnmapResource(struct device *psDev, IMG_UINT64 ui64DmaAddr,
+			size_t uiSize, int eDirection)
 {
-	dma_unmap_resource(psDev, ui64DmaAddr, uiSize, DMA_BIDIRECTIONAL, 0);
+	dma_unmap_resource(psDev, ui64DmaAddr, uiSize, eDirection, 0);
 }
 
 IMG_INT OSDmaMappingError(struct device *psDev, IMG_UINT64 ui64DmaAddr)
@@ -3221,7 +3306,28 @@ void *OSPageAddress(const struct page *psPage)
 
 struct page *OSAllocUserPages(IMG_UINT32 ui32Order)
 {
-	return alloc_pages(GFP_USER, ui32Order);
+	struct page *psPage = NULL;
+	IMG_UINT32 ui32Cnt = 0;
+	gfp_t gfp_mask = GFP_USER;
+
+	if (ui32Order)
+	{
+		gfp_mask |= __GFP_COMP;
+	}
+
+	/*
+	 * When system pmr use huge page, and the os has
+	 * severe memory fragmentation, pages allocation
+	 * may failed, so add 5 times retrying for pages
+	 * allocation.
+	 */
+	while (!psPage && ui32Cnt < 5)
+	{
+		psPage = alloc_pages(gfp_mask, ui32Order);
+		ui32Cnt++;
+	}
+
+	return psPage;
 }
 
 IMG_INT OSGetUserPages(IMG_INT64 ui64Start, IMG_INT iPageCount, struct page **ppsPages)
@@ -3318,7 +3424,11 @@ IMG_INT OSSScanf(const IMG_CHAR *pcBuf, const IMG_CHAR *pcFmt, ...)
 
 struct bus_type *OSGetDevBusType(struct device *psDev)
 {
+#ifdef OS_BUS_TYPE_IS_NOT_CONST
 	return psDev->bus;
+#else
+	return (struct bus_type *)psDev->bus;
+#endif
 }
 
 IMG_BOOL OSIsIOMMUOn(struct bus_type *psBusType)
@@ -3362,6 +3472,15 @@ OSIsPcieDownstreamPort(const struct device *psDev)
 }
 
 IMG_BOOL
+OSIsPcieRootPort(const struct device *psDev)
+{
+	struct pci_dev *psPciDev = to_pci_dev(psDev);
+	int type = pci_pcie_type(psPciDev);
+
+	return type == PCI_EXP_TYPE_ROOT_PORT;
+}
+
+IMG_BOOL
 OSIsPciSiblingDownstreamPort(struct device *psDev1, struct device *psDev2)
 {
 	struct pci_dev *psDp1 = to_pci_dev(psDev1);
@@ -3401,4 +3520,873 @@ void OSHardwareResetLockAcquire(void)
 void OSHardwareResetLockRelease(void)
 {
 	mutex_unlock(&sHardwareResetStructLock);
+}
+
+/* The mmap code has its own mutex, to prevent possible re-entrant issues
+ * when the same PMR is mapped from two different connections/processes.
+ */
+static DEFINE_MUTEX(g_sMMapMutex);
+
+void OSMMapLockAcquire(void)
+{
+	mutex_lock(&g_sMMapMutex);
+}
+
+void OSMMapLockRelease(void)
+{
+	mutex_unlock(&g_sMMapMutex);
+}
+
+struct file *OSGetFileFromDrmFile(void *pDRMFile)
+{
+	return ((struct drm_file *)pDRMFile)->filp;
+}
+
+#if defined(__drm_debug_enabled)
+	#define OS_DEBUG_CONDITION(x)	(!__drm_debug_enabled(x))
+#elif defined(OS_FUNC_DRM_DEBUG_ENABLED_EXIST)
+	#define OS_DEBUG_CONDITION(x)	(!drm_debug_enabled(x))
+#elif defined(OS_GLOBAL_VARIABLE_DRM_DEBUG_EXIST)
+	#define OS_DEBUG_CONDITION(x)	(!(drm_debug & (x)))
+#else
+	#define OS_DEBUG_CONDITION(x)	false
+#endif
+
+void OSPvrDrmDbg(unsigned int category, const char *format, ...)
+{
+	struct va_format vaf;
+	va_list args;
+
+	if (OS_DEBUG_CONDITION(category))
+	{
+		return;
+	}
+
+	va_start(args, format);
+	vaf.fmt = format;
+	vaf.va = &args;
+
+	printk(KERN_DEBUG "[" DRM_NAME ":%ps] %pV",
+	       __builtin_return_address(0), &vaf);
+
+	va_end(args);
+}
+
+void OSPvrDrmPrintk(const char *level, const char *format, ...)
+{
+	struct va_format vaf;
+	va_list args;
+
+	va_start(args, format);
+	vaf.fmt = format;
+	vaf.va = &args;
+
+	printk("%s" "[" DRM_NAME ":%ps] %pV",
+	       level, __builtin_return_address(0), &vaf);
+
+	va_end(args);
+}
+
+IMG_ULONG OSGetVMAreaPageOffset(void *ps_vma)
+{
+	return ((struct vm_area_struct *)ps_vma)->vm_pgoff;
+}
+
+PVRSRV_ERROR OSWaitQueueHeadCreate(struct wait_queue_head **ppsWaitQHead)
+{
+	*ppsWaitQHead = OSAllocZMem(sizeof(struct wait_queue_head));
+	if (*ppsWaitQHead)
+	{
+		init_waitqueue_head(*ppsWaitQHead);
+		return PVRSRV_OK;
+	}
+	return PVRSRV_ERROR_OUT_OF_MEMORY;
+}
+
+void OSWakeUp(struct wait_queue_head *psWaitQHead)
+{
+	wake_up(psWaitQHead);
+}
+
+void OSWakeUpInterruptible(struct wait_queue_head *psWaitQHead)
+{
+	wake_up_interruptible(psWaitQHead);
+}
+
+void OSWakeUpAll(struct wait_queue_head *psWaitQHead)
+{
+	wake_up_all(psWaitQHead);
+}
+
+void OSWaitQueueHeadDestroy(struct wait_queue_head *psWaitQHead)
+{
+	kfree(psWaitQHead);
+}
+
+PVRSRV_ERROR OSReadWritelockCreate(void **ppvReadWriteLock)
+{
+	*ppvReadWriteLock = OSAllocZMem(sizeof(rwlock_t));
+	if (*ppvReadWriteLock)
+	{
+		return PVRSRV_OK;
+	}
+	return PVRSRV_ERROR_OUT_OF_MEMORY;
+}
+
+void OSReadWriteLockInit(void *pvReadWriteLock)
+{
+	rwlock_init((rwlock_t *)pvReadWriteLock);
+}
+
+void OSWriteLockBottomHalfDisable(void *pvReadWriteLock)
+{
+	write_lock_bh((rwlock_t *)pvReadWriteLock);
+}
+
+void OSWriteUnlockBottomHalfEnable(void *pvReadWriteLock)
+{
+	write_unlock_bh((rwlock_t *)pvReadWriteLock);
+}
+
+void OSReadLockBottomHalfDisable(void *pvReadWriteLock)
+{
+	read_lock_bh((rwlock_t *)pvReadWriteLock);
+}
+
+void OSReadUnlockBottomHalfEnable(void *pvReadWriteLock)
+{
+	read_unlock_bh((rwlock_t *)pvReadWriteLock);
+}
+
+void OSReadWriteLockDestroy(void *pvReadWriteLock)
+{
+	kfree(pvReadWriteLock);
+}
+
+bool OSTryToFreeze(void)
+{
+	return try_to_freeze();
+}
+
+unsigned long OSMsecsToJiffies(const unsigned int msec)
+{
+	return msecs_to_jiffies(msec);
+}
+
+unsigned long OSUsecsToJiffies(const unsigned int usec)
+{
+	return usecs_to_jiffies(usec);
+}
+
+PVRSRV_ERROR OSWaitQueueEntryCreate(struct wait_queue_entry **ppsWaitQEntry)
+{
+	*ppsWaitQEntry = OSAllocZMem(sizeof(struct wait_queue_entry));
+	if (*ppsWaitQEntry)
+	{
+		(*ppsWaitQEntry)->private = current;
+		(*ppsWaitQEntry)->func = autoremove_wake_function;
+		(*ppsWaitQEntry)->entry.next = &((*ppsWaitQEntry)->entry);
+		(*ppsWaitQEntry)->entry.prev = &((*ppsWaitQEntry)->entry);
+		return PVRSRV_OK;
+	}
+	return PVRSRV_ERROR_OUT_OF_MEMORY;
+}
+
+void OSWaitQueueEntryDestroy(struct wait_queue_entry *psWaitQEntry)
+{
+	kfree(psWaitQEntry);
+}
+
+void OSFinishWait(struct wait_queue_head *psWaitQHead, struct wait_queue_entry *psWaitQEntry)
+{
+	finish_wait(psWaitQHead, psWaitQEntry);
+}
+
+void OSPrepareToWait(struct wait_queue_head *psWaitQHead, struct wait_queue_entry *psWaitQEntry, int state)
+{
+	prepare_to_wait(psWaitQHead, psWaitQEntry, state);
+}
+
+int OSSignalPending(void)
+{
+#ifdef OS_FUNC_TASK_SIGPENDING_EXIST
+	return task_sigpending(current);
+#else
+	return signal_pending(current);
+#endif
+}
+
+long OSScheduleTimeout(long timeout)
+{
+	return schedule_timeout(timeout);
+}
+
+void OSSchedule(void)
+{
+	schedule();
+}
+
+int OSPrintk(const char *fmt, ...)
+{
+	va_list args;
+	int r;
+
+	va_start(args, fmt);
+	r = vprintk(fmt, args);
+	va_end(args);
+
+	return r;
+}
+
+void OSVFree(const void *addr)
+{
+	vfree(addr);
+}
+
+size_t OSKSize(const void *objp)
+{
+	return ksize(objp);
+}
+
+void OSKFree(const void *x)
+{
+	kfree(x);
+}
+
+bool OSIsVMallocAddr(const void *x)
+{
+    return is_vmalloc_addr(x);
+}
+
+void *OSKMalloc(size_t size)
+{
+	return kmalloc(size, GFP_KERNEL);
+}
+
+void *OSKZalloc(size_t size)
+{
+	return kzalloc(size, GFP_KERNEL);
+}
+
+void *OSVMalloc(unsigned long size)
+{
+	return vmalloc(size);
+}
+
+void *OSVZalloc(unsigned long size)
+{
+	return vzalloc(size);
+}
+
+unsigned int OSBigEndian32ToCPU(unsigned int uiNum)
+{
+	return be32_to_cpu(uiNum);
+}
+
+int OSVerifyPkcs7Signature(const void *pvData, size_t uiLen,
+			   const void *pvRawPkcs7, size_t uiPkcs7Len,
+			   struct key *psTrusted_keys,
+			   enum key_being_used_for eUsage,
+			   int (*pfnViewContent)(void *pvCtx,
+						 const void *pvData, size_t uilen,
+						 size_t uiAsn1hdrlen),
+			   void *pvCtx)
+{
+#ifdef CONFIG_SYSTEM_DATA_VERIFICATION
+	return verify_pkcs7_signature(pvData, uiLen, pvRawPkcs7, uiPkcs7Len,
+				      psTrusted_keys, eUsage,
+				      pfnViewContent, pvCtx);
+#else
+	return 0;
+#endif
+}
+
+int OSRequestFirmware(const struct firmware **ppsFw, const char *pszName, struct device *psDevice)
+{
+	return request_firmware(ppsFw, pszName, psDevice);
+}
+
+void OSReleaseFirmware(const struct firmware *psFw)
+{
+	release_firmware(psFw);
+}
+
+size_t OSGetFirmwareSize(const struct firmware *psFw)
+{
+	return psFw->size;
+}
+
+const IMG_UINT8 *OSGetFirmwareData(const struct firmware *psFw)
+{
+	return psFw->data;
+}
+
+int OSIdrCreate(struct idr **ppsIdr)
+{
+	*ppsIdr = OSAllocMemNoStats(sizeof(struct idr));
+	if (*ppsIdr)
+	{
+		idr_init(*ppsIdr);
+		return 0;
+	}
+
+	return -ENOMEM;
+}
+
+void OSIdrDestroy(struct idr *psIdr)
+{
+	idr_destroy(psIdr);
+	OSFreeMemNoStats(psIdr);
+}
+
+void OSIdrPreload(void)
+{
+	idr_preload(GFP_KERNEL);
+}
+
+void OSIdrPreloadEnd(void)
+{
+	idr_preload_end();
+}
+
+int OSIdrAlloc(struct idr *psIdr, void *pv, int iStart, int iEnd, gfp_t gfpFlags)
+{
+	return idr_alloc(psIdr, pv, iStart, iEnd, gfpFlags);
+}
+
+void *OSIdrFind(const struct idr *psIdr, unsigned long ulId)
+{
+	return idr_find(psIdr, ulId);
+}
+
+void *OSIdrRemove(struct idr *psIdr, unsigned long ulId)
+{
+	return idr_remove(psIdr, ulId);
+}
+
+void *OSIdrReplace(struct idr *psIdr, void *pv, unsigned long ulId)
+{
+	return idr_replace(psIdr, pv, ulId);
+}
+
+int OSIdrForEach(const struct idr *psIdr,
+		 int (*pFn)(int iId, void *pv, void *pvData),
+		 void *pvData)
+{
+	return idr_for_each(psIdr, pFn, pvData);
+}
+
+ssize_t OSKernelWrite(void *pvFile, const char __user *pszBuf, size_t count, loff_t *psPos)
+{
+	return kernel_write(pvFile, pszBuf, count, psPos);
+}
+
+void *OSGetKernelParamArg(const struct kernel_param *psKernelParam)
+{
+	return psKernelParam->arg;
+}
+
+bool OSQueueWork(struct workqueue_struct *psWorkQueue, struct work_struct *psWork)
+{
+	return queue_work(psWorkQueue, psWork);
+}
+
+struct workqueue_struct *OSAllocWorkqueue(const IMG_CHAR *pszFormat, unsigned int flags, int max_active)
+{
+	return alloc_workqueue(pszFormat, flags, max_active);
+}
+
+void OSDestroyWorkqueue(struct workqueue_struct *psWorkQueue)
+{
+	destroy_workqueue(psWorkQueue);
+}
+
+struct mt_work_struct {
+	struct work_struct work;
+	void *pvData;
+};
+
+void *OSCreateWork(work_func_t pfnFunc)
+{
+	struct mt_work_struct *work = kzalloc(sizeof(struct mt_work_struct), GFP_KERNEL);
+	if (!work)
+		return NULL;
+
+	INIT_WORK(&work->work, pfnFunc);
+
+	return work;
+}
+
+void OSDestroyWork(struct work_struct *psWork)
+{
+	kfree(psWork);
+}
+
+void OSSetWorkDrvdata(struct work_struct *psWork, void *pvData)
+{
+	struct mt_work_struct *mt_work = container_of(psWork, struct mt_work_struct, work);
+
+	mt_work->pvData = pvData;
+}
+
+void *OSGetWorkDrvdata(struct work_struct *psWork)
+{
+	struct mt_work_struct *mt_work = container_of(psWork, struct mt_work_struct, work);
+
+	return mt_work->pvData;
+}
+void *OSGetDmaBufPrivateData(struct dma_buf *psDmaBuf)
+{
+	return psDmaBuf->priv;
+}
+
+size_t OSGetDmaBufSize(struct dma_buf *psDmaBuf)
+{
+	return psDmaBuf->size;
+}
+
+const struct dma_buf_ops *OSGetDmaBufOps(struct dma_buf *psDmaBuf)
+{
+	return psDmaBuf->ops;
+}
+
+unsigned int OSGetSgTableNents(struct sg_table *psSgTable)
+{
+	return psSgTable->nents;
+}
+
+struct scatterlist *OSGetSgTableSglist(struct sg_table *psSgTable)
+{
+	return psSgTable->sgl;
+}
+
+struct scatterlist *OSGetSglistNext(struct scatterlist *psSg)
+{
+	return sg_next(psSg);
+}
+
+IMG_UINT64 OSGetSglistDmaAddress(struct scatterlist *psSg)
+{
+	return sg_dma_address(psSg);
+}
+
+void OSSetSglistDmaAddress(struct scatterlist *psSg, IMG_UINT64 ui64DmaAddr)
+{
+	psSg->dma_address = ui64DmaAddr;
+}
+
+IMG_UINT64 OSGetSglistDmaLength(struct scatterlist *psSg)
+{
+#if defined(PVR_ANDROID_ION_USE_SG_LENGTH)
+	return psSg->length;
+#else
+	return sg_dma_len(psSg);
+#endif
+}
+
+void OSSetSglistDmaLength(struct scatterlist *psSg, IMG_INT64 ui64DmaLength)
+{
+#if defined(PVR_ANDROID_ION_USE_SG_LENGTH)
+	psSg->length = ui64DmaLength;
+#else
+	sg_dma_len(psSg) = ui64DmaLength;
+#endif
+}
+
+int OSSgTableCreate(struct sg_table **ppsSgTable)
+{
+	*ppsSgTable = OSAllocZMem(sizeof(struct sg_table));
+	if (*ppsSgTable)
+	{
+		return 0;
+	}
+
+	return -ENOMEM;
+}
+
+int OSSgTableAllocList(struct sg_table *psTable, unsigned int uiNents)
+{
+	return sg_alloc_table(psTable, uiNents, GFP_KERNEL);
+}
+
+void OSSgTableFreeList(struct sg_table *psSgTable)
+{
+	sg_free_table(psSgTable);
+}
+
+void *OSGetDmaBufPrivateDataByAttachment(struct dma_buf_attachment *psAttachment)
+{
+	return psAttachment->dmabuf->priv;
+}
+
+struct device *OSGetDmaBufAttachmentDev(struct dma_buf_attachment *psAttachment)
+{
+	return psAttachment->dev;
+}
+
+static struct sg_table *PVRDmaBufOpsMapWrapper(struct dma_buf_attachment *psAttachment,
+					       enum dma_data_direction eDirection)
+{
+	return PVRDmaBufOpsMap(psAttachment, eDirection);
+}
+
+static void PVRDmaBufOpsUnmapWrapper(struct dma_buf_attachment *psAttachment,
+				     struct sg_table *psSgTable,
+				     enum dma_data_direction eDirection)
+{
+	PVRDmaBufOpsUnmap(psAttachment, psSgTable, eDirection);
+}
+
+#if defined(OS_STRUCT_DMA_BUF_MAP_EXIST) || defined(OS_STRUCT_IOSYS_MAP_EXIST)
+int PVRDmaBufOpsVMap(struct dma_buf *psDmaBuf, struct iosys_map *psMap)
+#else
+void *PVRDmaBufOpsVMap(struct dma_buf *psDmaBuf)
+#endif
+{
+	void *pvKernAddr = NULL;
+
+	if (DmaBufOpsVMap(psDmaBuf, pvKernAddr))
+	{
+#if defined(OS_STRUCT_DMA_BUF_MAP_EXIST) || defined(OS_STRUCT_IOSYS_MAP_EXIST)
+		return -EINVAL;
+#else
+		return NULL;
+#endif
+	}
+
+#if defined(OS_STRUCT_DMA_BUF_MAP_EXIST) || defined(OS_STRUCT_IOSYS_MAP_EXIST)
+	iosys_map_set_vaddr(psMap, pvKernAddr);
+	return 0;
+#else
+	return pvKernAddr;
+#endif
+}
+
+#if defined(OS_STRUCT_DMA_BUF_MAP_EXIST) || defined(OS_STRUCT_IOSYS_MAP_EXIST)
+void PVRDmaBufOpsVUnmap(struct dma_buf *psDmaBuf, struct iosys_map *psMap)
+#else
+void PVRDmaBufOpsVUnmap(struct dma_buf *psDmaBuf, void *pvKernAddr)
+#endif
+{
+	DmaBufOpsVUnmap(psDmaBuf);
+}
+
+void *OSGetDmaBufAddrFromPrivdata(void *pvPriv, size_t uiOffset)
+{
+	PMR_DMA_BUF_DATA *psPrivData = pvPriv;
+#if defined(OS_STRUCT_DMA_BUF_MAP_EXIST) || defined(OS_STRUCT_IOSYS_MAP_EXIST)
+	return psPrivData->psMap->vaddr + uiOffset;
+#else
+	return psPrivData->vaddr + uiOffset;
+#endif
+}
+
+/*
+ * dma_buf_ops
+ *
+ * support outside drivers to import and use the dma-buf by ops
+ */
+
+int PVRDmaBufOpsAttach(struct dma_buf *psDmaBuf,
+#if defined(OS_DMA_BUF_OPS_ATTACH_HAS_DEVICE_ARG)
+		       struct device *psDev,
+#endif
+		       struct dma_buf_attachment *psAttachment)
+{
+	PMR *psPMR = psDmaBuf->priv;
+
+	if (!psPMR)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "%s: PMR is NULL", __func__));
+		return -EINVAL;
+	}
+
+	if (PMR_IsUser(psPMR))
+	{
+		PVR_DPF((PVR_DBG_ERROR,
+			 "%s: PMR for user memory is not supported", __func__));
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static const struct dma_buf_ops sPVRDmaBufOps = {
+	.attach        = PVRDmaBufOpsAttach,
+	.map_dma_buf   = PVRDmaBufOpsMapWrapper,
+	.unmap_dma_buf = PVRDmaBufOpsUnmapWrapper,
+	.release       = PVRDmaBufOpsRelease,
+#if defined(OS_STRUCT_DMA_BUF_OPS_HAS_MAP_ATOMIC)
+	.map_atomic    = PVRDmaBufOpsKMap,
+#endif
+#if defined(OS_STRUCT_DMA_BUF_OPS_HAS_MAP)
+	.map           = PVRDmaBufOpsKMap,
+#endif
+#if defined(OS_STRUCT_DMA_BUF_OPS_HAS_KMAP_ATOMIC)
+	.kmap_atomic   = PVRDmaBufOpsKMap,
+#endif
+#if defined(OS_STRUCT_DMA_BUF_OPS_HAS_KMAP)
+	.kmap          = PVRDmaBufOpsKMap,
+#endif
+	.mmap          = PVRDmaBufOpsMMap,
+	.vmap          = PVRDmaBufOpsVMap,
+	.vunmap        = PVRDmaBufOpsVUnmap,
+};
+
+const struct dma_buf_ops *OSGetPvrDmaBufOps(void)
+{
+	return &sPVRDmaBufOps;
+}
+
+DEFINE_MUTEX(g_sOSHashLock);
+
+#if defined(OS_STRUCT_DMA_BUF_OPS_HAS_MAP_ATOMIC) || \
+    defined(OS_STRUCT_DMA_BUF_OPS_HAS_MAP) || \
+    defined(OS_STRUCT_DMA_BUF_OPS_HAS_KMAP_ATOMIC) || \
+    defined(OS_STRUCT_DMA_BUF_OPS_HAS_KMAP)
+void *PVRDmaBufOpsKMap(struct dma_buf *psDmaBuf, unsigned long uiPageNum)
+{
+	return NULL;
+}
+#endif
+
+int OSDmaBufBeginCpuAccess(struct dma_buf *psDmBuf, int eDirection)
+{
+	return dma_buf_begin_cpu_access(psDmBuf, eDirection);
+}
+
+int OSDmaBufVmap(struct dma_buf *psDmaBuf, void *pvPriv, void *pvMap, void **vaddr)
+{
+	PMR_DMA_BUF_DATA *psPrivData = pvPriv;
+
+#if defined(OS_STRUCT_DMA_BUF_MAP_EXIST) || defined(OS_STRUCT_IOSYS_MAP_EXIST)
+	if (pvPriv)
+	{
+		if (dma_buf_vmap(psDmaBuf, psPrivData->psMap) || !psPrivData->psMap->vaddr)
+		{
+			return -ENOMEM;
+		}
+	}
+	else
+	{
+		pvMap = OSAllocZMem(sizeof(struct iosys_map));
+		if (!pvMap)
+		{
+			PVR_DPF((PVR_DBG_ERROR, "%s: Couldn't allocate IosysMap", __func__));
+			return -ENOMEM;
+		}
+		if (dma_buf_vmap(psDmaBuf, (struct iosys_map *)pvMap))
+		{
+			OSFreeMem(pvMap);
+			return -ENOMEM;
+		}
+	}
+#else
+	if (pvPriv)
+	{
+		psPrivData->vaddr = dma_buf_vmap(psDmaBuf);
+		if (!psPrivData->vaddr)
+		{
+			return -ENOMEM;
+		}
+	}
+	else
+	{
+		*vaddr = dma_buf_vmap(psDmaBuf);
+		if (!(*vaddr))
+		{
+			return -ENOMEM;
+		}
+	}
+#endif
+	return 0;
+}
+
+int OSDmaBufKmap(struct dma_buf *psDmaBuf, int iValue, const char *szFunc)
+{
+#if defined(OS_FUNC_DMA_BUF_KMAP_EXIST)
+	int i;
+
+	for (i = 0; i < OSGetDmaBufSize(psDmaBuf) / gpu_page_size; i++)
+	{
+		void *pvKernAddr;
+
+		pvKernAddr = dma_buf_kmap(psDmaBuf, i);
+		if (IS_ERR_OR_NULL(pvKernAddr))
+		{
+			PVR_DPF((PVR_DBG_ERROR, "%s: Failed to map page (err=%ld)",
+						szFunc,
+						pvKernAddr ? PTR_ERR(pvKernAddr) : -(long)ENOMEM));
+			return !pvKernAddr ? -ENOMEM : -EINVAL;
+		}
+
+		memset(pvKernAddr, iValue, gpu_page_size);
+		dma_buf_kunmap(psDmaBuf, i, pvKernAddr);
+	}
+
+	return 0;
+#else
+	PVR_DPF((PVR_DBG_ERROR, "%s: Failed to map page", szFunc));
+	return -ENOMEM;
+#endif
+}
+
+int OSSetDmaBufValue(struct dma_buf *psDmaBuf, int iValue, void *pvMap, void *vaddr)
+{
+#if defined(OS_STRUCT_DMA_BUF_MAP_EXIST) || defined(OS_STRUCT_IOSYS_MAP_EXIST)
+	memset(((struct iosys_map *)pvMap)->vaddr, iValue, psDmaBuf->size);
+	dma_buf_vunmap(psDmaBuf, (struct iosys_map *)pvMap);
+#else
+	if (!vaddr)
+	{
+		return -ENOMEM;
+	}
+	memset(vaddr, iValue, psDmaBuf->size);
+	dma_buf_vunmap(psDmaBuf, vaddr);
+#endif
+	return 0;
+}
+
+void OSDmaBufKunmap(struct dma_buf *psDmBuf, unsigned long ulPageNum,
+		    void *pvAddr)
+{
+#if defined(OS_FUNC_DMA_BUF_KMAP_EXIST)
+	dma_buf_kunmap(psDmBuf, ulPageNum, pvAddr);
+#endif
+}
+
+void OSDmaBufVunmap(struct dma_buf *psDmBuf, void *pvPriv)
+{
+	PMR_DMA_BUF_DATA *psPrivData = pvPriv;
+#if defined(OS_STRUCT_DMA_BUF_MAP_EXIST) || defined(OS_STRUCT_IOSYS_MAP_EXIST)
+	dma_buf_vunmap(psDmBuf, psPrivData->psMap);
+#else
+	dma_buf_vunmap(psDmBuf, psPrivData->vaddr);
+#endif
+}
+
+int OSIosysMapCreate(void *pvPriv)
+{
+#if defined(OS_STRUCT_DMA_BUF_MAP_EXIST) || defined(OS_STRUCT_IOSYS_MAP_EXIST)
+	PMR_DMA_BUF_DATA *psPrivData = pvPriv;
+
+	psPrivData->psMap = OSAllocZMem(sizeof(struct iosys_map));
+	if (psPrivData->psMap)
+	{
+		return 0;
+	}
+
+	return -ENOMEM;
+#endif
+	return 0;
+}
+
+void OSIosysMapDestroy(void *pvPriv)
+{
+#if defined(OS_STRUCT_DMA_BUF_MAP_EXIST) || defined(OS_STRUCT_IOSYS_MAP_EXIST)
+	PMR_DMA_BUF_DATA *psPrivData = pvPriv;
+
+	OSFreeMem(psPrivData->psMap);
+#endif
+}
+
+int OSDmaBufEndCpuAccessDmaToDevice(struct dma_buf *psDmBuf)
+{
+	return dma_buf_end_cpu_access(psDmBuf, DMA_TO_DEVICE);
+}
+
+int OSDmaBufEndCpuAccessDmaBidirectional(struct dma_buf *psDmBuf)
+{
+	return dma_buf_end_cpu_access(psDmBuf, DMA_BIDIRECTIONAL);
+}
+
+void OSDmaBufUnmapAttachment(struct dma_buf_attachment *psAttach,
+			     struct sg_table *psSgTable)
+{
+	dma_buf_unmap_attachment(psAttach, psSgTable, DMA_BIDIRECTIONAL);
+}
+
+struct sg_table *OSDmaBufMapAttachment(struct dma_buf_attachment *psAttach)
+{
+	return dma_buf_map_attachment(psAttach, DMA_BIDIRECTIONAL);
+}
+
+int OSDmaBufMMap(struct dma_buf *psDmBuf, struct vm_area_struct *psVma,
+		 unsigned long ulPgOff)
+{
+	return dma_buf_mmap(psDmBuf, psVma, ulPgOff);
+}
+
+struct dma_buf_attachment *OSGetAttachmentFromPrivData(struct _PMR_DMA_BUF_DATA_ *psPrivData)
+{
+	return psPrivData->psAttachment;
+}
+
+struct dma_buf *OSGetDmaBufFromAttachment(struct dma_buf_attachment *psAttachment)
+{
+	return psAttachment->dmabuf;
+}
+
+void OSDmaBufDetach(struct dma_buf *psDmBuf, struct dma_buf_attachment *psAttach)
+{
+	dma_buf_detach(psDmBuf, psAttach);
+}
+
+void OSDmaBufPut(struct dma_buf *psDmBuf)
+{
+	dma_buf_put(psDmBuf);
+}
+
+int OSDmaBufExportInfoCreate(struct dma_buf_export_info **ppsDmaBufExportInfo)
+{
+	*ppsDmaBufExportInfo = OSAllocZMem(sizeof(struct dma_buf_export_info));
+	if (*ppsDmaBufExportInfo)
+	{
+		(*ppsDmaBufExportInfo)->exp_name = KBUILD_MODNAME;
+		(*ppsDmaBufExportInfo)->owner = THIS_MODULE;
+
+		return 0;
+	}
+
+	return -ENOMEM;
+}
+
+void OSDmaBufExportInfoDestroy(struct dma_buf_export_info *psDmaBufExportInfo)
+{
+	OSFreeMem(psDmaBufExportInfo);
+}
+
+void OSSetDmaBufExportInfo(struct dma_buf_export_info *psDmaBufExportInfo, PMR *psPMR,
+			   const struct dma_buf_ops *psOps, IMG_DEVMEM_SIZE_T uiPMRSize)
+{
+	psDmaBufExportInfo->priv = psPMR;
+	psDmaBufExportInfo->ops = psOps;
+	psDmaBufExportInfo->size = uiPMRSize;
+	psDmaBufExportInfo->flags = O_RDWR;
+}
+
+struct dma_buf *OSDmaBufExport(const struct dma_buf_export_info *psExpInfo)
+{
+	return dma_buf_export(psExpInfo);
+}
+
+int OSGetDmaBufFd(struct dma_buf *psDmBuf)
+{
+	return dma_buf_fd(psDmBuf, O_RDWR);
+}
+
+struct dma_buf *OSDmaBufGet(int iFd)
+{
+	return dma_buf_get(iFd);
+}
+
+struct dma_buf_attachment *OSDmaBufAttach(struct dma_buf *psDmBuf,
+					  struct device *psDev)
+{
+	return dma_buf_attach(psDmBuf, psDev);
+}
+
+bool OSIsErrOrNull(__force const void *pvPtr)
+{
+	return IS_ERR_OR_NULL(pvPtr);
 }

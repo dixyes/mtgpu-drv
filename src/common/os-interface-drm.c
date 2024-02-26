@@ -3,7 +3,6 @@
  * @License     Dual MIT/GPLv2
  */
 
-#include <linux/phy/phy.h>
 #include <drm/drm_device.h>
 #include <drm/drm_file.h>
 #include <drm/drm_print.h>
@@ -17,6 +16,7 @@
 #elif defined(OS_DRM_DISPLAY_DRM_DP_HELPER_H_EXIST)
 #include <drm/display/drm_dp_helper.h>
 #endif
+#include <drm/drm_crtc.h>
 #include <drm/drm_encoder.h>
 #include <drm/drm_crtc_helper.h>
 #include <uapi/drm/drm.h>
@@ -26,12 +26,30 @@
 #include <drm/drm_probe_helper.h>
 #endif
 
-#include "phy-dp.h"
+#include "mtgpu_drm_gem.h"
+#include "mtgpu_phy_dp.h"
 #include "os-interface-drm.h"
 
-void *os_drm_get_dev_private(struct drm_device *drm_dev)
+IMPLEMENT_OS_STRUCT_COMMON_FUNCS(drm_gem_object);
+
+struct mutex *os_get_drm_device_mutex(struct drm_device *drm)
 {
-	return drm_dev->dev_private;
+	return &drm->struct_mutex;
+}
+
+struct device *os_get_drm_device_base(struct drm_device *drm)
+{
+	return drm->dev;
+}
+
+int os_drm_get_card_index(struct drm_device *dev)
+{
+	return dev->primary->index;
+}
+
+int os_drm_get_render_index(struct drm_device *dev)
+{
+	return dev->render->index;
 }
 
 int os_drm_gem_handle_create(struct drm_file *file_priv,
@@ -46,9 +64,20 @@ int os_drm_gem_handle_delete(struct drm_file *filp, u32 handle)
 	return drm_gem_handle_delete(filp, handle);
 }
 
+/* get drm_gem_object members */
+IMPLEMENT_GET_OS_MEMBER_FUNC(drm_gem_object, dev);
+IMPLEMENT_GET_OS_MEMBER_FUNC(drm_gem_object, size);
+IMPLEMENT_GET_OS_MEMBER_FUNC(drm_gem_object, dma_buf);
+IMPLEMENT_GET_OS_MEMBER_FUNC(drm_gem_object, import_attach);
+
 struct drm_gem_object *os_drm_gem_object_lookup(struct drm_file *filp, u32 handle)
 {
 	return drm_gem_object_lookup(filp, handle);
+}
+
+void os_drm_gem_object_get(struct drm_gem_object *obj)
+{
+	drm_gem_object_get(obj);
 }
 
 void os_drm_gem_object_put(struct drm_gem_object *obj)
@@ -65,11 +94,11 @@ void os_drm_gem_object_release(struct drm_gem_object *obj)
 	drm_gem_object_release(obj);
 }
 
-int os_drm_gem_dumb_destroy(struct drm_file *file,
-			    struct drm_device *dev,
-			    uint32_t handle)
+void os_set_drm_gem_object_funcs(struct drm_gem_object *obj)
 {
-	return drm_gem_handle_delete(file, handle);
+#if !defined(OS_STRUCT_DRM_DRIVER_HAS_GEM_VM_OPS)
+	obj->funcs = &mtgpu_gem_object_funcs;
+#endif
 }
 
 int os_drm_gem_dumb_map_offset(struct drm_file *file,
@@ -97,14 +126,25 @@ void os_drm_gem_private_object_init(struct drm_device *dev,
 	drm_gem_private_object_init(dev, obj, size);
 }
 
-int os_drm_get_card_index(struct drm_device *dev)
+struct drm_gem_object *os_drm_gem_prime_import(struct drm_device *drm,
+					       struct dma_buf *dma_buf)
 {
-	return dev->primary->index;
+	return drm_gem_prime_import(drm, dma_buf);
 }
 
-int os_drm_get_render_index(struct drm_device *dev)
+int os_drm_gem_mmap(struct file *filp, struct vm_area_struct *vma)
 {
-	return dev->render->index;
+	return drm_gem_mmap(filp, vma);
+}
+
+int os_drm_gem_mmap_obj(struct drm_gem_object *obj, struct vm_area_struct *vma)
+{
+	return drm_gem_mmap_obj(obj, obj->size, vma);
+}
+
+void *os_get_vma_private_data(struct vm_area_struct *vma)
+{
+	return vma->vm_private_data;
 }
 
 u32 os_get_drm_mode_destroy_dumb_handle(struct drm_mode_destroy_dumb *args)
@@ -120,6 +160,31 @@ u32 os_get_drm_mode_map_dumb_handle(struct drm_mode_map_dumb *args)
 u64 *os_get_drm_mode_map_dumb_offset(struct drm_mode_map_dumb *args)
 {
 	return &args->offset;
+}
+
+void os_get_drm_mode_create_dumb_args(struct drm_mode_create_dumb *args,
+				      u32 *dumb_width,
+				      u32 *dumb_height,
+				      u32 *dumb_bpp,
+				      u32 *dumb_flags)
+{
+	*dumb_width = args->width;
+	*dumb_height = args->height;
+	*dumb_bpp = args->bpp;
+	*dumb_flags = args->flags;
+}
+
+void os_set_drm_mode_create_dumb_args(struct drm_mode_create_dumb *args,
+				      u32 handle, u32 pitch, u64 size)
+{
+	args->handle = handle;
+	args->pitch = pitch;
+	args->size = size;
+}
+
+struct file *os_get_drm_file_filp(struct drm_file *file)
+{
+	return file->filp;
 }
 
 /* drm dp helper interface */
@@ -233,6 +298,7 @@ void os_drm_dp_aux_unregister(struct drm_dp_aux *aux)
 	drm_dp_aux_unregister(aux);
 }
 
+IMPLEMENT_OS_STRUCT_COMMON_FUNCS(drm_crtc);
 IMPLEMENT_OS_STRUCT_COMMON_FUNCS(drm_encoder);
 IMPLEMENT_OS_STRUCT_COMMON_FUNCS(drm_connector);
 IMPLEMENT_OS_STRUCT_COMMON_FUNCS(videomode);
@@ -280,22 +346,6 @@ IMPLEMENT_GET_OS_MEMBER_FUNC(videomode, flags);
 IMPLEMENT_GET_OS_MEMBER_FUNC(hdmi_codec_params, sample_rate);
 IMPLEMENT_GET_OS_MEMBER_FUNC(hdmi_codec_params, sample_width);
 IMPLEMENT_GET_OS_MEMBER_FUNC(hdmi_codec_params, channels);
-
-/* phy interface */
-int os_phy_power_on(struct phy *phy)
-{
-	return phy_power_on(phy);
-}
-
-int os_phy_power_off(struct phy *phy)
-{
-	return phy_power_off(phy);
-}
-
-int os_phy_configure(struct phy *phy, union phy_configure_opts *opts)
-{
-	return phy_configure(phy, opts);
-}
 
 /* drm debug interface */
 void os_drm_dev_printk(const struct device *dev, const char *level, const char *format, ...)
@@ -345,6 +395,39 @@ void os_drm_dev_dbg(const struct device *dev, unsigned int category, const char 
 	else
 		printk(KERN_DEBUG "[" DRM_NAME ":%ps] %pV",
 		       __builtin_return_address(0), &vaf);
+
+	va_end(args);
+}
+
+void os_drm_dbg(unsigned int category, const char *format, ...)
+{
+	struct va_format vaf;
+	va_list args;
+
+	if (OS_DEBUG_CONDITION(category))
+		return;
+
+	va_start(args, format);
+	vaf.fmt = format;
+	vaf.va = &args;
+
+	printk(KERN_DEBUG "[" DRM_NAME ":%ps] %pV",
+	       __builtin_return_address(0), &vaf);
+
+	va_end(args);
+}
+
+void os_drm_printk(const char *level, const char *format, ...)
+{
+	struct va_format vaf;
+	va_list args;
+
+	va_start(args, format);
+	vaf.fmt = format;
+	vaf.va = &args;
+
+	printk("%s" "[" DRM_NAME ":%ps] %pV",
+	       level, __builtin_return_address(0), &vaf);
 
 	va_end(args);
 }

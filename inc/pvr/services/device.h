@@ -84,7 +84,8 @@ struct _CONNECTION_DATA_;
 typedef PVRSRV_ERROR (*AllocUFOBlockCallback)(struct _PVRSRV_DEVICE_NODE_ *psDeviceNode,
 														DEVMEM_MEMDESC **ppsMemDesc,
 														IMG_UINT32 *pui32SyncAddr,
-														IMG_UINT32 *puiSyncPrimBlockSize);
+														IMG_UINT32 *puiSyncPrimBlockSize,
+														IMG_BOOL bSystemMem);
 
 /*************************************************************************/ /*!
  @Function      FreeUFOBlockCallback
@@ -330,6 +331,10 @@ typedef struct _PVRSRV_DEVICE_NODE_
 	PVRSRV_ERROR (*pfnUpdateHealthStatus)(struct _PVRSRV_DEVICE_NODE_ *psDevNode,
 	                                      IMG_BOOL bIsTimerPoll);
 
+	void (*pfnGetShaderFileName)(struct _PVRSRV_DEVICE_NODE_ *psDevNode,
+				     IMG_CHAR                    *pszShaderFilenameStr,
+				     IMG_CHAR                    *pszShaderpFilenameStr);
+
 #if defined(SUPPORT_AUTOVZ)
 	void (*pfnUpdateAutoVzWatchdog)(struct _PVRSRV_DEVICE_NODE_ *psDevNode);
 #endif
@@ -371,6 +376,10 @@ typedef struct _PVRSRV_DEVICE_NODE_
 
 	/* initialise fw mmu, if FW not using GPU mmu, NULL otherwise. */
 	PVRSRV_ERROR			(*pfnFwMMUInit) (struct _PVRSRV_DEVICE_NODE_ *);
+
+	void (*pfnInitBIF)(const void *hPrivate);
+
+	IMG_UINT64 (*pfnGetPCBase)(void *pvRegsBaseKM, IMG_UINT32 ui32ContextID);
 
 	/* information about the device's address space and heaps */
 	DEVICE_MEMORY_INFO		sDevMemoryInfo;
@@ -527,6 +536,10 @@ typedef struct _PVRSRV_DEVICE_NODE_
 	PVRSRV_DEVICE_DEBUG_INFO sDebugInfo;
 
 	IMG_UINT64 ui64StatValue[32];
+#if (RGX_NUM_OS_SUPPORTED > 1)
+	IMG_UINT64 ui64StatVGPUMemLMA;
+	IMG_UINT64 ui64StatVGPUMemLMAMax;
+#endif
 	POS_LOCK hGpuMemStatLock;
 
 #ifdef SUPPORT_RGX

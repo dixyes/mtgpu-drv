@@ -88,6 +88,8 @@ static inline void pvr_dma_resv_add_excl_fence(struct dma_resv *obj,
 					       struct dma_fence *fence)
 {
 #if defined(OS_FUNC_DMA_RESV_ADD_FENCE_EXIST)
+	dma_resv_reserve_fences(obj, 1);
+
 	dma_resv_add_fence(obj, fence, DMA_RESV_USAGE_WRITE);
 #elif defined(OS_LINUX_DMA_RESV_H_EXIST)
 	dma_resv_add_excl_fence(obj, fence);
@@ -111,11 +113,17 @@ static inline void pvr_dma_resv_add_shared_fence(struct dma_resv *obj,
 static inline int pvr_dma_resv_get_fences(struct dma_resv *obj,
 					  struct dma_fence **pfence_excl,
 					  unsigned int *num_fences,
-					  struct dma_fence ***pfences)
+					  struct dma_fence ***pfences,
+					  bool usage_write,
+					  bool *fence_overall)
 {
+	*fence_overall = false;
+
 #if defined(OS_ENUM_DMA_RESV_USAGE_EXIST)
-	(void)dma_resv_get_fences(obj, DMA_RESV_USAGE_WRITE, NULL, &pfence_excl);
-	return dma_resv_get_fences(obj, DMA_RESV_USAGE_READ, num_fences, pfences);
+	*fence_overall = true;
+
+	return dma_resv_get_fences(obj, usage_write ? DMA_RESV_USAGE_WRITE :
+				   DMA_RESV_USAGE_READ, num_fences, pfences);
 #elif defined(OS_FUNC_DMA_RESV_GET_FENCES_EXIST)
 	return dma_resv_get_fences(obj, pfence_excl, num_fences, pfences);
 #elif defined(OS_LINUX_DMA_RESV_H_EXIST)

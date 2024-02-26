@@ -30,6 +30,9 @@ int mtgpu_smc_get_mem_clk(struct device *dev, u32 *ddr_clk, u32 *max_ddr_clk);
 s64 mtgpu_smc_get_frequence(struct device *dev, enum mtgpu_clk_domain domain, u16 sub_id);
 s64 mtgpu_smc_get_max_frequence(struct device *dev, enum mtgpu_clk_domain domain, u16 sub_id);
 int mtgpu_smc_set_frequence(struct device *dev, enum mtgpu_clk_domain domain, u16 sub_id, u64 freq);
+int mtgpu_smc_efuse_check(struct mtgpu_device *mtdev);
+
+#define SM_PMUC_RESET_NOT_SUPPORT   -1
 
 enum reset_type {
 	RESET_TYPE_ASSERT = 1,
@@ -51,6 +54,7 @@ enum mtgpu_subsys_id {
 	SS_ID_DISP,
 	SS_ID_FEC,
 	SS_ID_DRAM,
+	SS_ID_MTLINK,
 	SS_ID_MAX
 };
 
@@ -145,6 +149,14 @@ int mtgpu_smc_get_vpu_core_info(struct device *dev, u32 *vpu_core_info);
 int mtgpu_smc_set_gpu_eata_cfg(struct device *dev, struct gpu_eata_cfg_info *eata_cfg_info);
 int mtgpu_smc_read_dsp_register(struct device *dev, enum dsp_register reg, u32 *value);
 int mtgpu_smc_write_dsp_register(struct device *dev, enum dsp_register reg, u32 value);
+int mtgpu_smc_write_secure_reg8(struct device *dev, u16 region_id, u32 reg, u8 value);
+int mtgpu_smc_write_secure_reg16(struct device *dev, u16 region_id, u32 reg, u16 value);
+int mtgpu_smc_write_secure_reg32(struct device *dev, u16 region_id, u32 reg, u32 value);
+int mtgpu_smc_write_secure_reg64(struct device *dev, u16 region_id, u32 reg, u64 value);
+int mtgpu_smc_read_secure_reg8(struct device *dev, u16 region_id, u32 reg, u8 *value);
+int mtgpu_smc_read_secure_reg16(struct device *dev, u16 region_id, u32 reg, u16 *value);
+int mtgpu_smc_read_secure_reg32(struct device *dev, u16 region_id, u32 reg, u32 *value);
+int mtgpu_smc_read_secure_reg64(struct device *dev, u16 region_id, u32 reg, u64 *value);
 int mtgpu_smc_init(struct mtgpu_device *mtdev);
 void mtgpu_smc_exit(struct mtgpu_device *mtdev);
 

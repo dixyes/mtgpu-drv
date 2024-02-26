@@ -183,6 +183,22 @@ PVRSRV_ERROR PVRSRVSetDeviceDefaultPowerState(PCPVRSRV_DEVICE_NODE psDeviceNode,
 /*!
 ******************************************************************************
 
+ @Function      PVRSRVSetDeviceCurrentPowerState
+
+ @Description   Set the current device power state to eNewPowerState
+
+ @Input         psDeviceNode : Device node
+ @Input         eNewPowerState : New power state
+
+ @Return        PVRSRV_ERROR
+
+******************************************************************************/
+PVRSRV_ERROR PVRSRVSetDeviceCurrentPowerState(PPVRSRV_DEVICE_NODE psDeviceNode,
+					      PVRSRV_DEV_POWER_STATE eNewPowerState);
+
+/*!
+******************************************************************************
+
  @Function      PVRSRVSetSystemPowerState
 
  @Description   Set the system power state to eNewPowerState

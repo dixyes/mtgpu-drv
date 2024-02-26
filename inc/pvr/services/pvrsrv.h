@@ -189,6 +189,10 @@ typedef struct PVRSRV_DATA_TAG
 	IMG_HANDLE            hThreadsDbgReqNotify;
 
 	IMG_UINT32            ui32PDumpBoundDevice;           /*!< PDump is bound to the device first connected to */
+
+#if (RGX_NUM_OS_SUPPORTED > 1)
+	IMG_UINT32 ui32FWTraceBackup;
+#endif
 } PVRSRV_DATA;
 
 
@@ -535,19 +539,13 @@ struct file;
 struct vm_area_struct;
 int PVRSRV_MMap(struct file *file, struct vm_area_struct *ps_vma);
 
-int pvr_pmr_alloc(PVRSRV_DEVICE_NODE *psDeviceNode, int segment_id,
-		  size_t size, dma_addr_t *dev_addr, void **ppsPMR);
-int pvr_pmr_free(void *pmr);
-int pvr_pmr_mmap(void *pmr, void *vma);
-int pvr_pmr_vmap(PMR *psPMR, size_t size, IMG_HANDLE *hhPrivData, void **ppvKernAddr);
-void pvr_pmr_vunmap(PMR *psPMR, IMG_HANDLE hPrivData);
 SEGMENT_INFO *pvr_get_segment_info(PVRSRV_DEVICE_NODE *psDeviceNode);
 
 int mtgpu_system_alloc(struct drm_device *ddev, size_t size,
 		       u64 **cpu_pa_array, void **handle);
 int mtgpu_vram_alloc(struct drm_device *ddev, int segment_id, size_t size,
 		     dma_addr_t *dev_addr, void **handle);
-int mtgpu_vram_free(void *handle);
+void mtgpu_vram_free(void *handle);
 int mtgpu_vram_mmap(void *handle, void *vma);
 int mtgpu_vram_vmap(void *handle, size_t size, u64 *private_data, void **kaddr);
 void mtgpu_vram_vunmap(void *handle, u64 private_data);
@@ -567,9 +565,10 @@ PVRSRV_ERROR MTCpuPhysToPcieObNocAddr(PVRSRV_DEVICE_NODE *psDevNode,
 				      IMG_UINT64 *puiObNocAddr);
 
 IMG_BOOL PVRSRVIsIOMMUOn(PVRSRV_DEVICE_NODE *psDevNode);
-IMG_BOOL PVRSRVIsPcieDevOnSameSwitch(struct device *psLocalPcieDev,
-				     struct device *psRemotePcieDev);
+IMG_BOOL PVRSRVHasSamePcieRootPort(struct device *psLocalPcieDev,
+				   struct device *psRemotePcieDev);
 PVRSRV_ERROR PVRSRVGetDevMemClock(PVRSRV_DEVICE_NODE *psDeviceNode, IMG_PUINT32 pui32ddr_clk,
 				  IMG_PUINT32 pui32Maxddrclk);
+PVRSRV_ERROR PVRSRVCheckGpuHealthStatusAndReason(PVRSRV_DEVICE_NODE *psDeviceNode);
 
 #endif /* PVRSRV_H */

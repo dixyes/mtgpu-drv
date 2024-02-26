@@ -27,6 +27,7 @@ struct dummy_crtc {
 	struct drm_crtc crtc;
 	u32 vblank_periods;
 	struct hrtimer vblank_hrtimer;
+	spinlock_t dummy_lock;
 };
 
 #define ONE_SECOND_NS		1000000000
@@ -129,14 +130,27 @@ static enum hrtimer_restart dummy_vblank_simulate(struct hrtimer *timer)
 	struct drm_crtc *crtc = &dummy->crtc;
 	u64 ret_overrun;
 	bool ret;
+	unsigned long flags;
+
+	if (!spin_trylock_irqsave(&dummy->dummy_lock, flags)) {
+		hrtimer_add_expires_ns(&dummy->vblank_hrtimer,
+				       dummy->vblank_periods);
+		DRM_WARN("add expires_ns for hrtimer.\n");
+		return HRTIMER_RESTART;
+	}
+
+	ret = drm_crtc_handle_vblank(crtc);
+	if (!ret) {
+		DRM_WARN("dummy failure on handling vblank");
+		spin_unlock_irqrestore(&dummy->dummy_lock, flags);
+		return HRTIMER_NORESTART;
+	}
 
 	ret_overrun = hrtimer_forward_now(&dummy->vblank_hrtimer,
 					  dummy->vblank_periods);
 	WARN_ON(ret_overrun != 1);
 
-	ret = drm_crtc_handle_vblank(crtc);
-	if (!ret)
-		DRM_ERROR("dummy failure on handling vblank");
+	spin_unlock_irqrestore(&dummy->dummy_lock, flags);
 
 	return HRTIMER_RESTART;
 }
@@ -145,9 +159,12 @@ static int dummy_enable_vblank(struct drm_crtc *crtc)
 {
 	struct dummy_crtc *dummy = drm_crtc_to_dummy_crtc(crtc);
 
+	DRM_DEBUG("Enable software vsync timer\n");
+
 	hrtimer_init(&dummy->vblank_hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	dummy->vblank_hrtimer.function = &dummy_vblank_simulate;
 	dummy->vblank_periods = dummy_vblank_periods_calculate(crtc);
+
 	if (dummy->vblank_periods)
 		hrtimer_start(&dummy->vblank_hrtimer, dummy->vblank_periods, HRTIMER_MODE_REL);
 
@@ -157,8 +174,16 @@ static int dummy_enable_vblank(struct drm_crtc *crtc)
 static void dummy_disable_vblank(struct drm_crtc *crtc)
 {
 	struct dummy_crtc *dummy = drm_crtc_to_dummy_crtc(crtc);
+	unsigned long flags;
+
+	DRM_DEBUG("Disable software vsync timer\n");
+
+	if (!spin_trylock_irqsave(&dummy->dummy_lock, flags))
+		return;
 
 	hrtimer_cancel(&dummy->vblank_hrtimer);
+
+	spin_unlock_irqrestore(&dummy->dummy_lock, flags);
 }
 
 static void dummy_crtc_destroy(struct drm_crtc *crtc)
@@ -286,6 +311,8 @@ static int dummy_crtc_component_bind(struct device *dev, struct device *master, 
 	}
 
 	drm_crtc_helper_add(crtc, &dummy_crtc_helper_funcs);
+
+	spin_lock_init(&dummy->dummy_lock);
 
 	DRM_INFO("dummy crtc driver loaded successfully\n");
 

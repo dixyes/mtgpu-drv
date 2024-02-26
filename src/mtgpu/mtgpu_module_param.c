@@ -133,6 +133,10 @@ int disable_vpu;
 module_param(disable_vpu, int, 0444);
 MODULE_PARM_DESC(disable_vpu, "0: default, 1: disable vpu module.");
 
+int disable_jpu;
+module_param(disable_jpu, int, 0444);
+MODULE_PARM_DESC(disable_jpu, "0: default, 1: disable jpu module.");
+
 unsigned int mtgpu_page_size = 0;
 module_param(mtgpu_page_size, uint, 0444);
 MODULE_PARM_DESC(mtgpu_page_size, "gpu page size, default to 0.");
@@ -141,6 +145,10 @@ bool disable_driver;
 module_param(disable_driver, bool, 0444);
 MODULE_PARM_DESC(disable_driver, "disable mtgpu driver, default 0.");
 
+int vpu_group_max;
+module_param(vpu_group_max, int, 0444);
+MODULE_PARM_DESC(vpu_group_max, "0: default, 1: there are 6 vpu segments.");
+
 int irq_vector_cnt = 8;
 module_param(irq_vector_cnt, int, 0444);
 MODULE_PARM_DESC(irq_vector_cnt, "manually modify the number of interrupt vectors supported");
@@ -148,3 +156,45 @@ MODULE_PARM_DESC(irq_vector_cnt, "manually modify the number of interrupt vector
 bool disable_pcie_link_monitor;
 module_param(disable_pcie_link_monitor, bool, 0444);
 MODULE_PARM_DESC(disable_pcie_link_monitor, "disable pcie link monitor, default 0.");
+
+#if (RGX_NUM_OS_SUPPORTED > 1)
+int mtgpu_vgpu_scheduling_policy;
+module_param(mtgpu_vgpu_scheduling_policy, int, 0444);
+MODULE_PARM_DESC(mtgpu_vgpu_scheduling_policy,
+		 "mtgpu vgpu scheduling policy(best effort = 0, time sliced = 1)");
+
+int mtgpu_vgpu_time_sliced_value = 20;
+module_param(mtgpu_vgpu_time_sliced_value, int, 0444);
+MODULE_PARM_DESC(mtgpu_vgpu_time_sliced_value,
+		 "mtgpu vgpu time sliced value in millisecond");
+
+unsigned long mtgpu_vgpu_host_mem_size = 0x80000000;
+module_param(mtgpu_vgpu_host_mem_size, ulong, 0444);
+MODULE_PARM_DESC(mtgpu_vgpu_host_mem_size,
+		 "mtgpu vgpu host os vRAM memory size: default to 2G");
+
+bool mtgpu_vgpu_force_mmio_in_4g;
+module_param(mtgpu_vgpu_force_mmio_in_4g, bool, 0444);
+MODULE_PARM_DESC(mtgpu_vgpu_force_mmio_in_4g,
+		 "force mmio space allocated in 4g range (disable = 0, enable = 1 )");
+
+bool mtgpu_load_windows_firmware = true;
+module_param(mtgpu_load_windows_firmware, bool, 0444);
+MODULE_PARM_DESC(mtgpu_load_windows_firmware,
+	"0 - load linux fw, 1 - load windows fw. The default value is 1");
+
+int vgpu_mm_mapping_mode = 1;
+module_param(vgpu_mm_mapping_mode, int, 0444);
+MODULE_PARM_DESC(vgpu_mm_mapping_mode,
+	"vGPU system memory mapping mode(0: non_linear, 1: linear(default), 2: linear_prealloc)");
+
+#if defined(VDI_PLATFORM_SANGFOR)
+#define MTGPU_VGPU_VDMA_DEFAULT  1
+#else
+#define MTGPU_VGPU_VDMA_DEFAULT  0
+#endif
+
+int mtgpu_vdma_enable = MTGPU_VGPU_VDMA_DEFAULT;
+module_param(mtgpu_vdma_enable, int, 0444);
+MODULE_PARM_DESC(mtgpu_vdma_enable, "vdma enable mode (0: not enable, 1: enable)");
+#endif

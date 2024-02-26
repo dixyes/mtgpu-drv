@@ -114,6 +114,10 @@ PVRSRV_ERROR PVRSRVRGXGetHWPerfMaskKM(PVRSRV_DEVICE_NODE *psDeviceNode,
 				      RGX_HWPERF_STREAM_ID eStreamId,
 				      IMG_UINT64 *pui64Mask);
 
+PVRSRV_ERROR PVRSRVRGXGetSOCTimerKM(PVRSRV_DEVICE_NODE *psDeviceNode,
+				    IMG_UINT64 *pui64SocTimestamp,
+				    IMG_UINT64 *pui64OSTimestamp);
+
 PVRSRV_ERROR PVRSRVRGXAcquireHWPerfSettingKM(CONNECTION_DATA *psConnection,
 					     PMR **ppsPMR);
 
@@ -155,6 +159,11 @@ void RGXHWPerfHostPostEnqEvent(PVRSRV_RGXDEV_INFO *psRgxDevInfo,
                                IMG_UINT64 ui64UpdateFenceUID,
                                IMG_UINT64 ui64DeadlineInus,
                                IMG_UINT32 ui32CycleEstimate);
+
+void RGXHWPerfHostPostNotifyEvent(PVRSRV_RGXDEV_INFO *psRgxDevInfo,
+				  RGX_HWPERF_KICK_TYPE eNotifyType,
+				  IMG_UINT32 ui32Pid,
+				  IMG_UINT32 ui32FWDMContext);
 
 void RGXHWPerfHostPostAllocEvent(PVRSRV_RGXDEV_INFO *psRgxDevInfo,
                                  RGX_HWPERF_HOST_RESOURCE_TYPE eAllocType,
@@ -210,6 +219,16 @@ void RGXHWPerfHostPostTimeCorrelation(PVRSRV_RGXDEV_INFO *psRgxDevInfo,
 									  IMG_UINT32 ui32StartIndex,
 									  IMG_UINT32 ui32Count);
 
+void RGXHWPerfHostPostDMAEvent(PVRSRV_RGXDEV_INFO *psRgxDevInfo,
+			       RGX_HWPERF_HOST_EVENT_TYPE eEventType,
+			       RGX_HWPERF_HOST_DMA_TYPE eDMAType,
+			       RGX_HWPERF_HOST_DMA_DETAIL *psDetail,
+			       IMG_PID uiPID,
+			       IMG_PID uiTID,
+			       IMG_DEVMEM_SIZE_T uiSize,
+			       PVRSRV_TIMELINE hTimeline,
+			       IMG_UINT32 ui32ExtJobRef);
+
 IMG_BOOL RGXHWPerfHostIsEventEnabled(PVRSRV_RGXDEV_INFO *psRgxDevInfo, RGX_HWPERF_HOST_EVENT_TYPE eEvent);
 
 #define _RGX_HWPERF_HOST_FILTER(CTX, EV) \
@@ -257,6 +276,21 @@ IMG_BOOL RGXHWPerfHostIsEventEnabled(PVRSRV_RGXDEV_INFO *psRgxDevInfo, RGX_HWPER
 				                          (CHKUID), (UPDUID), (D), (CE)); \
 			} \
 		} while (0)
+
+/**
+ * @param C      Kick context
+ * @param P      Pid of kicking process
+ * @param X      Related FW context
+ * @param K      Kick type
+*/
+#define RGXSRV_HWPERF_NOTIFY(C, P, X, K) \
+do { \
+	if (_RGX_HWPERF_HOST_FILTER(C, RGX_HWPERF_HOST_NOTIFY)) \
+	{ \
+		RGXHWPerfHostPostNotifyEvent(_RGX_DEVICE_INFO_FROM_CTX(C), \
+					     (K), (P), (X)); \
+	} \
+} while (0)
 
 /**
  * This macro checks if HWPerfHost and the event are enabled and if they are
@@ -534,9 +568,62 @@ do { \
 	} \
 } while (0)
 
+/**
+ * @param I      Device info pointer
+ * @param EV     DMA event type
+ * @param PID    Process ID
+ * @param TID    Thread ID
+ * @param SW_TL  SW-timeline handle
+ * @param E      External job ref id
+ * @param S2D    Copy direction
+ * @param SADDR  SW address
+ * @param DADDR  Device address
+ * @param SIZE   Copy size
+ */
+#define RGXSRV_HWPERF_HOST_DMA_USER(I, EV, PID, TID, SW_TL, E, S2D, SADDR, DADDR, SIZE) \
+do { \
+	if (RGXHWPerfHostIsEventEnabled((I), RGX_HWPERF_HOST_DMA_##EV)) \
+	{ \
+		RGX_HWPERF_HOST_DMA_DETAIL uDetail; \
+		uDetail.sUserData.bS2D = (S2D); \
+		uDetail.sUserData.ui64Addr = (SADDR); \
+		uDetail.sUserData.ui64DevAddr = (DADDR); \
+		RGXHWPerfHostPostDMAEvent((I), RGX_HWPERF_HOST_DMA_##EV, RGX_HWPERF_HOST_DMA_TYPE_USER, \
+					  &uDetail, (PID), (TID), (SIZE), (SW_TL), (E)); \
+	} \
+} while (0)
+
+/**
+ * @param I      Device info pointer
+ * @param EV     DMA event type
+ * @param PID    Process ID
+ * @param TID    Thread ID
+ * @param SW_TL  SW-timeline handle
+ * @param E      External job ref id
+ * @param P2L    Copy direction
+ * @param PDEV   Peer device id
+ * @param LADDR  Local device address
+ * @param PADDR  Peer device address
+ * @param SIZE   Copy size
+ */
+#define RGXSRV_HWPERF_HOST_DMA_P2P(I, EV, PID, TID, SW_TL, E, P2L, PDEV, LADDR, PADDR, SIZE) \
+do { \
+	if (RGXHWPerfHostIsEventEnabled((I), RGX_HWPERF_HOST_DMA_##EV)) \
+	{ \
+		RGX_HWPERF_HOST_DMA_DETAIL uDetail; \
+		uDetail.sP2PData.bPeer2Local = (P2L); \
+		uDetail.sP2PData.i32PeerDevID = (PDEV); \
+		uDetail.sP2PData.ui64LocalDevAddr = (LADDR); \
+		uDetail.sP2PData.ui64PeerDevAddr = (PADDR); \
+		RGXHWPerfHostPostDMAEvent((I), RGX_HWPERF_HOST_DMA_##EV, RGX_HWPERF_HOST_DMA_TYPE_P2P, \
+					  &uDetail, (PID), (TID), (SIZE), (SW_TL), (E)); \
+	} \
+} while (0)
+
 #else
 
 #define RGXSRV_HWPERF_ENQ(C, P, X, E, I, K, CF, UF, UT, CHKUID, UPDUID, D, CE)
+#define RGXSRV_HWPERF_NOTIFY(C, P, X, K)
 #define RGXSRV_HWPERF_UFO(I, T, D, S)
 #define RGXSRV_HWPERF_ALLOC(D, T, FWADDR, N, Z)
 #define RGXSRV_HWPERF_ALLOC_FENCE(D, PID, FENCE, FWADDR, N, Z)
@@ -552,6 +639,8 @@ do { \
 #define RGXSRV_HWPERF_SYNC_SW_TL_ADV(I, PID, SW_TL, SPI)
 #define RGXSRV_HWPERF_HOST_CLIENT_INFO_PROCESS_NAME(D, PID, N)
 #define RGXSRV_HWPERF_HOST_TIME_CORRELATION(I, S, C)
+#define RGXSRV_HWPERF_HOST_DMA_USER(I, EV, PID, TID, SW_TL, E, S2D, SADDR, DADDR)
+#define RGXSRV_HWPERF_HOST_DMA_P2P(I, EV, PID, TID, SW_TL, E, P2L, PDEV, LADDR, PADDR)
 
 #endif
 

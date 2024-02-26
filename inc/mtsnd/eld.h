@@ -51,4 +51,5 @@ struct parsed_hdmi_eld {
 	struct cea_snd sad[ELD_MAX_SAD];
 };
 
+unsigned int snd_hdmi_show_eld(struct parsed_hdmi_eld *e, char* buf, int buflen);
 #endif /* _ELD_H */

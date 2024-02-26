@@ -72,7 +72,7 @@ PVRSRV_ERROR DmaTransfer(CONNECTION_DATA *psConnection,
 			IMG_UINT64 *puiAddress,
 			IMG_DEVMEM_OFFSET_T *puiOffset,
 			IMG_DEVMEM_SIZE_T *puiSize,
-			IMG_BOOL bMemToDev,
+			IMG_UINT32 uiFlags,
 			PVRSRV_TIMELINE iUpdateTimeline);
 
 PVRSRV_ERROR MTDmaTransfer(CONNECTION_DATA *psConnection,
@@ -82,7 +82,8 @@ PVRSRV_ERROR MTDmaTransfer(CONNECTION_DATA *psConnection,
 			IMG_UINT64 *puiAddress,
 			IMG_DEVMEM_OFFSET_T *puiOffset,
 			IMG_DEVMEM_SIZE_T *puiSize,
-			IMG_BOOL bMemToDev,
+			IMG_UINT32 uiFlags,
+			IMG_UINT32 uiExtJobRef,
 			PVRSRV_TIMELINE iUpdateTimeline);
 
 PVRSRV_ERROR MTDmaTransferP2P(CONNECTION_DATA *psConnection,
@@ -94,6 +95,7 @@ PVRSRV_ERROR MTDmaTransferP2P(CONNECTION_DATA *psConnection,
 			      IMG_DEVMEM_OFFSET_T *puiPeerOffset,
 			      IMG_DEVMEM_SIZE_T *puiSize,
 			      IMG_UINT32 uiFlags,
+			      IMG_UINT32 uiExtJobRef,
 			      PVRSRV_TIMELINE iUpdateFenceTimeline);
 
 PVRSRV_ERROR PVRSRVInitialiseDMA(PVRSRV_DEVICE_NODE *psDeviceNode);

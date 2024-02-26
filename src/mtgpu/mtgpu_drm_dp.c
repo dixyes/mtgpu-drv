@@ -26,13 +26,12 @@
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/module.h>
-#include <linux/phy/phy.h>
 #include <linux/platform_device.h>
 #include <sound/hdmi-codec.h>
 
 #include "mtgpu_drv.h"
 #include "mtgpu_board_cfg.h"
-#include "phy-dp.h"
+#include "mtgpu_phy_dp.h"
 #include "mtgpu_dp_common.h"
 #include "mtgpu_phy_common.h"
 #include "mtgpu_drm_debugfs.h"
@@ -66,6 +65,7 @@ mtgpu_dp_aux_transfer(struct drm_dp_aux *aux, struct drm_dp_aux_msg *msg)
 
 	if (ret) {
 		DRM_DEV_INFO(dp->dev, "WARNING: try to do aux transfer (%d)\n", ret);
+		os_mdelay(2);
 		return ret;
 	}
 
@@ -76,6 +76,7 @@ static enum drm_connector_status
 mtgpu_dp_connector_detect(struct drm_connector *connector, bool force)
 {
 	struct mtgpu_dp *dp = connector_to_mtgpu_dp(connector);
+	u16 retries = 100;
 
 	DRM_DEV_DEBUG(dp->dev, "%s()\n", __func__);
 
@@ -87,7 +88,12 @@ mtgpu_dp_connector_detect(struct drm_connector *connector, bool force)
 	dp->connected = dp->core->is_plugin(&dp->ctx);
 
 	if (dp->connected && !dp->edid) {
-		dp->edid = drm_get_edid(connector, &dp->aux->ddc);
+		do {
+			dp->edid = drm_get_edid(connector, &dp->aux->ddc);
+			usleep_range(2000, 3000);
+			retries--;
+		} while (!dp->edid && retries);
+
 		if (!dp->edid) {
 			DRM_DEV_ERROR(dp->dev, "failed to get edid\n");
 			drm_connector_update_edid_property(connector, NULL);
@@ -106,16 +112,6 @@ static int mtgpu_dp_connector_get_modes(struct drm_connector *connector)
 {
 	struct mtgpu_dp *dp = connector_to_mtgpu_dp(connector);
 
-#if defined(CONFIG_QUYUAN2_HAPS)
-	int count;
-
-	DRM_DEV_INFO(dp->dev, "%s()\n", __func__);
-
-	count = drm_add_modes_noedid(connector, 1024, 768);
-	drm_set_preferred_mode(connector, 640, 480);
-
-	return count;
-#else
 	int ret;
 
 	DRM_DEV_DEBUG(dp->dev, "%s()\n", __func__);
@@ -131,7 +127,6 @@ static int mtgpu_dp_connector_get_modes(struct drm_connector *connector)
 	ret = drm_add_edid_modes(connector, dp->edid);
 
 	return ret;
-#endif
 }
 
 static struct drm_encoder *
@@ -295,6 +290,9 @@ static int mtgpu_dp_drm_init(struct mtgpu_dp *dp, struct drm_device *drm)
 	dp->aux->name = "MTGPU DP AUX";
 	dp->aux->dev = dp->dev;
 	dp->aux->transfer = mtgpu_dp_aux_transfer;
+#if defined(OS_STRUCT_DRM_DP_AUX_HAS_DRM_DEV)
+	dp->aux->drm_dev = drm;
+#endif
 
 	ret = drm_dp_aux_register(dp->aux);
 	if (ret) {
@@ -519,17 +517,35 @@ static void mtgpu_dp_audio_unregister(struct mtgpu_dp *dp)
 	}
 }
 
+static int find_dp_phy_pdev_fn(struct device *dev, void *data)
+{
+	struct platform_device **phy_pdev = (struct platform_device **)data;
+
+	if (dev->bus != &platform_bus_type)
+		return 0;
+
+	*phy_pdev = to_platform_device(dev);
+	if (!*phy_pdev)
+		return 0;
+
+	if (!strncmp((*phy_pdev)->name, MTGPU_DEVICE_NAME_DP_PHY,
+		     strlen(MTGPU_DEVICE_NAME_DP_PHY)))
+		return 1;
+
+	return 0;
+}
+
 static int mtgpu_dp_component_bind(struct device *dev,
 				   struct device *master, void *data)
 {
 	struct mtgpu_dp_platform_data *pdata = dev_get_platdata(dev);
 	struct platform_device *pdev = to_platform_device(dev);
+	struct platform_device *phy_pdev = NULL;
 	struct drm_device *drm = data;
-	struct mtgpu_phy *dp_phy;
 	struct mtgpu_dp *dp;
 	struct resource *res;
-	int ret;
 	struct mtgpu_dp_chip *chip;
+	int ret;
 
 	dp = kzalloc(sizeof(*dp), GFP_KERNEL);
 	if (!dp)
@@ -620,17 +636,16 @@ static int mtgpu_dp_component_bind(struct device *dev,
 		goto err_free_dp;
 	}
 
-	dp->phy = devm_phy_get(dev, "dp-phy");
-	if (IS_ERR(dp->phy)) {
-		ret = PTR_ERR(dp->phy);
-		DRM_DEV_ERROR(dev, "failed to get dp-phy for %s, ret = %d\n", dev_name(dev), ret);
+	ret = device_for_each_child(dev, (void *)&phy_pdev, find_dp_phy_pdev_fn);
+	if (!ret) {
+		DRM_DEV_ERROR(dev, "failed to find phy pdev\n");
+		ret = -ENODEV;
 		goto err_free_dp;
 	}
+	dp->phy = platform_get_drvdata(phy_pdev);
+	dp->phy->ctx.dp_regs = dp->ctx.regs;
+	dp->phy->ctx.glb_regs = dp->ctx.glb_regs;
 	DRM_DEV_DEBUG(dev, "DP Controller driver get phy device successfully\n");
-
-	dp_phy = (struct mtgpu_phy *)phy_get_drvdata(dp->phy);
-	dp_phy->ctx.dp_regs = dp->ctx.regs;
-	dp_phy->ctx.glb_regs = dp->ctx.glb_regs;
 
 	dp->ctx.irq = res->start;
 	dp->ctx.id = pdata->id;
@@ -639,7 +654,7 @@ static int mtgpu_dp_component_bind(struct device *dev,
 	dp->ctx.max_pclk_100khz = pdata->max_pclk_100khz;
 	dp->port_type = pdata->port_type;
 	dev_set_drvdata(dev, dp);
-	INIT_WORK(dp->hpd_work, mtgpu_dp_hpd_work);
+	INIT_DELAYED_WORK(dp->hpd_work, mtgpu_dp_hpd_work);
 	INIT_WORK(dp->hpd_irq_work, mtgpu_dp_hpd_irq_work);
 	init_waitqueue_head(dp->ctx.waitq);
 
@@ -683,7 +698,7 @@ static int mtgpu_dp_component_bind(struct device *dev,
 	if (dp->core->hw_init)
 		dp->core->hw_init(&dp->ctx);
 
-	phy_init(dp->phy);
+	mtgpu_phy_init(dp->phy);
 
 	ret = mtgpu_dp_audio_register(dp);
 	if (ret) {
@@ -719,7 +734,7 @@ static void mtgpu_dp_component_unbind(struct device *dev,
 	int ret;
 	struct mtgpu_dp *dp = dev_get_drvdata(dev);
 
-	phy_exit(dp->phy);
+	mtgpu_phy_exit(dp->phy);
 
 	if (dp->core->hw_deinit)
 		dp->core->hw_deinit(&dp->ctx);
@@ -735,8 +750,6 @@ static void mtgpu_dp_component_unbind(struct device *dev,
 	mtgpu_dp_audio_unregister(dp);
 
 	drm_dp_aux_unregister(dp->aux);
-
-	devm_phy_put(dev, dp->phy);
 
 	mtgpu_dp_debugfs_remove_files(dp);
 
@@ -784,7 +797,7 @@ static int mtgpu_dp_resume(struct device *dev)
 	if (dp->core->hw_init)
 		dp->core->hw_init(&dp->ctx);
 
-	phy_init(dp->phy);
+	mtgpu_phy_init(dp->phy);
 
 	/*
 	* The audio service (eg. pluseaudio) will not response to the
@@ -808,8 +821,8 @@ static int mtgpu_dp_suspend(struct device *dev)
 	struct mtgpu_dp *dp = dev_get_drvdata(dev);
 
 	DRM_DEV_INFO(dp->dev, "mtgpu dp device suspend enter\n");
-	
-	phy_exit(dp->phy);
+
+	mtgpu_phy_exit(dp->phy);
 
 	DRM_DEV_INFO(dp->dev, "mtgpu dp device suspend exit\n");
 	

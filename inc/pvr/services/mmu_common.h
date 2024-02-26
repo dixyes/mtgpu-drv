@@ -485,12 +485,13 @@ struct _MMU_CONTEXT_
 	 * reading and using its content
 	 */
 	POS_LOCK hLock;
-	/* Base level info structure. Must be last member in structure */
-	MMU_Levelx_INFO sBaseLevelInfo;
 
 	/* dev virtual address and phys address mapping */
 	POS_LOCK hHashLock;
 	HASH_TABLE *psHashTab;
+
+	/* Base level info structure. Must be last member in structure */
+	MMU_Levelx_INFO sBaseLevelInfo;
 };
 
 /*************************************************************************/ /*!

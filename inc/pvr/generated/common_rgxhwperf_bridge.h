@@ -58,11 +58,19 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PVRSRV_BRIDGE_RGXHWPERF_RGXCONFIGUREHWPERFBLOCKS	PVRSRV_BRIDGE_RGXHWPERF_CMD_FIRST+1
 #define PVRSRV_BRIDGE_RGXHWPERF_RGXGETHWPERFBVNCFEATUREFLAGS	PVRSRV_BRIDGE_RGXHWPERF_CMD_FIRST+2
 #define PVRSRV_BRIDGE_RGXHWPERF_RGXCONTROLHWPERFBLOCKS		PVRSRV_BRIDGE_RGXHWPERF_CMD_FIRST+3
-#define PVRSRV_BRIDGE_RGXHWPERF_RGXACQUIREHWPERFFSETTINGS	PVRSRV_BRIDGE_RGXHWPERF_CMD_FIRST+4
-#define PVRSRV_BRIDGE_RGXHWPERF_RGXRELEASEHWPERFFSETTINGS	PVRSRV_BRIDGE_RGXHWPERF_CMD_FIRST+5
-#define PVRSRV_BRIDGE_RGXHWPERF_RGXGETHWPERFMASK		PVRSRV_BRIDGE_RGXHWPERF_CMD_FIRST+6
-#define PVRSRV_BRIDGE_RGXHWPERF_RGXGETHWPERFBLOCKCONFIGS	PVRSRV_BRIDGE_RGXHWPERF_CMD_FIRST+7
-#define PVRSRV_BRIDGE_RGXHWPERF_CMD_LAST			(PVRSRV_BRIDGE_RGXHWPERF_CMD_FIRST+7)
+#define PVRSRV_BRIDGE_RGXHWPERF_RGXACQUIREHWPERFFSETTINGS       PVRSRV_BRIDGE_RGXHWPERF_CMD_FIRST+4
+#define PVRSRV_BRIDGE_RGXHWPERF_RGXRELEASEHWPERFFSETTINGS       PVRSRV_BRIDGE_RGXHWPERF_CMD_FIRST+5
+#define PVRSRV_BRIDGE_RGXHWPERF_RGXGETHWPERFMASK                PVRSRV_BRIDGE_RGXHWPERF_CMD_FIRST+6
+#define PVRSRV_BRIDGE_RGXHWPERF_RGXGETHWPERFBLOCKCONFIGS        PVRSRV_BRIDGE_RGXHWPERF_CMD_FIRST+7
+#define PVRSRV_BRIDGE_RGXHWPERF_MUSAPFMSTART                    PVRSRV_BRIDGE_RGXHWPERF_CMD_FIRST+8
+#define PVRSRV_BRIDGE_RGXHWPERF_MUSAPFMSTOP                     PVRSRV_BRIDGE_RGXHWPERF_CMD_FIRST+9
+#define PVRSRV_BRIDGE_RGXHWPERF_MUSAPFMGLOBALCONFIG             PVRSRV_BRIDGE_RGXHWPERF_CMD_FIRST+10
+#define PVRSRV_BRIDGE_RGXHWPERF_MUSAPFMINSTANCECONFIG           PVRSRV_BRIDGE_RGXHWPERF_CMD_FIRST+11
+#define PVRSRV_BRIDGE_RGXHWPERF_MUSAPFMWRAPPERCONFIG            PVRSRV_BRIDGE_RGXHWPERF_CMD_FIRST+12
+#define PVRSRV_BRIDGE_RGXHWPERF_MUSAPFMTRIGGERDUMPONCE          PVRSRV_BRIDGE_RGXHWPERF_CMD_FIRST+13
+#define PVRSRV_BRIDGE_RGXHWPERF_MUSAPFMCLEARCONFIG              PVRSRV_BRIDGE_RGXHWPERF_CMD_FIRST+14
+#define PVRSRV_BRIDGE_RGXHWPERF_MUSAGETSOCTIMER                 PVRSRV_BRIDGE_RGXHWPERF_CMD_FIRST+15
+#define PVRSRV_BRIDGE_RGXHWPERF_CMD_LAST                        (PVRSRV_BRIDGE_RGXHWPERF_CMD_FIRST+15)
 
 /*******************************************
             RGXCtrlHWPerf
@@ -88,13 +96,23 @@ typedef struct PVRSRV_BRIDGE_OUT_RGXCTRLHWPERF_TAG
 typedef struct PVRSRV_BRIDGE_IN_RGXGETHWPERFMASK_TAG
 {
 	IMG_UINT32 ui32StreamId;
-}__packed PVRSRV_BRIDGE_IN_RGXGETHWPERFMASK;
+} __packed PVRSRV_BRIDGE_IN_RGXGETHWPERFMASK;
 
 typedef struct PVRSRV_BRIDGE_OUT_RGXGETHWPERFMASK_TAG
 {
 	PVRSRV_ERROR eError;
 	IMG_UINT64 ui64Mask;
-}__packed PVRSRV_BRIDGE_OUT_RGXGETHWPERFMASK;
+} __packed PVRSRV_BRIDGE_OUT_RGXGETHWPERFMASK;
+
+/*******************************************
+            PVRSRVGetSOCTimer
+ *******************************************/
+typedef struct PVRSRV_BRIDGE_OUT_RGXGETSOCTIMER_TAG
+{
+	PVRSRV_ERROR eError;
+	IMG_UINT64 ui64SocTimestamp;
+	IMG_UINT64 ui64OSTimestamp;
+} __packed PVRSRV_BRIDGE_OUT_RGXGETSOCTIMER;
 
 /*******************************************
 	    RGXAquireHWPerfSettings
@@ -190,4 +208,106 @@ typedef struct PVRSRV_BRIDGE_OUT_RGXCONTROLHWPERFBLOCKS_TAG
 	PVRSRV_ERROR eError;
 } __packed PVRSRV_BRIDGE_OUT_RGXCONTROLHWPERFBLOCKS;
 
+/*******************************************
+            RGXHWPerfPFMStart
+ *******************************************/
+
+/* Bridge out structure for RGXHWPerfPFMStart */
+typedef struct PVRSRV_BRIDGE_OUT_MUSAPFMSTART_TAG
+{
+	PVRSRV_ERROR eError;
+} __packed PVRSRV_BRIDGE_OUT_MUSAPFMSTART;
+
+/*******************************************
+            RGXHWPerfPFMStop
+ *******************************************/
+/* Bridge out structure for RGXHWPerfPFMStop */
+typedef struct PVRSRV_BRIDGE_OUT_MUSAPFMSTOP_TAG
+{
+	PVRSRV_ERROR eError;
+} __packed PVRSRV_BRIDGE_OUT_MUSAPFMSTOP;
+
+/*******************************************
+            MUSAPFMClearConfig
+ *******************************************/
+/* Bridge out structure for MUSAPFMClearConfig */
+typedef struct PVRSRV_BRIDGE_OUT_MUSAPFMCLEARCONFIG_TAG
+{
+	PVRSRV_ERROR eError;
+} __packed PVRSRV_BRIDGE_OUT_MUSAPFMCLEARCONFIG;
+
+/*******************************************
+            RGXHWPerfPFMTriggerDumpOnce
+ *******************************************/
+/* Bridge out structure for MUSAPFMClearConfig */
+typedef struct PVRSRV_BRIDGE_OUT_MUSAPFMTRIGGERDUMPONCE_TAG
+{
+	PVRSRV_ERROR eError;
+} __packed PVRSRV_BRIDGE_OUT_MUSAPFMTRIGGERDUMPONCE;
+
+/*******************************************
+            MUSAPFMSetInstanceConfig
+ *******************************************/
+/* Bridge in structure for MUSAPFMSetCounterInstanceConfig */
+typedef struct PVRSRV_BRIDGE_IN_MUSAPFMINSTANCECONFIG_TAG
+{
+	RGX_HWPERF_PFM_INSTANCE_CONFIG stInstanceConfig;
+} __packed PVRSRV_BRIDGE_IN_MUSAPFMINSTANCECONFIG;
+
+/* Bridge out structure for MUSAPFMSetCounterInstanceConfig */
+typedef struct PVRSRV_BRIDGE_OUT_MUSAPFMINSTANCECONFIG_TAG
+{
+	IMG_INT32 i32MemIndex;
+	PVRSRV_ERROR eError;
+} __packed PVRSRV_BRIDGE_OUT_MUSAPFMINSTANCECONFIG;
+
+/*******************************************
+            MUSAPFMSetWrapperConfig
+ *******************************************/
+/* Bridge in structure for MUSAPFMSetCounterInstanceConfig */
+typedef struct PVRSRV_BRIDGE_IN_MUSAPFMWRAPPERCONFIG_TAG
+{
+	RGX_HWPERF_PFM_WRAPPER_CONFIG stWrapperConfig;
+} __packed PVRSRV_BRIDGE_IN_MUSAPFMWRAPPERCONFIG;
+
+/* Bridge out structure for MUSAPFMSetCounterInstanceConfig */
+typedef struct PVRSRV_BRIDGE_OUT_MUSAPFMWRAPPERCONFIG_TAG
+{
+	PVRSRV_ERROR eError;
+} __packed PVRSRV_BRIDGE_OUT_MUSAPFMWRAPPERCONFIG;
+
+/*******************************************
+            MUSAPFMSetGlobalCounterConfig
+ *******************************************/
+/* Bridge in structure for MUSAPFMSetGlobalCounterConfig */
+typedef struct PVRSRV_BRIDGE_IN_MUSAPFMGLOBALCONFIG_TAG
+{
+	RGX_HWPERF_PFM_GLOBAL_CONFIG stGlobalConfig;
+} __packed PVRSRV_BRIDGE_IN_MUSAPFMGLOBALCONFIG;
+
+/* Bridge out structure for MUSAPFMSetGlobalCounterConfig */
+typedef struct PVRSRV_BRIDGE_OUT_MUSAPFMGLOBALCONFIG_TAG
+{
+	IMG_HANDLE hPMR;
+	PVRSRV_ERROR eError;
+} __packed PVRSRV_BRIDGE_OUT_MUSAPFMGLOBALCONFIG;
+
+/*******************************************
+            MUSAPFMReadCounterData
+ *******************************************/
+/* Bridge in structure for MUSAPFMReadCounterData */
+typedef struct PVRSRV_BRIDGE_IN_MUSAPFMCOUNTERDATA_TAG
+{
+	RGX_HWPERF_PFM_INSTANCE_CONFIG  stConfig;
+	IMG_UINT32 ui32ReadLen;
+	IMG_BYTE* pbCounterData;
+} __packed PVRSRV_BRIDGE_IN_MUSAPFMCOUNTERDATA;
+
+/* Bridge out structure for MUSAPFMReadCounterData */
+typedef struct PVRSRV_BRIDGE_OUT_MUSAPFMCOUNTERDATA_TAG
+{
+	IMG_UINT32 ui32ActualLen;
+	PVRSRV_ERROR eError;
+	IMG_BYTE* pbCounterData;
+} __packed PVRSRV_BRIDGE_OUT_MUSAPFMCOUNTERDATA;
 #endif /* COMMON_RGXHWPERF_BRIDGE_H */

@@ -138,7 +138,7 @@ __noreturn void klocwork_abort(void);
 #else
 
 #if defined(__linux__) && defined(__KERNEL__)
-void OSWarnOn(IMG_BOOL bCondition);
+int OSWarnOn(IMG_BOOL bCondition);
 
 /* In Linux kernel mode, use WARN_ON() directly. This produces the
  * correct filename and line number in the warning message.

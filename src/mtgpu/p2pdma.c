@@ -23,6 +23,18 @@
 #include "mtgpu-pci-p2pdma.h"
 #include "mtgpu_p2p.h"
 
+#if defined(OS_LINUX_PCI_P2PDMA_H_EXIST)
+
+#ifdef CONFIG_PCI_P2PDMA
+#include <linux/pci-p2pdma.h>
+
+int mtgpu_pci_p2pdma_distance_many(struct pci_dev *provider, struct device **clients,
+				   int num_clients, bool verbose)
+{
+	return pci_p2pdma_distance_many(provider, clients, num_clients, verbose);
+}
+
+#else /* CONFIG_PCI_P2PDMA */
 enum pci_p2pdma_map_type {
 	PCI_P2PDMA_MAP_UNKNOWN = 0,
 	PCI_P2PDMA_MAP_NOT_SUPPORTED,
@@ -203,7 +215,7 @@ static bool host_bridge_whitelist(struct pci_dev *a, struct pci_dev *b)
 
 static enum pci_p2pdma_map_type
 __upstream_bridge_distance(struct pci_dev *provider, struct pci_dev *client,
-		int *dist, bool *acs_redirects, struct seq_buf *acs_list)
+			   int *dist, bool *acs_redirects)
 {
 	struct pci_dev *a = provider, *b = client, *bb;
 	int dist_a = 0;
@@ -311,12 +323,12 @@ check_b_path_acs:
  */
 static enum pci_p2pdma_map_type
 upstream_bridge_distance(struct pci_dev *provider, struct pci_dev *client,
-		int *dist, bool *acs_redirects, struct seq_buf *acs_list)
+			 int *dist, bool *acs_redirects)
 {
 	enum pci_p2pdma_map_type map_type;
 
 	map_type = __upstream_bridge_distance(provider, client, dist,
-					      acs_redirects, acs_list);
+					      acs_redirects);
 
 	if (map_type == PCI_P2PDMA_MAP_THRU_HOST_BRIDGE) {
 		if (!cpu_supports_p2pdma() && !host_bridge_whitelist(provider, client))
@@ -330,31 +342,21 @@ static enum pci_p2pdma_map_type
 upstream_bridge_distance_warn(struct pci_dev *provider, struct pci_dev *client,
 			      int *dist)
 {
-	struct seq_buf acs_list;
 	bool acs_redirects;
 	int ret;
 
-	seq_buf_init(&acs_list, kmalloc(PAGE_SIZE, GFP_KERNEL), PAGE_SIZE);
-	if (!acs_list.buffer)
-		return -ENOMEM;
-
-	ret = upstream_bridge_distance(provider, client, dist, &acs_redirects,
-				       &acs_list);
+	ret = upstream_bridge_distance(provider, client, dist, &acs_redirects);
 	if (acs_redirects) {
 		pci_warn(client, "ACS redirect is set between the client and provider (%s)\n",
 			 pci_name(provider));
 		/* Drop final semicolon */
-		acs_list.buffer[acs_list.len-1] = 0;
-		pci_warn(client, "to disable ACS redirect for this path, add the kernel parameter: pci=disable_acs_redir=%s\n",
-			 acs_list.buffer);
+		pci_warn(client, "to disable ACS redirect for this path, add the kernel parameter: pci=disable_acs_redir\n");
 	}
 
 	if (ret == PCI_P2PDMA_MAP_NOT_SUPPORTED) {
 		pci_warn(client, "cannot be used for peer-to-peer DMA as the client and provider (%s) do not share an upstream bridge or whitelisted host bridge\n",
 			 pci_name(provider));
 	}
-
-	kfree(acs_list.buffer);
 
 	return ret;
 }
@@ -412,7 +414,7 @@ int mtgpu_pci_p2pdma_distance_many(struct pci_dev *provider, struct device **cli
 					pci_client, &distance);
 		else
 			ret = upstream_bridge_distance(provider, pci_client,
-						       &distance, NULL, NULL);
+						       &distance, NULL);
 
 		pci_dev_put(pci_client);
 
@@ -430,6 +432,15 @@ int mtgpu_pci_p2pdma_distance_many(struct pci_dev *provider, struct device **cli
 
 	return total_dist;
 }
+#endif
+
+#else /* OS_LINUX_PCI_P2PDMA_H_EXIST */
+int mtgpu_pci_p2pdma_distance_many(struct pci_dev *provider, struct device **clients,
+				   int num_clients, bool verbose)
+{
+	return -EOPNOTSUPP;
+}
+#endif
 
 EXPORT_SYMBOL(mtgpu_p2p_get_pages);
 EXPORT_SYMBOL(mtgpu_p2p_put_pages);

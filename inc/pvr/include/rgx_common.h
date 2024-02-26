@@ -48,10 +48,6 @@ extern "C" {
 #endif
 
 #include "img_defs.h"
-
-/* Included to get the BVNC_KM_N defined and other feature defs */
-#include "km/rgxdefs_km.h"
-
 #include "rgx_common_asserts.h"
 
 

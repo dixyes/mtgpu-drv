@@ -23,6 +23,10 @@ int mtgpu_proc_mpc_enable_open(struct inode *inode, struct file *file);
 ssize_t mtgpu_proc_mpc_enable_write(struct file *file, const char __user *user_buf,
 				    size_t nbytes, loff_t *ppos);
 
+int mtgpu_proc_util_open(struct inode *inode, struct file *file);
+ssize_t mtgpu_proc_util_write(struct file *file, const char __user *user_buf,
+			      size_t nbytes, loff_t *ppos);
+
 extern struct proc_dir_entry *mtgpu_proc_musa_dir;
 
 #endif /* __MTGPU_PROCFS_H__ */

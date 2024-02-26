@@ -202,6 +202,12 @@ typedef enum {
 	                                             See RGX_HWPERF_HOST_CLIENT_INFO_DATA */
 	RGX_HWPERF_HOST_TIME_CORRELATION  = 0x0C,   /*!< ``0x0C`` time correlation info.
 	                                             See RGX_HWPERF_HOST_TIME_CORRELATION_DATA */
+	RGX_HWPERF_HOST_DMA_START  = 0x0D,          /*!< ``0x0D`` DMA transfer start.
+	                                             See RGX_HWPERF_HOST_DMA_DATA */
+	RGX_HWPERF_HOST_DMA_END    = 0x0E,          /*!< ``0x0E`` DMA transfer end.
+	                                             See RGX_HWPERF_HOST_DMA_DATA */
+	RGX_HWPERF_HOST_NOTIFY     = 0x0F,          /*!< ``0x0F`` Kernel driver has added more data to GPU.
+	                                             See RGX_HWPERF_HOST_NOTIFY_DATA */
 	/*! last */
 	RGX_HWPERF_HOST_LAST_TYPE,
 

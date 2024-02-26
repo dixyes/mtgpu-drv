@@ -25,6 +25,8 @@
 #include "mtsnd_conf.h"
 #include "mtsnd_debug.h"
 #include "mtgpu_drv.h"
+#include "mtsnd_pcm_hw.h"
+#include "eld.h"
 
 #define DRVNAME	"mtsnd"
 
@@ -48,6 +50,7 @@ MODULE_PARM_DESC(snd_debug,
 
 static int mtsnd_dev_free(struct snd_device *device)
 {
+	int i = 0;
 	struct mtsnd_chip *chip = (struct mtsnd_chip *)device->device_data;
 
 #ifdef INTERRUPT_DEBUG
@@ -71,7 +74,12 @@ static int mtsnd_dev_free(struct snd_device *device)
 	if (chip->debug)
 		debugfs_remove_recursive(chip->debug);
 
-	kfree(chip->ipc_msg_buffer);
+	for (i = 0; i < get_pcm_count(chip); i++) {
+		if (chip->pcm[i].ipc_msg_buffer) {
+			kfree(chip->pcm[i].ipc_msg_buffer);
+			chip->pcm[i].ipc_msg_buffer = NULL;
+		}
+	}
 	kfree(chip);
 
 	return 0;
@@ -80,11 +88,15 @@ static int mtsnd_dev_free(struct snd_device *device)
 #ifdef INTERRUPT_DEBUG
 static irqreturn_t mtsnd_irq_handle(int irq, void *dev_id)
 {
+	int i;
 	struct mtsnd_chip *chip = dev_id;
 	unsigned int src = get_pcm_compr_irq(chip);
 
-	if (check_pcm_irq(chip, src))
-		mtsnd_handle_pcm(chip);
+	for (i = 0; i < get_pcm_count(chip); i++) {
+		if (check_pcm_irq(chip, i, src))
+			mtsnd_handle_pcm(&chip->pcm[i]);
+	}
+
 
 	if (check_compr_irq(chip, src))
 		mtsnd_handle_compr(chip);
@@ -95,9 +107,9 @@ static irqreturn_t mtsnd_irq_handle(int irq, void *dev_id)
 #else
 static void mtsnd_irq_handle(void *dev_id)
 {
-	struct mtsnd_chip *chip = dev_id;
+	struct mtsnd_pcm *pcm = dev_id;
 
-	mtsnd_handle_pcm(chip);
+	mtsnd_handle_pcm(pcm);
 }
 #endif
 
@@ -107,8 +119,9 @@ static int mtsnd_create(struct snd_card *card, struct pci_dev *pci,
 	int err;
 	struct mtsnd_chip *chip;
 #ifndef INTERRUPT_DEBUG
+	int i;
 	struct platform_device *pdev;
-	struct resource *res;
+	struct resource *res[4];
 	struct device *dev;
 #endif
 	static struct snd_device_ops ops = {
@@ -180,27 +193,28 @@ static int mtsnd_create(struct snd_card *card, struct pci_dev *pci,
 
 	pdev = to_platform_device(dev);
 
-	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
-	if (res == NULL) {
-		dev_err(chip->card->dev, "Error platform_get_resource\n");
-		err = -ENODATA;
-		goto errio1;
-	};
+	for (i = 0; i < get_pcm_count(chip); i++) {
+		res[i] = platform_get_resource(pdev, IORESOURCE_IRQ, i);
+		if (res[i] == NULL) {
+			dev_err(chip->card->dev, "Error platform_get_resource\n");
+			err = -ENODATA;
+			goto errirq;
+		}
 
-	err = mtgpu_set_interrupt_handler(pdev->dev.parent, res->start, mtsnd_irq_handle, chip);
-	if (err < 0) {
-		dev_err(chip->card->dev, "Error mtgpu_set_interrupt_handler\n");
-		goto errio1;
+		err = mtgpu_set_interrupt_handler(pdev->dev.parent, res[i]->start, mtsnd_irq_handle, &chip->pcm[i]);
+		if (err < 0) {
+			dev_err(chip->card->dev, "Error mtgpu_set_interrupt_handler\n");
+			goto errirq;
+		}
+
+		err = mtgpu_enable_interrupt(pdev->dev.parent, res[i]->start);
+		if (err < 0) {
+			dev_err(chip->card->dev, "Error mtgpu_enable_interrupt\n");
+			goto errirq;
+		}
 	}
-
-	err = mtgpu_enable_interrupt(pdev->dev.parent, res->start);
-	if (err < 0) {
-		dev_err(chip->card->dev, "Error mtgpu_enable_interrupt\n");
-		goto errirq_enable;
-	}
-
 	chip->mt_dev = pdev->dev.parent;
-	chip->irq = res->start;
+
 #endif
 
 	err = snd_device_new(card, SNDRV_DEV_LOWLEVEL, chip, &ops);
@@ -216,16 +230,23 @@ static int mtsnd_create(struct snd_card *card, struct pci_dev *pci,
 		strcpy(card->longname, "MooreThreadsGen1");
 	else if (get_chip_type(chip) == CHIP_GEN2)
 		strcpy(card->longname, "MooreThreadsGen2");
+	else if (get_chip_type(chip) == CHIP_GEN3)
+		strcpy(card->longname, "MooreThreadsGen3");
 
 	*rchip = chip;
 	return 0;
 
 errsnd_new:
 #ifndef INTERRUPT_DEBUG
-	mtgpu_disable_interrupt(pdev->dev.parent, res->start);
-errirq_enable:
-	if (mtgpu_set_interrupt_handler(pdev->dev.parent, res->start, NULL, NULL))
-		dev_warn(chip->card->dev, "irq func clean error\n");
+errirq:
+	for (i = 0; i < get_pcm_count(chip); i++) {
+		if (res[i]) {
+			mtgpu_disable_interrupt(pdev->dev.parent, res[i]->start);
+			if (mtgpu_set_interrupt_handler(pdev->dev.parent, res[i]->start, NULL, NULL))
+				dev_warn(chip->card->dev, "irq func clean error\n");
+
+		}
+	}
 #endif
 errio1:
 	iounmap(chip->bar[1].vaddr);
@@ -240,31 +261,31 @@ errmem:
 	return err;
 }
 
+#define SND_PRINT_ADVISED_BUFSIZE 512
+
 static ssize_t jack_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 {
 	struct mtsnd_chip *chip = file_inode(file)->i_private;
-	char str[256] = {0};
-	int len;
+	struct mtsnd_codec *codec;
+	char str[SND_PRINT_ADVISED_BUFSIZE] = {0};
+	int len = 0;
+	int i;
 
 	if (*ppos > 0)
 		return 0;
 
-	switch (get_chip_type(chip)) {
-	case CHIP_GEN1:
-		len = sprintf(str, "Gen1, log level: %x\ndp0 %x, dp1 %x, hdmi %x\n",
-			      snd_debug, chip->codec[0].c_state, chip->codec[1].c_state,
-			      chip->codec[2].c_state);
-		break;
-
-	case CHIP_GEN2:
-		len = sprintf(str, "Gen2, log level: %x\ndp0 %x, dp1 %x, dp2 %x, hdmi %x\n",
-			      snd_debug, chip->codec[0].c_state, chip->codec[1].c_state,
-			      chip->codec[2].c_state, chip->codec[3].c_state);
-		break;
-
-	default:
-		len = sprintf(str, "Error config for this card or audio driver crash!\n");
-		break;
+	if (get_chip_type(chip)) {
+		len = snprintf(str + len, SND_PRINT_ADVISED_BUFSIZE - len,
+			       "Gen%d, log level: %x\n", get_chip_type(chip), snd_debug);
+		for (i = 0; i < get_codec_count(chip); i++) {
+			codec = &chip->codec[i];
+			if (check_codec_state1(codec)) {
+				len += snprintf(str + len, SND_PRINT_ADVISED_BUFSIZE - len,
+					       "Display%d: state %d, sad %d\n", i,
+					       chip->codec[i].c_state, codec->eld->sad_count);
+				len += snd_hdmi_show_eld(codec->eld, str + len, SND_PRINT_ADVISED_BUFSIZE - len);
+			}
+		}
 	}
 
 	if (copy_to_user(buf, str, len))
@@ -327,6 +348,7 @@ static int mtsnd_probe(struct pci_dev *pci, const struct pci_device_id *pci_id)
 	struct mtsnd_chip *chip = NULL;
 	char name[32];
 	int err;
+	int i;
 
 	if (idx >= SNDRV_CARDS)
 		return -ENODEV;
@@ -348,10 +370,12 @@ static int mtsnd_probe(struct pci_dev *pci, const struct pci_device_id *pci_id)
 	pci_set_drvdata(pci, card);
 
 	/* init the rb for communicating with smc */
-	chip->ipc_msg_buffer = kzalloc(MSG_BUFFER_SIZE, GFP_KERNEL);
-	if (!chip->ipc_msg_buffer) {
-		err = -ENOMEM;
-		goto out_free;
+	for (i = 0; i < get_pcm_count(chip); i++) {
+		chip->pcm[i].ipc_msg_buffer = kzalloc(MSG_BUFFER_SIZE, GFP_KERNEL);
+		if (!chip->pcm[i].ipc_msg_buffer) {
+			err = -ENOMEM;
+			goto out_free;
+		}
 	}
 
 	err = mtsnd_create_compr(chip);
@@ -371,6 +395,8 @@ static int mtsnd_probe(struct pci_dev *pci, const struct pci_device_id *pci_id)
 		dev_err(&pci->dev, "Error mtsnd_create_codec\n");
 		goto out_free;
 	}
+
+	bind_pcm_codec(chip);
 
 	sprintf(name, "mtsnd%d", idx);
 	chip->debug = debugfs_create_dir(name, NULL);
@@ -398,13 +424,17 @@ static void mtsnd_remove(struct pci_dev *pci)
 
 /* PCI IDs */
 static const struct pci_device_id mtsnd_ids[] = {
-	{ PCI_VENDOR_ID_MTSND, DEVICE_ID_SUDI_SND, PCI_ANY_ID, PCI_ANY_ID,
+	{ PCI_VENDOR_ID_MTSND, DEVICE_ID_GEN1_SND, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_MULTIMEDIA_AUDIO << 8, ~0, 0},
-	{ PCI_VENDOR_ID_MTSND, DEVICE_ID_QY1_SND, PCI_ANY_ID, PCI_ANY_ID,
+	{ PCI_VENDOR_ID_MTSND, DEVICE_ID_GEN2_SND, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_MULTIMEDIA_AUDIO << 8, ~0, 0},
-	{ PCI_VENDOR_ID_MTSND, DEVICE_ID_SUDI_ANY, PCI_ANY_ID, PCI_ANY_ID,
+	{ PCI_VENDOR_ID_MTSND, DEVICE_ID_GEN3_SND, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_MULTIMEDIA_AUDIO << 8, ~0, 0},
-	{ PCI_VENDOR_ID_MTSND, DEVICE_ID_QY1_ANY, PCI_ANY_ID, PCI_ANY_ID,
+	{ PCI_VENDOR_ID_MTSND, DEVICE_ID_GEN1_ANY, PCI_ANY_ID, PCI_ANY_ID,
+	  PCI_CLASS_MULTIMEDIA_AUDIO << 8, ~0, 0},
+	{ PCI_VENDOR_ID_MTSND, DEVICE_ID_GEN2_ANY, PCI_ANY_ID, PCI_ANY_ID,
+	  PCI_CLASS_MULTIMEDIA_AUDIO << 8, ~0, 0},
+	{ PCI_VENDOR_ID_MTSND, DEVICE_ID_GEN3_ANY, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_MULTIMEDIA_AUDIO << 8, ~0, 0},
 	{ 0, }
 };
@@ -417,7 +447,12 @@ static int mtsnd_pm_suspend(struct device *dev)
 	struct snd_card *card = dev_get_drvdata(dev);
 	struct mtsnd_chip *chip = card->private_data;
 
+	os_dev_info(dev, "mtsnd device suspend enter\n");
+
 	mtsnd_suspend_pcm(chip);
+
+	os_dev_info(dev, "mtsnd device suspend exit\n");
+
 	return 0;
 }
 
@@ -426,7 +461,12 @@ static int mtsnd_pm_resume(struct device *dev)
 	struct snd_card *card = dev_get_drvdata(dev);
 	struct mtsnd_chip *chip = card->private_data;
 
+	os_dev_info(dev, "mtsnd device resume enter\n");
+
 	mtsnd_resume_pcm(chip);
+
+	os_dev_info(dev, "mtsnd device resume exit\n");
+	
 	return 0;
 }
 

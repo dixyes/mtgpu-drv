@@ -7,6 +7,7 @@
 #define __MTGPU_BOARD_CFG_H__
 
 #include "os-interface.h"
+#include "mtgpu_ipc.h"
 
 #define PORT_DISABLED		0
 /* DP port */
@@ -24,15 +25,18 @@
 #define GBYTE	(0x40000000UL)
 #define MBYTE	(0x100000UL)
 
+#define BOARD_INFO_ROM_UNIT_MAX_LEN (64)
+
 struct ddr_cap_info {
 	u64 ddr_size;	/* Byte */
 	u8 llc_type;
 	u8 valid_channel_count;
-	u8 ddr_frequency;
+	u8 rsv_1;
 	u8 ddr_pcs_capacity;
 	u8 ddr_pcs_count;
 	u8 ddr_type;
-	u8 rsv[10];
+	u16 ddr_frequency;
+	u8 rsv[8];
 };
 
 struct board_system_cap_info {
@@ -97,8 +101,14 @@ struct board_cap_info {
 	struct disp_cap_info disp_cfg;
 };
 
+struct board_info_rom_info {
+	u8 serial_number[BOARD_INFO_ROM_UNIT_MAX_LEN];
+	u8 mem_manufact[BOARD_INFO_ROM_UNIT_MAX_LEN];
+};
+
 struct mtgpu_board_configs {
 	struct board_cap_info board_cap;
+	struct board_info_rom_info board_info_rom;
 	bool secure_bit;
 	u32 wafer_chip_id;
 	u32 wafer_lot_no;
@@ -160,6 +170,70 @@ static inline void mtgpu_board_cfg_ddr_size_convert(u64 *ddr_size)
 		*ddr_size = 512 * MBYTE;
 	else	/* 1, 2, 3 .... G */
 		*ddr_size *= GBYTE;
+}
+
+static inline int
+mtgpu_get_board_info_by_dma_coherent(struct device *dev, void *ipc_info, int ipc_info_size,
+				     int ipc_event,
+				     int dma_alloc_coherent_size,
+				     int (*dma_addr_offset)(struct device *dev,
+							    dma_addr_t *dma_addr_src,
+							    dma_addr_t *dma_addr_dst),
+				     void (*ipc_request_param_setting)(void *ipc_param,
+								       dma_addr_t dma_addr_dst,
+								       int *ipc_param_size),
+				     int (*dma_data_valid)(void *dma_data))
+{
+	struct ipc_msg ipc_msg = {0};
+	struct ipc_msg_hdr *header = &ipc_msg.header;
+	dma_addr_t dma_addr_src, dma_addr_dst;
+	void *dma_data;
+	void *ipc_param;
+	int ipc_param_size = 0;
+
+	dma_data = os_dma_alloc_coherent(dev, dma_alloc_coherent_size, &dma_addr_src,
+					 OS_VAL(GFP_DMA));
+	if (!dma_data) {
+		BOARD_ERROR(dev, "alloc dma address for info_rom failed\n");
+		return -OS_VAL(EINVAL);
+	}
+	dma_addr_dst = dma_addr_src;
+
+	if (dma_addr_offset && dma_addr_offset(dev, &dma_addr_src, &dma_addr_dst)) {
+		BOARD_ERROR(dev, "dma_addr_offset error\n");
+		goto err;
+	}
+	BOARD_INFO(dev, "alloc_dma_addr:0x%llx, dma_addr_offset:0x%llx\n", dma_addr_src,
+		   dma_addr_dst);
+
+	ipc_param = (void *)&ipc_msg.data[0];
+	if (ipc_request_param_setting)
+		ipc_request_param_setting(ipc_param, dma_addr_dst, &ipc_param_size);
+
+	header->event_type = EVENT_TYPE_HOST_TO_SMC;
+	header->event_id   = ipc_event;
+	header->response   = 1;
+	header->source     = MTGPU_IPC_NODE_PCIE;
+	header->target     = MTGPU_IPC_NODE_SMC;
+	header->data_size  = ipc_param_size / sizeof(u32);
+
+	if (mtgpu_ipc_transmit(dev, &ipc_msg) != PCIE_IPC_MSG_DONE_WITH_RESPONSE) {
+		BOARD_ERROR(dev, "get board info failed\n");
+		goto err;
+	}
+
+	if (dma_data_valid && dma_data_valid(dma_data))
+		goto err;
+
+	os_memcpy(ipc_info, dma_data, ipc_info_size);
+	os_dma_free_coherent(dev, dma_alloc_coherent_size, dma_data, dma_addr_src);
+
+	return 0;
+
+err:
+	os_dma_free_coherent(dev, dma_alloc_coherent_size, dma_data, dma_addr_src);
+
+	return -OS_VAL(EINVAL);
 }
 
 #endif /* __MTGPU_BOARD_CFG_H__ */

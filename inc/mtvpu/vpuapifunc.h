@@ -266,6 +266,7 @@ typedef struct {
     Uint32          picInfo4Linear;
     Uint32          picSize4Compress;
     Uint32          picInfo4Compress;
+    Uint32          waitFor2ndField;
 } DecInfo;
 
 #define CODA9_AVC_Q_MATRIX_OFFSET       (0x3500)
@@ -276,7 +277,7 @@ typedef struct {
 #define CODA9_MP2_DIRECT_MEM_OFFSET     (0x24*2)
 #define CODA9_VC1_DIRECT_MEM_OFFSET     (0x10*2)
 #define CODA9_AVS_DIRECT_MEM_OFFSET     (0x10*2)
-#define CODA9_AVS_INDIRECT_MEM_OFFSET   (0x350*2)
+#define CODA9_AVS_INDIRECT_MEM_OFFSET   (0x600*2)
 #define CODA9_VP8_DIRECT_MEM_OFFSET     (0x8*2)
 
 #pragma pack(push, 1)
@@ -893,15 +894,15 @@ typedef struct {
     Uint16 dPicShowFrame;           //14h
     Uint16 dPicFirstDpSizeH;        //15h
     Uint16 dPicFirstDpSizeL;        //16h
-    Uint16 reverved;                //17h
+    Uint16 reserved;                //17h
 } /*__attribute__((packed))*/ Coda9Vp8DirectMemory;
 
 typedef struct {
     Uint16 dProfile;                //010h
     Uint16 dLevel;                  //011h
     Uint16 dChromaIdc;              //012h
-    Uint16 dFrmRtqPostProc;         //013h
-    Uint16 dBitRtqPostProc;         //014h
+    Uint16 dByteOffset;             //013h
+    Uint16 dBitOffset;              //014h
     Uint16 dPostProcFlag;           //015h
     Uint16 dMaxCodedX;              //016h
     Uint16 dMaxCodedY;              //017h
@@ -955,8 +956,72 @@ typedef struct {
     Uint16 dNumberOfPanScanWindows; //047h
     Uint16 dYUV411;                 //048h
     Uint16 dSprite;                 //049h
-    Uint16 reverved0;               //050h
-    Uint16 reverved1;               //05ah
+    Uint16 dFrameMode;              //04Ah
+    Uint16 dPicType0;               //04Bh
+    Uint16 dPicType1;               //04Ch
+    Uint16 dTempRefCount;           //04Dh
+    Uint16 dTopFieldFirst;          //04Eh
+    Uint16 dRptFirstField;          //04Fh
+    Uint16 dRptFrameCount;          //050h
+    Uint16 dSecondField;            //051h
+    Uint16 dBottomField;            //052h
+    Uint16 dCodedX;                 //053h
+    Uint16 dCodedY;                 //054h
+    Uint16 dMbNumX;                 //055h
+    Uint16 dMbNumY;                 //056h
+    Uint16 dSliceY;                 //057h
+    Uint16 dUVSamp;                 //058h
+    Uint16 dInterpFrm;              //059h
+    Uint16 dPostProc;               //05Ah
+    Uint16 dResPic;                 //05Bh
+    Uint16 dRangeRedFrm;            //05Ch
+    Uint16 dBFraction;              //05Dh
+    Uint16 dRefDist;                //05Eh
+    Uint16 dNumRef;                 //05Fh
+    Uint16 dRefField;               //060h
+    Uint16 dRndCtrl;                //061h
+    Uint16 dMvRange;                //062h
+    Uint16 dDMvRange;               //063h
+    Uint16 dMvMode;                 //064h
+    Uint16 dIntComp;                //065h    ; dIntComp [0]
+    Uint16 dLumScale;               //066h    ; dIntScale[0]
+    Uint16 dLumShift;               //067h    ; dIntShift[0]
+    Uint16 dIntComp1;               //068h    ; dIntComp [1]
+    Uint16 dLumScale1;              //069h    ; dIntScale[1]
+    Uint16 dLumShift1;              //06Ah    ; dIntShift[1]
+    Uint16 dBitpCoded;              //06Bh
+    Uint16 dCondOver;               //06Ch
+    Uint16 dBitpMode0;              //06Dh
+    Uint16 dBitpMode1;              //06Eh
+    Uint16 dBitpMode2;              //06Fh
+    Uint16 dMbModeTab;              //070h
+    Uint16 dMv2BpTab;               //071h
+    Uint16 dMv4BpTab;               //072h
+    Uint16 dMvTab;                  //073h
+    Uint16 dCbpTab;                 //074h
+    Uint16 dTTMbf;                  //075h
+    Uint16 dTTFrm;                  //076h
+    Uint16 dTransDcTab;             //077h
+    Uint16 dTransAcFrm0;            //078h
+    Uint16 dTransAcFrm1;            //079h
+    Uint16 dPQIndexLe8;             //07Ah
+    Uint16 dPQuant0;                //07Bh
+    Uint16 dPQuant1;                //07Ch
+    Uint16 dHalfQp;                 //07Dh
+    Uint16 dPQuantizer;             //07Eh
+    Uint16 dDQuantFrm;              //07Fh
+    Uint16 dDQProfile;              //080h
+    Uint16 dDQEdge;                 //081h
+    Uint16 dDQBiLevel;              //082h
+    Uint16 dX8IntraMb;              //083h
+    Uint16 dDctTabMb;               //084h
+    Uint16 dPicType;                //085h
+    Uint16 dMbAddr;                 //086h
+    Uint16 dMbPosX;                 //087h
+    Uint16 dMbPosY;                 //088h
+    Uint16 reserved0;               //089h
+    Uint16 reserved1;               //08Ah
+    Uint16 reserved2;               //08Bh
 } /*__attribute__((packed))*/ Coda9Vc1DirectMemory;
 
 typedef struct {
@@ -997,7 +1062,7 @@ typedef struct {
     Uint16 dSliceQp;                //031h
     Uint16 dSliceAddress;           //032h
     Uint16 dFieldPic;               //033h
-    Uint16 reserved[46];
+    Uint16 reserved[45];
     Uint16 dWeightQuantFlag;        //061h
     Uint16 dWeightQuantParam;       //062h
     Uint16 dWeightQuantModel;       //063h
@@ -1642,6 +1707,16 @@ typedef struct _VAPictureParameterBufferVC1
     Uint32 va_reserved[VA_PADDING_MEDIUM - 1];
 } VAPictureParameterBufferVC1;
 
+/* VC-1 Slice Parameter Buffer */
+typedef struct _VASliceParameterBufferVC1
+{
+    Uint32 slice_data_size;/* number of bytes in the slice data buffer for this slice */
+    Uint32 slice_data_offset;/* the offset to the first byte of slice data */
+    Uint32 slice_data_flag; /* see VA_SLICE_DATA_FLAG_XXX defintions */
+    Uint32 macroblock_offset;/* the offset to the first bit of MB from the first byte of slice data */
+    Uint32 slice_vertical_position;
+} VASliceParameterBufferVC1;
+
 typedef struct _VAPictureAVS
 {
     VASurfaceID     surface_id;
@@ -1677,10 +1752,11 @@ typedef struct _VAPictureParameterBufferAVS
 
     struct
     {
+        Uint16 guangdian_flag                     :  1;
         Uint16 aec_flag                           :  1;
         Uint16 weight_quant_flag                  :  1;
         Uint16 reserved_flag_2                    :  1;       // pb_field_enhanced_flag
-        Uint16 reserved                           : 13;
+        Uint16 reserved                           : 12;
         Int8   chroma_quant_param_delta_cb;
         Int8   chroma_quant_param_delta_cr;
         Uint8  wqm_8x8[64];
@@ -2362,6 +2438,7 @@ RetCode AllocateTiledFrameBufferGdiV1(TiledMapType mapType, PhysicalAddress tile
 RetCode AllocateTiledFrameBufferGdiV2(TiledMapType mapType, FrameBuffer* fbArr, Uint32 numOfFrameBuffers, Uint32 sizeLuma, Uint32 sizeChroma);
 
 RetCode EnterLock(Uint32 coreIdx);
+RetCode TryEnterLock(Uint32 coreIdx);
 RetCode LeaveLock(Uint32 coreIdx);
 RetCode SetClockGate(Uint32 coreIdx, Uint32 on);
 

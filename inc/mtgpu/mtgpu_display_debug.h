@@ -32,10 +32,10 @@ extern ulong display_debug;
 #define DP_DEBUG_CTL		((display_debug & DP_DEBUG_MASK)    >> 0)
 
 /* global debug log */
-#define GLB_TRACE()								\
+#define GLB_TRACE(fmt, ...)							\
 ({										\
 	if (GLB_DEBUG_CTL & DISP_PRINT_TRACE)					\
-		os_pr_info("DISP-TOP: %s()", __func__);				\
+		os_pr_info("DISP-TOP: %s(): " fmt, __func__, ##__VA_ARGS__);	\
 })
 
 #define GLB_DEBUG(fmt, ...)							\
@@ -105,10 +105,10 @@ extern ulong display_debug;
 })
 
 /* DISPC debug log */
-#define DISPC_TRACE()									\
+#define DISPC_TRACE(fmt, ...)								\
 ({											\
 	if (DISPC_DEBUG_CTL & DISP_PRINT_TRACE)						\
-		os_pr_info("DISPC-%d: %s()", ctx->id, __func__);			\
+		os_pr_info("DISPC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 })
 
 #define DISPC_DEBUG(fmt, ...)								\
@@ -178,10 +178,10 @@ extern ulong display_debug;
 })
 
 /* HDMI debug log */
-#define HDMI_TRACE()									\
+#define HDMI_TRACE(fmt, ...)								\
 ({											\
 	if (HDMI_DEBUG_CTL & DISP_PRINT_TRACE)						\
-		os_pr_info("HDMI: %s()", __func__);					\
+		os_pr_info("HDMI: %s(): " fmt, __func__, ##__VA_ARGS__);		\
 })
 
 #define HDMI_DEBUG(fmt, ...)								\
@@ -251,10 +251,10 @@ extern ulong display_debug;
 })
 
 /* DP debug log */
-#define DP_TRACE()									\
+#define DP_TRACE(fmt, ...)								\
 ({											\
 	if (DP_DEBUG_CTL & DISP_PRINT_TRACE)						\
-		os_pr_info("DP-%d: %s()", ctx->id, __func__);				\
+		os_pr_info("DP-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 })
 
 #define DP_DEBUG(fmt, ...)								\

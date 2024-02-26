@@ -22,13 +22,14 @@ struct mtgpu_phy_ctx {
 };
 
 struct mtgpu_phy {
-	struct phy *phy;
+	struct device *dev;
 	struct mtgpu_phy_ctx ctx;
 	struct mtgpu_phy_ops *ops;
 };
 
 struct mtgpu_phy_ops {
 	int (*init)(struct mtgpu_phy_ctx *ctx);
+	int (*exit)(struct mtgpu_phy_ctx *ctx);
 	int (*power_on)(struct mtgpu_phy_ctx *ctx);
 	int (*power_off)(struct mtgpu_phy_ctx *ctx);
 	void (*set_lane_count)(struct mtgpu_phy_ctx *ctx, u8 count);

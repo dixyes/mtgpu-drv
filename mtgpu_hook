@@ -14,4 +14,10 @@ esac
 
 . /usr/share/initramfs-tools/hook-functions
 
+# Add audio dependencies to initramfs
+manual_add_modules soundcore
+manual_add_modules snd
+manual_add_modules snd-timer
+manual_add_modules snd-pcm
+
 manual_add_modules mtgpu

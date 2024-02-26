@@ -59,5 +59,6 @@ typedef enum PVRSRV_ERROR_TAG
 } PVRSRV_ERROR;
 
 PVRSRV_ERROR LinuxErrnoToPvrError(int errno);
+int PvrErrorToLinuxErrno(PVRSRV_ERROR eError);
 
 #endif /* !defined(PVRSRV_ERROR_H) */

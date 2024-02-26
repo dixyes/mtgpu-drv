@@ -50,6 +50,7 @@ struct dma_capability {
 	bool is_support_scatter;
 	u32 size_alignment;
 	u32 offset_alignment;
+	u32 bus_width;
 };
 
 struct mtgpu_device;
@@ -59,6 +60,8 @@ struct mtgpu_dma_ops {
 	int (*transmit)(void *dma_info, struct mtgpu_dma_xfer_desc *descs,
 			int desc_cnt, int direction, int type, int chan);
 	int (*get_capabilities)(u32 type, struct dma_capability *dma_cap);
+	int (*acquire_channel)(struct mtgpu_device *mtdev, u32 instance_id);
+	u32 (*release_channel)(struct mtgpu_device *mtdev, int chan);
 	void (*exit)(struct mtgpu_device *mtdev);
 };
 

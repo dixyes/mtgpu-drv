@@ -9,6 +9,7 @@
 #include <linux/device.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/i2c.h>
 #if defined(OS_DRM_DRMP_H_EXIST)
 #include <drm/drmP.h>
 #endif
@@ -107,11 +108,27 @@ static struct drm_display_mode hdmi_supported_mode[] = {
 	{ DRM_MODE("2560x1440", DRM_MODE_TYPE_DRIVER, 241500, 2560, 2608,
 		   2640, 2720, 0, 1440, 1443, 1448, 1481, 0,
 		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC), },
-	/* 12 - 3840x2160@30Hz */
+	/* 12 - 2560x1440@60Hz HKC Monitor use 241700Khz for 2k@60 */
+	{ DRM_MODE("2560x1440", DRM_MODE_TYPE_DRIVER, 241700, 2560, 2608,
+		   2640, 2720, 0, 1440, 1443, 1448, 1481, 0,
+		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_NVSYNC), },
+	/* 13 - 3440x1440@50Hz */
+	{ DRM_MODE("3440x1440", DRM_MODE_TYPE_DRIVER, 266580, 3440, 3488,
+		   3520, 3600, 0, 1440, 1443, 1448, 1481, 0,
+		   DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC), },
+	/* 14 - 3440x1440@60Hz */
+	{ DRM_MODE("3440x1440", DRM_MODE_TYPE_DRIVER, 319890, 3440, 3488,
+		   3520, 3600, 0, 1440, 1443, 1448, 1481, 0,
+		   DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC), },
+	/* 15 - 3440x1440@100Hz */
+	{ DRM_MODE("3440x1440", DRM_MODE_TYPE_DRIVER, 533120, 3440, 3528,
+		   3592, 3600, 0, 1440, 1444, 1449, 1481, 0,
+		   DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC), },
+	/* 16 - 3840x2160@30Hz */
 	{ DRM_MODE("3840x2160", DRM_MODE_TYPE_DRIVER, 297000, 3840, 4016,
 		   4104, 4400, 0, 2160, 2168, 2178, 2250, 0,
 		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC), },
-	/* 13 - 3840x2160@60Hz */
+	/* 17 - 3840x2160@60Hz */
 	{ DRM_MODE("3840x2160", DRM_MODE_TYPE_DRIVER, 594000, 3840, 4016,
 		   4104, 4400, 0, 2160, 2168, 2178, 2250, 0,
 		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC), },
@@ -133,6 +150,7 @@ mtgpu_hdmi_connector_detect(struct drm_connector *connector, bool force)
 {
 	struct mtgpu_hdmi *hdmi = connector_to_mtgpu_hdmi(connector);
 	bool connected;
+	u16 retries = 100;
 
 	DRM_DEV_DEBUG(hdmi->dev, "%s()\n", __func__);
 
@@ -142,7 +160,12 @@ mtgpu_hdmi_connector_detect(struct drm_connector *connector, bool force)
 	connected = hdmi->core->is_plugin(&hdmi->ctx);
 
 	if (connected && !hdmi->edid) {
-		hdmi->edid = drm_get_edid(connector, hdmi->ddc);
+		do {
+			hdmi->edid = drm_get_edid(connector, hdmi->ddc);
+			usleep_range(2000, 3000);
+			retries--;
+		} while (!hdmi->edid && retries);
+
 		if (!hdmi->edid) {
 			DRM_DEV_ERROR(hdmi->dev, "failed to get edid\n");
 			drm_connector_update_edid_property(connector, NULL);
@@ -178,6 +201,28 @@ static int mtgpu_hdmi_connector_get_modes(struct drm_connector *connector)
 	return ret;
 }
 
+static int mtgpu_hdmi_mode_compare(struct drm_display_mode *a,
+				   struct drm_display_mode *b)
+{
+	int diff;
+
+	diff = b->hdisplay - a->hdisplay;
+	if (diff)
+		return diff;
+
+	diff = b->vdisplay - a->vdisplay;
+	if (diff)
+		return diff;
+
+	diff = drm_mode_vrefresh(b) - drm_mode_vrefresh(a);
+	if (diff)
+		return diff;
+
+	diff = (b->clock - a->clock) / 50;
+
+	return diff;
+}
+
 static bool mtgpu_hdmi_mode_supported_with_audio(struct mtgpu_hdmi *hdmi,
 						 struct drm_display_mode *mode)
 {
@@ -193,9 +238,7 @@ static bool mtgpu_hdmi_mode_supported_with_audio(struct mtgpu_hdmi *hdmi,
 
 	for (idx = 0; idx < ARRAY_SIZE(hdmi_supported_mode); ++idx) {
 		/* compare the timing and clock */
-		if (drm_mode_match(mode, &hdmi_supported_mode[idx],
-				   DRM_MODE_MATCH_TIMINGS |
-				   DRM_MODE_MATCH_CLOCK))
+		if (!mtgpu_hdmi_mode_compare(mode, &hdmi_supported_mode[idx]))
 			return true;
 	}
 	return false;
@@ -224,23 +267,6 @@ static int mtgpu_hdmi_mode_supported_by_product(struct mtgpu_hdmi *hdmi,
 		return MODE_V_ILLEGAL;
 
 	return MODE_OK;
-}
-
-static int mtgpu_hdmi_mode_compare(struct drm_display_mode *a,
-				   struct drm_display_mode *b)
-{
-	int diff;
-
-	diff = b->hdisplay * b->vdisplay - a->hdisplay * a->vdisplay;
-	if (diff)
-		return diff;
-
-	diff = drm_mode_vrefresh(b) - drm_mode_vrefresh(a);
-	if (diff)
-		return diff;
-
-	diff = b->clock - a->clock;
-	return diff;
 }
 
 static void mtgpu_hdmi_set_preferred_mode(struct drm_connector *connector,
@@ -911,7 +937,7 @@ static int mtgpu_hdmi_ddc_register(struct mtgpu_hdmi *hdmi)
 
 	i2c_set_adapdata(ddc, hdmi);
 	hdmi->ddc = ddc;
-#if defined(OS_STRUCT_CONNECTOR_HAS_DDC)
+#if defined(OS_STRUCT_DRM_CONNECTOR_HAS_DDC)
 	hdmi->connector.ddc = ddc;
 #endif
 

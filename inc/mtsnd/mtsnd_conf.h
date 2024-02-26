@@ -12,7 +12,7 @@
 #define MAX_NUM_CARD		8
 
 enum {
-	CHIP_GEN1,
+	CHIP_GEN1 = 1,
 	CHIP_GEN2,
 	CHIP_GEN3,
 	CHIP_GEN4,
@@ -34,8 +34,11 @@ struct pcm_info {
 };
 
 int snd_init_conf(int devId, struct mtsnd_chip *chip);
+void bind_pcm_codec(struct mtsnd_chip *chip);
 
+unsigned int get_pcm_count(struct mtsnd_chip *chip);
 unsigned int get_codec_count(struct mtsnd_chip *chip);
+unsigned int get_codec_pcm_index(struct mtsnd_chip *chip, int codec_idx);
 unsigned int get_chip_type(struct mtsnd_chip *chip);
 
 const char *get_jack_name(struct mtsnd_chip *chip, unsigned int index);

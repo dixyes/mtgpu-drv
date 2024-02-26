@@ -12,10 +12,12 @@
 #include "os-interface.h"
 
 #define PCI_VENDOR_ID_MTSND		(0x1ED5)
-#define DEVICE_ID_SUDI_SND		(0x01FF)
-#define DEVICE_ID_QY1_SND		(0x02FF)
-#define DEVICE_ID_SUDI_ANY		(0x0100)
-#define DEVICE_ID_QY1_ANY		(0x0200)
+#define DEVICE_ID_GEN1_SND		(0x01FF)
+#define DEVICE_ID_GEN2_SND		(0x02FF)
+#define DEVICE_ID_GEN3_SND		(0x03FF)
+#define DEVICE_ID_GEN1_ANY		(0x0100)
+#define DEVICE_ID_GEN2_ANY		(0x0200)
+#define DEVICE_ID_GEN3_ANY		(0x0300)
 #define MSG_BUFFER_SIZE			(512)
 
 struct device;
@@ -46,32 +48,42 @@ struct mtsnd_codec {
 	struct device *dev;
 	struct hdmi_codec_pdata *hcd;
 	struct parsed_hdmi_eld *eld;
+	struct hdmi_codec_params *params;
+	struct hdmi_codec_daifmt *daifmt;
+};
+
+struct mtsnd_pcm {
+	unsigned int index;
+
+	unsigned int open_pcm: 1;
+	unsigned int pcm_running: 1;
+	unsigned long pcm_device_addr;
+	unsigned long long iis_clock;
+
+	void *private_data;
+	struct snd_pcm_substream *substream;
+	/* ipc data buffer */
+	struct ipc_msg *ipc_msg_buffer;
+	/* pointer to codecs of pcm stream */
+	struct mtsnd_codec *codec[4];
 };
 
 /* card instance */
-
 struct mtsnd_chip {
-	/* ipc data buffer */
-	struct ipc_msg *ipc_msg_buffer;
-	unsigned long long iis_clock;
-
 	/* I/O resources */
 	struct mtsnd_bar bar[2];
 	int irq;
 	int idx;
 
-	unsigned int open_pcm: 1;
 	unsigned int open_compr: 1;
-	unsigned int pcm_running: 1;
 
 	/* dev convert addr */
-	unsigned long pcm_device_addr;
 	unsigned long compr_device_addr;
 	int compr_send_idx;
 	int compr_resp_idx;
 
 	/* chip config */
-	struct snd_conf *conf;
+	const struct snd_conf *conf;
 
 	struct snd_card *card;
 	struct pci_dev *pci;
@@ -82,22 +94,21 @@ struct mtsnd_chip {
 	struct snd_kcontrol *kctl[4];
 	struct mtsnd_timer *jack_timer[4];
 
-	struct snd_pcm_substream *substream;
 	struct snd_compr_stream *compr_stream;
 	struct dentry *debug;
 
 	/* codec */
 	struct mtsnd_codec codec[4];
+	/* pcm */
+	struct mtsnd_pcm pcm[4];
 
 	struct wait_queue_head *compr_sleep;
-	struct hdmi_codec_params *params;
-	struct hdmi_codec_daifmt *daifmt;
 };
 
 extern int mtsnd_create_pcm(struct mtsnd_chip *chip);
 extern void mtsnd_free_pcm(struct mtsnd_chip *chip);
 extern void mtsnd_reset_pcm(struct mtsnd_chip *chip);
-extern void mtsnd_handle_pcm(struct mtsnd_chip *chip);
+extern void mtsnd_handle_pcm(struct mtsnd_pcm *pcm);
 extern void mtsnd_suspend_pcm(struct mtsnd_chip *chip);
 extern void mtsnd_resume_pcm(struct mtsnd_chip *chip);
 

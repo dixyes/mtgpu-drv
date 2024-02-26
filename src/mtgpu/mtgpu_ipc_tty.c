@@ -96,8 +96,10 @@ void mtgpu_ipc_tty_handler(struct mtgpu_ipc_tty *ipctty, void *data)
 	if (!ipc_tty)
 		return;
 
-	if (d->dsize <= 0)
+	if (d->dsize <= 0 || d->dsize > TTY_IPC_MSG_MAX_DATA_SIZE) {
+		dev_err(ipctty->dev, "%s err size 0x%x\n", __func__, d->dsize);
 		return;
+	}
 
 	/* find my ipc tty port */
 	ipc_tty += d->tty_idx;
@@ -154,6 +156,7 @@ int mtgpu_ipc_tty_create(struct device *dev, struct mtgpu_ipc_tty **ipc_tty_out)
 	struct tty_driver *tty;
 	struct mtgpu_ipc_tty *ipc_tty_p, *ipc_tty;
 	struct device *ttydev;
+	char tty_name[32] = {0};
 
 	ipc_tty = kcalloc(IPC_TTY_COUNT, sizeof(*ipc_tty), GFP_KERNEL);
 	if (!ipc_tty)
@@ -166,7 +169,8 @@ int mtgpu_ipc_tty_create(struct device *dev, struct mtgpu_ipc_tty **ipc_tty_out)
 		return PTR_ERR(tty);
 
 	tty->driver_name = "mtgpu_ipc_tty";
-	tty->name = "ipctty";
+	sprintf(tty_name, "ipctty.%s.", dev_name(dev));
+	tty->name = tty_name;
 	tty->type = TTY_DRIVER_TYPE_SERIAL;
 	tty->subtype = SERIAL_TYPE_NORMAL;
 	tty->init_termios = tty_std_termios;

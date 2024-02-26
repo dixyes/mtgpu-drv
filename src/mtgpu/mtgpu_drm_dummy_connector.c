@@ -5,6 +5,7 @@
 
 #include <linux/component.h>
 #include <linux/platform_device.h>
+#include <linux/mod_devicetable.h>
 
 #if defined(OS_DRM_DRMP_H_EXIST)
 #include <drm/drmP.h>

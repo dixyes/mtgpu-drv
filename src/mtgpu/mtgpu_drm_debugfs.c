@@ -15,6 +15,7 @@
 #elif defined(OS_DRM_DISPLAY_DRM_DP_HELPER_H_EXIST)
 #include <drm/display/drm_dp_helper.h>
 #endif
+#include <drm/drm_crtc.h>
 #include <drm/drm_connector.h>
 #include <drm/drm_device.h>
 #include <drm/drm_file.h>
@@ -22,7 +23,7 @@
 
 #include "mtgpu_drv.h"
 #include "mtgpu_dp_common.h"
-#include "mtgpu_drm_dispc.h"
+#include "mtgpu_dispc_common.h"
 #include "mtgpu_drm_debugfs.h"
 
 /* link rate */
@@ -294,10 +295,10 @@ static const struct file_operations mtgpu_underrun_cnt_fops = {
 void mtgpu_dispc_debugfs_create_files(struct mtgpu_dispc *dispc)
 {
 	struct dentry *dentry;
-	int idx = dispc->crtc.dev->primary->index;
+	int idx = dispc->crtc->dev->primary->index;
 	char name[32];
 
-	sprintf(name, "card%d-%s", idx, dispc->crtc.name);
+	sprintf(name, "card%d-%s", idx, dispc->crtc->name);
 
 	dentry = debugfs_create_dir(name, mtgpu_dentry);
 	dispc->debugfs.dentry = dentry;

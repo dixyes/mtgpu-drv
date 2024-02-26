@@ -302,3 +302,80 @@ int mtsnd_check_eld(struct mtsnd_chip *chip, int codec_index)
 	else
 		return -EPERM; /* not support audio */
 }
+
+#define AC_SUPPCM_BITS_8		(1<<16)
+/**
+ * snd_print_pcm_bits - Print the supported PCM fmt bits to the string buffer
+ * @pcm: PCM caps bits
+ * @buf: the string buffer to write
+ * @buflen: the max buffer length
+ *
+ */
+static unsigned int snd_print_pcm_bits(int pcm, char *buf, int buflen)
+{
+	static unsigned int bits[] = { 8, 16, 20, 24, 32 };
+	int i, used_len = 0;
+
+	used_len += snprintf(buf + used_len, buflen - used_len,  "    bits:");
+	for (i = 0; i < ARRAY_SIZE(bits); i++)
+		if (pcm & (AC_SUPPCM_BITS_8 << i))
+			used_len += snprintf(buf + used_len, buflen - used_len,  " %d", bits[i]);
+
+	buf[used_len++] = '\n';
+
+	return used_len;
+}
+
+/*
+ * SNDRV_PCM_RATE_* and AC_PAR_PCM values don't match, print correct rates with
+ * hdmi-specific routine.
+ */
+static unsigned int hdmi_print_pcm_rates(int pcm, char *buf, int buflen)
+{
+	static unsigned int alsa_rates[] = {
+		5512, 8000, 11025, 16000, 22050, 32000, 44100, 48000, 64000,
+		88200, 96000, 176400, 192000, 384000
+	};
+	int i, used_len = 0;
+
+	used_len += snprintf(buf + used_len, buflen - used_len,  "    rates:");
+	for (i = 0; i < ARRAY_SIZE(alsa_rates); i++)
+		if (pcm & (1 << i))
+			used_len += snprintf(buf + used_len, buflen - used_len,  " %d",
+				alsa_rates[i]);
+
+	buf[used_len++] = '\n';
+
+	return used_len;
+}
+
+static unsigned int hdmi_show_short_audio_desc(struct cea_snd *a, char* buf, int buflen)
+{
+	int used_len = 0;
+
+	if (!a->format)
+		return 0;
+
+	used_len += snprintf(buf + used_len, buflen - used_len,  "    coding type: %s\n",
+			     cea_audio_coding_type_names[a->format]);
+	used_len += snprintf(buf + used_len, buflen - used_len,  "    channels: %d\n", a->channels);
+	used_len += hdmi_print_pcm_rates(a->rates, buf + used_len, buflen - used_len);
+
+	if (a->format == AUDIO_CODING_TYPE_LPCM)
+		used_len += snd_print_pcm_bits(a->sample_bits, buf + used_len, buflen - used_len);
+	else if (a->max_bitrate)
+		used_len += snprintf(buf + used_len, buflen - used_len, "    max bitrate: %d\n", a->max_bitrate);
+
+	return used_len;
+}
+
+unsigned int snd_hdmi_show_eld(struct parsed_hdmi_eld *e, char* buf, int buflen)
+{
+	int i;
+	int used_len = 0;
+
+	for (i = 0; i < e->sad_count; i++)
+		used_len += hdmi_show_short_audio_desc(e->sad + i, buf + used_len, buflen - used_len);
+
+	return used_len;
+}

@@ -98,11 +98,11 @@ OSMMapPMR(IMG_HANDLE hBridge,
     else
     {
         eError = PMRAcquireKernelMappingData(psPMR,
-                                            0,
-                                            0,
-                                            &pvKernelAddress,
-                                            &uiLength,
-                                            &hPriv);
+					     0,
+					     uiPMRSize,
+					     &pvKernelAddress,
+					     &uiLength,
+					     &hPriv);
     }
     if (eError != PVRSRV_OK)
     {

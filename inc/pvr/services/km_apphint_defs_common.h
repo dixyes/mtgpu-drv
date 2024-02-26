@@ -64,6 +64,7 @@ X(HWPerfClientBufferSize,           UINT32,         ALWAYS,      PVRSRV_APPHINT_
 #define APPHINT_LIST_MODPARAM_COMMON \
 /* name,                            type,           class,       default,                                         helper,         */ \
 X(GeneralNon4KHeapPageSize,         UINT32,         ALWAYS,      PVRSRV_APPHINT_GENERALNON4KHEAPPAGESIZE,         NO_PARAM_TABLE   ) \
+X(GeneralSVMHeapPageSize,           UINT32,         ALWAYS,      PVRSRV_APPHINT_GENERALSVMHEAPPAGESIZE,           NO_PARAM_TABLE   ) \
 \
 X(EnableSignatureChecks,            BOOL,           PDUMP,       PVRSRV_APPHINT_ENABLESIGNATURECHECKS,            NO_PARAM_TABLE   ) \
 X(SignatureChecksBufSize,           UINT32,         PDUMP,       PVRSRV_APPHINT_SIGNATURECHECKSBUFSIZE,           NO_PARAM_TABLE   ) \
@@ -135,7 +136,8 @@ X(HWPerfClientFilter_Vulkan,        UINT32,         ALWAYS,      PVRSRV_APPHINT_
 X(HWPerfClientFilter_OpenGL,        UINT32,         ALWAYS,      PVRSRV_APPHINT_HWPERFCLIENTFILTER_OPENGL,        NO_PARAM_TABLE   ) \
 X(CacheOpConfig,                    UINT32,         ALWAYS,      PVRSRV_APPHINT_CACHEOPCONFIG,                    NO_PARAM_TABLE   ) \
 X(CacheOpUMKMThresholdSize,         UINT32,         ALWAYS,      PVRSRV_APPHINT_CACHEOPUMKMHRESHOLDSIZE,          NO_PARAM_TABLE   ) \
-X(EnableFallbackToSystemMemory,     BOOL,           ALWAYS,      PVRSRV_APPHINT_ENABLEFALLBACKTOSYSTEMMEMORY,     NO_PARAM_TABLE   )
+X(EnableFallbackToSystemMemory,     BOOL,           ALWAYS,      PVRSRV_APPHINT_ENABLEFALLBACKTOSYSTEMMEMORY,     NO_PARAM_TABLE   ) \
+X(MemoryOptimization,              UINT32,         ALWAYS,       PVRSRV_APPHINT_MEMORYOPTIMIZATION,               NO_PARAM_TABLE   )
 
 /*
 *******************************************************************************
@@ -262,6 +264,13 @@ X(GPUVIRT_VAL)
 #else
 	#define APPHNT_PHYSMEMTEST_ENABLE             0
 #endif
+
+/* apphint mask about memory optimization */
+#define APPHNT_KCCB_SYSTEM_MEMORY_ENABLE		BIT(0)
+#define APPHNT_FWCCB_SYSTEM_MEMORY_ENABLE		BIT(1)
+#define APPHNT_CHECKPOINT_SYSTEM_MEMORY_ENABLE		BIT(2)
+#define APPHNT_DEVVAR_SYSTEM_MEMORY_ENABLE		BIT(3)
+#define APPHNT_REDUCE_READING_VRAM_ENABLE		BIT(31)
 
 /* Data types and actions */
 typedef enum {

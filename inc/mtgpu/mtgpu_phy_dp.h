@@ -1,22 +1,22 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2019 Cadence Design Systems Inc.
+ * @Copyright   Copyright (c) Moorethreads Technologies Ltd. All Rights Reserved
+ * @License     Dual MIT/GPLv2
  */
 
-#ifndef __PHY_DP_H_
-#define __PHY_DP_H_
+#ifndef __MTGPU_PHY_DP_H_
+#define __MTGPU_PHY_DP_H_
 
 #include "linux-types.h"
 
-struct phy;
+struct mtgpu_phy;
 
 /**
- * struct phy_configure_opts_dp - DisplayPort PHY configuration set
+ * struct mtgpu_phy_configure_opts_dp - DisplayPort PHY configuration set
  *
  * This structure is used to represent the configuration state of a
  * DisplayPort phy.
  */
-struct phy_configure_opts_dp {
+struct mtgpu_phy_configure_opts_dp {
 	/**
 	 * @link_rate:
 	 *
@@ -94,14 +94,14 @@ struct phy_configure_opts_dp {
 	u8 set_voltages : 1;
 };
 
-#if !defined(OS_STRUCT_PHY_OPS_HAS_CONFIGURE)
-
-union phy_configure_opts {
-	struct phy_configure_opts_dp	dp_phy;
+union mtgpu_phy_configure_opts {
+	struct mtgpu_phy_configure_opts_dp	dp_phy;
 };
 
-int phy_configure(struct phy *phy, union phy_configure_opts *opts);
+int mtgpu_phy_configure(struct mtgpu_phy *mtgpu, union mtgpu_phy_configure_opts *opts);
+int mtgpu_phy_init(struct mtgpu_phy *mtgpu);
+int mtgpu_phy_exit(struct mtgpu_phy *mtgpu);
+int mtgpu_phy_power_on(struct mtgpu_phy *mtgpu);
+int mtgpu_phy_power_off(struct mtgpu_phy *mtgpu);
 
-#endif /* OS_STRUCT_PHY_OPS_HAS_CONFIGURE */
-
-#endif /* __PHY_DP_H_ */
+#endif /* __MTGPU_PHY_DP_H_ */

@@ -22,6 +22,7 @@
 
 #if defined(__KERNEL__)
 #include "mtvpu_api.h"
+#include "osal.h"
 #elif defined(_MSC_VER)
 #if !defined(UNDER_UM)
 #include "vdi_osal.h"
@@ -70,6 +71,13 @@
 //------------------------------------------------------------------------------
 // common struct and definition
 //------------------------------------------------------------------------------
+typedef struct {
+	int enable;
+	int format;
+	Uint32 planeOffset[2];
+	Uint32 headerSizeAligned[2];
+	Uint32 headerSizeUnaligned[2];
+} FBCInfo;
 
 typedef struct
 {
@@ -764,6 +772,7 @@ And please make sure that the number of frame buffer `num` should be registered 
     DEC_SET_VAAPI_FIRST_PARAM_BUFFER, /**< This command sets the first param buffer address. Host should call this command before call VPU_DecIssueSeqInit function. */
     DEC_SET_VAAPI_WIDTH, /**< This command sets the horizontal picture size for VA-API interface. Host should call this command before call VPU_DecIssueSeqInit function. */
     DEC_SET_VAAPI_HEIGHT, /**< This command sets the vertical picture size for VA-API interface. Host should call this command before call VPU_DecIssueSeqInit function. */
+    DEC_SET_VAAPI_2ND_FIELD_PARAM, /**< This command sets the 2nd field VAAPI parameter. Host should call this command after INT_BIT_DEC_FIELD interrupt is issued. */
 /**
 @verbatim
 Applications can set a display flag for each frame buffer by calling this function after creating
@@ -2680,6 +2689,7 @@ Constant colour detected value for uv-plane. (default value: 0x0)
     PhysicalAddress vaDecodeBufAddrY;  /**< It specifies the Y buffer address of VA-API decoding. */
     PhysicalAddress vaDecodeBufAddrCb; /**< It specifies the Cb buffer address of VA-API decoding. */
     PhysicalAddress vaDecodeBufAddrCr; /**< It specifies the Cr buffer address of VA-API decoding. */
+    Uint32  fenceId;                   /**< the unique identifier for frame. */
 } DecParam;
 
 // Report Information
@@ -5440,13 +5450,14 @@ This is only for CODA9.
     Uint32 wpPixMeanY;   /**< Pixel mean value of Y component for weighted prediction. (WAVE5 only) */
     Uint32 wpPixMeanCb;  /**< Pixel mean value of Cb component for weighted prediction. (WAVE5 only) */
     Uint32 wpPixMeanCr;  /**< Pixel mean value of Cr component for weighted prediction. (WAVE5 only) */
-    Uint32 forceAllCtuCoefDropEnable; /**< It forces all coefficients to be zero after TQ. (WAVE5 only) */
-    FrameBuffer* OffsetTblBuffer;    /**< A offset table buffer address for Cframe50  */
-    WavePvricParam pvric; /**< <<vpuapi_h_WavePvricParam>> */
-    BOOL updateLast2Bit; /**< It updates the last 2bit data with last2BitData value when encoding 10bit stream with 8bit source yuv. */
-    Uint32 last2BitData; /**< It indicates the value to fill the last 2bit data. This variable is a valid when the updateLast2Bit is on. */
-    EncCSCParam csc; /**< It indicates the RGB to YUV CSC(color space conversion) parameter. <<vpuapi_h_EncCSCParam>> */
-    TimestampInfo timestamp; /**< It indicates the Timestamp parameter. (WAVE6 only) <<vpuapi_h_TimestampInfo>> */
+    Uint32 forceAllCtuCoefDropEnable;  /**< It forces all coefficients to be zero after TQ. (WAVE5 only) */
+    FrameBuffer*   OffsetTblBuffer;    /**< A offset table buffer address for Cframe50  */
+    WavePvricParam pvric;              /**< <<vpuapi_h_WavePvricParam>> */
+    BOOL           updateLast2Bit;     /**< It updates the last 2bit data with last2BitData value when encoding 10bit stream with 8bit source yuv. */
+    Uint32         last2BitData;       /**< It indicates the value to fill the last 2bit data. This variable is a valid when the updateLast2Bit is on. */
+    EncCSCParam    csc;                /**< It indicates the RGB to YUV CSC(color space conversion) parameter. <<vpuapi_h_EncCSCParam>> */
+    TimestampInfo  timestamp;          /**< It indicates the Timestamp parameter. (WAVE6 only) <<vpuapi_h_TimestampInfo>> */
+    Uint32         fenceId;            /**< the unique identifier for frame. */
 } EncParam;
 
 /**
@@ -5951,7 +5962,9 @@ RetCode VPU_GetVersionInfo(
 */
     Uint32* versionInfo,
     Uint32* revision,   /**< [Output] Revision information  */
-    Uint32* productId   /**< [Output] Product information. Refer to the <<vpuapi_h_ProductId>> enumeration */
+    Uint32* productId,  /**< [Output] Product information. Refer to the <<vpuapi_h_ProductId>> enumeration */
+    int use_try_lock    /**< [Input] 1: use try lock, returns failure when the lock is occupied; 
+                                     0: use lock, Will block waiting when the lock is occupied */
     );
 
 /**
@@ -6066,6 +6079,10 @@ VPU_DecGetOutputInfo() to proceed this function call.
 @endverbatim
  */
  RetCode VPU_DecClose(
+    DecHandle handle    /**< [Input] A decoder handle obtained from VPU_DecOpen() */
+    );
+
+ RetCode VPU_DecCloseForce(
     DecHandle handle    /**< [Input] A decoder handle obtained from VPU_DecOpen() */
     );
 
@@ -7376,6 +7393,7 @@ typedef struct {
     MemTypes memType;
     PhysicalAddress oldPa;
     PhysicalAddress newPa;
+    Int32 bufIdx;
 } UpdatePaInfo_t;
 
 /**

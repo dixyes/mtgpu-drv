@@ -96,7 +96,4 @@ void pvr_drm_release(struct drm_device *ddev, struct drm_file *dfile);
 int pvr_drv_init(void);
 void pvr_drv_exit(void);
 
-int PVRSRV_BridgeDispatchKM(struct drm_device *dev, void *arg,
-			    struct drm_file *file);
-
 #endif /* !defined(__PVR_DRV_H__) */

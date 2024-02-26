@@ -54,11 +54,30 @@
 	_max1 > _max2 ? _max1 : _max2; })
 #endif
 
+#ifndef roundup
+#define roundup(x, y) (					\
+{							\
+	typeof(y) __y = y;				\
+	(((x) + (__y - 1)) / __y) * __y;		\
+}							\
+)
+#endif
+
 #define OS_VAL(index)	(os_value[OS_##index])
 #define DECLEAR_OS_VALUE \
 	X(PCI_IRQ_LEGACY)\
 	X(PCI_IRQ_MSI)\
 	X(PCI_IRQ_MSIX)\
+	X(PCI_INTERRUPT_PIN)\
+	X(PCI_INTERRUPT_LINE)\
+	X(PCI_MSI_FLAGS)\
+	X(PCI_MSI_FLAGS_64BIT)\
+	X(PCI_MSI_FLAGS_QMASK)\
+	X(PCI_MSI_FLAGS_ENABLE)\
+	X(PCI_MSI_FLAGS_QSIZE)\
+	X(PCI_MSI_ADDRESS_LO)\
+	X(PCI_MSI_ADDRESS_HI)\
+	X(PCI_MSI_DATA_64)\
 	X(PCI_EXT_CAP_ID_REBAR)\
 	X(PCI_REBAR_CTRL)\
 	X(PCI_REBAR_CTRL_NBAR_MASK)\
@@ -67,8 +86,12 @@
 	X(PCI_REBAR_CAP)\
 	X(PCI_REBAR_CAP_SIZES)\
 	X(PCI_COMMAND)\
+	X(PCI_COMMAND_IO)\
 	X(PCI_COMMAND_MEMORY)\
+	X(PCI_COMMAND_MASTER)\
+	X(PCI_COMMAND_INTX_DISABLE)\
 	X(PCI_EXT_CAP_ID_SRIOV)\
+	X(PCI_SRIOV_VF_DID)\
 	X(PCI_D3hot)\
 	X(PCI_D0)\
 	X(PCI_ANY_ID)\
@@ -77,6 +100,48 @@
 	X(PCI_ACS_RR)\
 	X(PCI_ACS_CR)\
 	X(PCI_ACS_EC)\
+	X(PCI_VENDOR_ID)\
+	X(PCI_DEVICE_ID)\
+	X(PCI_SUBSYSTEM_VENDOR_ID)\
+	X(PCI_SUBSYSTEM_ID)\
+	X(PCI_SUBDEVICE_ID_QEMU)\
+	X(PCI_STATUS)\
+	X(PCI_STATUS_INTERRUPT)\
+	X(PCI_STATUS_66MHZ)\
+	X(PCI_STATUS_FAST_BACK)\
+	X(PCI_STATUS_CAP_LIST)\
+	X(PCI_CLASS_DEVICE)\
+	X(PCI_CLASS_DISPLAY_VGA)\
+	X(PCI_CLASS_DISPLAY_3D)\
+	X(PCI_CLASS_REVISION)\
+	X(PCI_CAP_ID_MSI)\
+	X(PCI_CAP_ID_EXP)\
+	X(PCI_CAP_EXP_ENDPOINT_SIZEOF_V1)\
+	X(PCI_CAP_LIST_ID)\
+	X(PCI_CAP_LIST_NEXT)\
+	X(PCI_CAPABILITY_LIST)\
+	X(PCI_CACHE_LINE_SIZE)\
+	X(PCI_BASE_ADDRESS_0)\
+	X(PCI_BASE_ADDRESS_1)\
+	X(PCI_BASE_ADDRESS_2)\
+	X(PCI_BASE_ADDRESS_3)\
+	X(PCI_BASE_ADDRESS_4)\
+	X(PCI_BASE_ADDRESS_5)\
+	X(PCI_BASE_ADDRESS_MEM_MASK)\
+	X(PCI_BASE_ADDRESS_SPACE_MEMORY)\
+	X(PCI_BASE_ADDRESS_MEM_TYPE_32)\
+	X(PCI_BASE_ADDRESS_MEM_TYPE_64)\
+	X(PCI_BASE_ADDRESS_MEM_PREFETCH)\
+	X(PCI_ROM_ADDRESS)\
+	X(PCI_EXP_FLAGS)\
+	X(PCI_EXP_FLAGS_VERS)\
+	X(PCI_EXP_FLAGS_TYPE)\
+	X(PCI_EXP_DEVCAP)\
+	X(PCI_EXP_DEVCAP_FLR)\
+	X(PCI_EXP_DEVCTL)\
+	X(PCI_EXP_DEVCTL_BCR_FLR)\
+	X(PCI_EXP_TYPE_ENDPOINT)\
+	X(PCI_STD_HEADER_SIZEOF)\
 	X(IRQF_SHARED)\
 	X(MODE_OK)\
 	X(DRM_UT_CORE)\
@@ -89,13 +154,18 @@
 	X(PAGE_SHIFT)\
 	X(FOLL_WRITE)\
 	X(O_NONBLOCK)\
+	X(O_RDWR)\
+	X(O_TRUNC)\
+	X(O_CREAT)\
 	X(EPOLLIN)\
+	X(EPOLLHUP)\
 	X(GFP_DMA)\
 	X(GFP_KERNEL)\
 	X(GFP_ATOMIC)\
 	X(PIDTYPE_PID)\
 	X(VM_EXEC)\
 	X(VM_LOCKED)\
+	X(VM_SHARED)\
 	X(IORESOURCE_MEM)\
 	X(IORESOURCE_IRQ)\
 	X(IORESOURCE_IO)\
@@ -121,13 +191,16 @@
 	X(EBUSY)\
 	X(EFAULT)\
 	X(ENOTSUPP)\
+	X(EOPNOTSUPP)\
 	X(ENOSPC)\
 	X(EACCES)\
 	X(EAGAIN)\
 	X(ENOENT)\
+	X(ENOTTY)\
 	X(ERANGE)\
 	X(IRQ_HANDLED)\
 	X(IRQ_NONE)\
+	X(IRQF_TRIGGER_NONE)\
 	X(DMA_BIDIRECTIONAL)\
 	X(DMA_TO_DEVICE)\
 	X(DMA_FROM_DEVICE)\
@@ -136,7 +209,20 @@
 	X(WQ_SYSFS)\
 	X(WQ_MEM_RECLAIM)\
 	X(WQ_CPU_INTENSIVE)\
-	X(WQ_HIGHPRI)
+	X(WQ_HIGHPRI)\
+	X(SIGINT)\
+	X(SZ_4K)\
+	X(SZ_1M)\
+	X(NOTIFY_OK)\
+	X(MAX_ORDER)\
+	X(__GFP_COMP)\
+	X(__GFP_ZERO)\
+	X(__GFP_MOVABLE)\
+	X(__GFP_RECLAIMABLE)\
+	X(SLAB_ACCOUNT)\
+	X(IOMMU_WRITE)\
+	X(IOMMU_READ)\
+	X(IOMMU_DOMAIN_UNMANAGED)
 
 enum {
 #define X(VALUE) OS_##VALUE,
@@ -186,9 +272,10 @@ enum {
 struct mutex;
 struct semaphore;
 typedef struct spinlock spinlock_t;
+struct kfifo;
 struct wait_queue_head;
 typedef struct wait_queue_head wait_queue_head_t;
-struct wait_queue_entry;
+typedef struct wait_queue_entry wait_queue_entry_t;
 struct work_struct;
 typedef void (*work_func_t)(struct work_struct *work);
 struct workqueue_struct;
@@ -203,33 +290,52 @@ struct pci_saved_state;
 struct pci_device_id;
 struct resource;
 struct file;
+struct fd;
 struct firmware;
 struct timer_list;
 struct mt_work;
 struct sg_table;
 struct dma_buf;
+struct dma_buf_attachment;
 struct blocking_notifier_head;
 struct notifier_block;
 struct kref;
 struct miscdevice;
 struct inode;
-struct poll_table_struct;
 struct mm_struct;
 struct vm_area_struct;
-struct poll_table_struct;
+typedef struct poll_table_struct poll_table;
 struct ida;
 struct task_struct;
 struct pid;
 struct path;
 struct mtgpu_resource;
 struct attribute;
+struct bin_attribute;
+struct attribute_group;
 struct device_attribute;
 struct kobject;
 struct seq_file;
+struct rb_root_cached;
+struct interval_tree_node;
 struct bus_type;
 struct delayed_work;
+struct eventfd_ctx;
 struct tasklet_struct;
 struct mempool_s;
+struct radix_tree_iter;
+struct dmi_device;
+struct dmi_dev_onboard;
+#ifdef OS_STRUCT_XARRAY_EXIST
+struct xarray;
+#define radix_tree_root xarray
+#else
+struct radix_tree_root;
+#endif
+struct page;
+struct iommu_group;
+struct iommu_domain;
+struct kmem_cache;
 
 #if defined(SUPPORT_ION)
 struct ion_heap;
@@ -243,6 +349,9 @@ typedef int (*notifier_fn_t)(struct notifier_block *nb,
 			     unsigned long action, void *data);
 typedef void * (mempool_alloc_t)(gfp_t gfp_mask, void *pool_data);
 typedef void (mempool_free_t)(void *element, void *pool_data);
+typedef int (*wait_queue_func_t)(struct wait_queue_entry *wq_entry,
+				 unsigned int mode, int flags, void *key);
+typedef void (*poll_queue_proc)(struct file *, wait_queue_head_t *, struct poll_table_struct *);
 typedef int mt_kref;
 typedef int pci_power_t;
 typedef unsigned long kernel_ulong_t;
@@ -295,6 +404,16 @@ struct mt_tm {
 
 #define os_plist_for_each_entry_safe(pos, n, head, m)				\
 	os_list_for_each_entry_safe(pos, n, &(head)->node_list, m.node_list)
+
+#define os_radix_tree_for_each_slot(slot, root, iter, start)		\
+	for (slot = os_radix_tree_iter_init(iter, start) ;		\
+	     slot || (slot = os_radix_tree_next_chunk(root, iter, 0)) ;	\
+	     slot = os_radix_tree_next_slot(slot, iter, 0))
+
+#define os_kvm_for_each_memslot(memslot, slots)			\
+	for (memslot = os_list_first_kvm_memslot(slots);	\
+	     os_list_kvm_memslot_check(slots, memslot);		\
+	     os_kvm_memslot_inc(&memslot))
 
 /**
  * The macros are defined for os struct.
@@ -349,7 +468,43 @@ mt_typeof_member(struct type, member) os_get_##type##_##member(struct type *ptr)
 {											\
 	return ptr->member;								\
 }
+
+/* set member of the structure */
+#define IMPLEMENT_SET_OS_MEMBER_FUNC(type, member)					\
+void os_set_##type##_##member(struct type *ptr, mt_typeof_member(struct type, member) v)\
+{											\
+	ptr->member = v;								\
+}
+
+/* offsetofend of struct member */
+#define IMPLEMENT_GET_OS_MEMBER_OFFSETOFEND_FUNC(type, member)	\
+size_t os_offsetofend_##type##_##member(void)			\
+{								\
+	return offsetofend(struct type, member);		\
+}
+
+#define DECLARE_GET_OS_MEMBER_OFFSETOFEND_FUNC(type, member)	\
+size_t os_offsetofend_##type##_##member(void)
+
 extern const u64 os_value[];
+
+DECLARE_OS_STRUCT_COMMON_FUNCS(interval_tree_node);
+DECLARE_OS_STRUCT_COMMON_FUNCS(rb_root_cached);
+
+/**
+ * Interface of interval tree and rbtree
+ */
+unsigned long os_get_interval_tree_node_start(struct interval_tree_node *node);
+void os_set_interval_tree_node_value(struct interval_tree_node *node, u64 start, u64 length);
+void os_interval_tree_clear_node(struct interval_tree_node *node);
+bool os_interval_tree_node_is_empty(struct interval_tree_node *node);
+void os_interval_tree_insert(struct interval_tree_node *node, struct rb_root_cached *root);
+void os_interval_tree_remove(struct interval_tree_node *node, struct rb_root_cached *root);
+struct interval_tree_node *os_interval_tree_iter_next(struct interval_tree_node *node,
+						      unsigned long start, unsigned long last);
+struct interval_tree_node *os_interval_tree_iter_first(struct rb_root_cached *root,
+						       unsigned long start, unsigned long last);
+void os_rb_root_init(struct rb_root_cached *root);
 
 #if defined(SUPPORT_ION)
 size_t os_ion_query_heaps_kernel(struct ion_device *idev, struct ion_heap_data *hdata,
@@ -384,9 +539,21 @@ unsigned int os_get_sg_table_orig_nents(struct sg_table *sgt);
 
 #define OS_SG_TABLE_MEMBER(ptr, member)	(os_get_sg_table_##member(ptr))
 
+/* members of dma_buf */
+size_t os_get_dma_buf_size(struct dma_buf *dma_buf);
+const struct dma_buf_ops *os_get_dma_buf_ops(struct dma_buf *dma_buf);
+void *os_get_dma_buf_priv(struct dma_buf *dma_buf);
+
+#define OS_DMA_BUF_MEMBER(ptr, member)	(os_get_dma_buf_##member(ptr))
+
+struct device *os_get_dma_buf_attachment_device(struct dma_buf_attachment *attach);
+struct device *os_get_device_parent(struct device *dev);
+
 bool os_dev_is_pci(struct device *dev);
 struct pci_dev *os_to_pci_dev(struct device *dev);
 struct kobject *os_get_device_kobj(struct device *dev);
+void os_device_lock(struct device *dev);
+void os_device_unlock(struct device *dev);
 bool os_is_power_of_2(unsigned long n);
 void *os_dev_get_drvdata(const struct device *dev);
 void os_dev_set_drvdata(struct device *dev, void *data);
@@ -407,6 +574,11 @@ void *os_kvzalloc(size_t size);
 void *os_kcalloc(size_t n, size_t size);
 void os_kvfree(const void *addr);
 void os_vfree(const void *addr);
+unsigned long os_page_to_pfn(struct page *page);
+struct page *os_pfn_to_page(u64 pfn);
+void os_get_page(struct page *page);
+int os_page_count(struct page *page);
+u64 os_page_to_phys(struct page *page);
 struct page *os_vmalloc_to_page(const void *vmalloc_addr);
 struct page *os_phys_to_page(phys_addr_t pa);
 struct apertures_struct *os_alloc_apertures(unsigned int max_num);
@@ -415,10 +587,17 @@ void os_sg_table_destroy(struct sg_table *sgt);
 struct scatterlist *os_sg_next(struct scatterlist *sg);
 dma_addr_t os_sg_dma_address(struct scatterlist *sg);
 unsigned int os_sg_dma_len(struct scatterlist *sg);
+void os_set_sg_dma_address(struct scatterlist *sg, dma_addr_t dev_addr);
+void os_set_sg_dma_len(struct scatterlist *sg, unsigned int dma_len);
 int os_sg_alloc_table_from_pages(struct sg_table *sgt, struct page **pages,
 				 unsigned int n_pages, unsigned int offset,
 				 unsigned long size);
+int os_sg_alloc_table(struct sg_table *sgt, unsigned int nents);
 void os_sg_free_table(struct sg_table *sgt);
+void *os_vmap(struct page **pages, unsigned int count);
+void os_vunmap(const void *addr);
+int os_remap_pfn_range(struct vm_area_struct *vma, unsigned long addr,
+		       unsigned long pfn, unsigned long size, unsigned long pgprot);
 int os_dma_map_sg(struct device *dev, struct scatterlist *sg,
 		  int nents, u64 dir);
 void os_dma_unmap_sg(struct device *dev, struct scatterlist *sg,
@@ -430,12 +609,15 @@ dma_addr_t os_dma_map_resource(struct device *dev, phys_addr_t phys_addr,
 			       size_t size, u64 dir);
 void os_dma_unmap_resource(struct device *dev, dma_addr_t addr, size_t size, u64 dir);
 int os_dma_mapping_error(struct device *dev, dma_addr_t addr);
+int os_dma_direct_map_sg_dummy(struct device *dev, struct scatterlist *sgl,
+			       int nents, u64 dir);
 void os_dma_sync_sg_for_device(struct device *dev, struct scatterlist *sg,
 			       int nelems, u64 dir);
 void os_dma_sync_sg_for_cpu(struct device *dev, struct scatterlist *sg,
 			    int nelems, u64 dir);
 
 struct pid *os_find_vpid(int nr);
+int os_kill_pid(struct pid *pid, int sig, int priv);
 struct task_struct *os_pid_task(struct pid *pid, int type);
 struct mm_struct *os_get_task_mm(struct task_struct *p);
 void os_task_lock(struct task_struct *p);
@@ -447,6 +629,8 @@ struct path *os_get_exec_vma_file_path(struct mm_struct *mm);
 unsigned long os_get_vm_area_struct_vm_start(struct vm_area_struct *vma);
 unsigned long os_get_vm_area_struct_vm_end(struct vm_area_struct *vma);
 unsigned long os_get_vm_area_struct_vm_flags(struct vm_area_struct *vma);
+unsigned long os_get_vm_area_struct_vm_page_prot(struct vm_area_struct *vma);
+unsigned long os_get_vm_area_struct_vm_pgoff(struct vm_area_struct *vma);
 struct file *os_get_vm_area_struct_vm_file(struct vm_area_struct *vma);
 void os_set_vm_area_struct_vm_flags(struct vm_area_struct *vma, unsigned long flag);
 
@@ -455,9 +639,13 @@ void *os_memcpy(void *dst, const void *src, size_t size);
 void os_memcpy_fromio(void *dst, const void __iomem *src, size_t size);
 void os_memcpy_toio(void __iomem *dst, const void *src, size_t size);
 void os_memset_io(void __iomem *addr, int value, size_t size);
+void *os_memdup_user(const void __user *, size_t);
 unsigned long os_copy_from_user(void *to, const void *from, unsigned long n);
 unsigned long os_copy_to_user(void __user *to, const void *from, unsigned long n);
 
+__poll_t os_key_to_poll(void *key);
+void os_init_poll_funcptr(poll_table *pt, poll_queue_proc qproc);
+__poll_t os_vfs_poll(struct file *file, struct poll_table_struct *pt);
 void os_poll_wait(struct file *filp, struct wait_queue_head *wait_address,
 		  struct poll_table_struct *p);
 
@@ -504,6 +692,10 @@ void *os_get_file_private_data(struct file *file);
 void *os_get_file_node_private_data(struct file *file);
 unsigned int os_get_file_flags(struct file *file);
 
+struct fd *os_fdget(unsigned int fd);
+void os_fdput(struct fd *fd);
+struct file *os_get_fd_file(struct fd *fd);
+
 void os_kref_init(mt_kref *kref);
 int os_kref_put(mt_kref *kref, void (*release)(mt_kref *kref));
 void os_kref_get(mt_kref *kref);
@@ -517,6 +709,7 @@ bool os_ida_is_empty(const struct ida *ida);
 
 int os_mutex_create(struct mutex **lock);
 void os_mutex_lock(struct mutex *lock);
+int os_mutex_trylock(struct mutex *lock);
 void os_mutex_unlock(struct mutex *lock);
 void os_mutex_destroy(struct mutex *lock);
 
@@ -528,6 +721,17 @@ void os_spin_unlock_irqrestore(spinlock_t *lock, unsigned long flags);
 void os_spin_lock_bh(spinlock_t *lock);
 void os_spin_unlock_bh(spinlock_t *lock);
 void os_spin_lock_destroy(spinlock_t *lock);
+
+int os_kfifo_create(struct kfifo **fifo);
+int os_kfifo_alloc(struct kfifo *fifo, unsigned int size);
+void os_kfifo_free(struct kfifo *fifo);
+unsigned int os_kfifo_in(struct kfifo *fifo, const void *from, unsigned int len);
+unsigned int os_kfifo_out(struct kfifo *fifo, void *to, unsigned int len);
+unsigned int os_kfifo_in_locked(struct kfifo *fifo, const void *from, unsigned int len,
+				spinlock_t *lock);
+unsigned int os_kfifo_out_locked(struct kfifo *fifo, void *to, unsigned int len, spinlock_t *lock);
+int os_kfifo_is_empty(struct kfifo *fifo);
+int os_kfifo_is_full(struct kfifo *fifo);
 
 int os_sema_create(struct semaphore **sem, int val);
 void os_up(struct semaphore *sem);
@@ -552,6 +756,7 @@ void os_set_dwork_drvdata(struct delayed_work *dwork, void *data);
 void *os_create_dwork(void);
 void os_destroy_dwork(struct delayed_work *dwork);
 void os_init_dwork(struct delayed_work *work, work_func_t func);
+void os_init_delayed_work(struct delayed_work *dwork, work_func_t func);
 bool os_queue_delayed_work(struct workqueue_struct *wq,
 			   struct delayed_work *dwork,
 			   unsigned long delay);
@@ -572,7 +777,8 @@ void os_init_wait_entry(struct wait_queue_entry *wq_entry, int flags);
 void os_finish_wait(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry);
 long os_prepare_to_wait_event_uninterruptible(struct wait_queue_head *wq_head,
 					      struct wait_queue_entry *wq_entry);
-struct wait_queue_entry *os_create_wait_queue_entry(void);
+void os_add_wait_queue(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry);
+void os_init_waitqueue_func_entry(struct wait_queue_entry *wq_entry, wait_queue_func_t func);
 
 void os_blocking_init_notifier_head(struct blocking_notifier_head *nh);
 void os_notifier_block_set_notifier_call(struct notifier_block *nb, notifier_fn_t cb);
@@ -584,8 +790,6 @@ int os_blocking_notifier_chain_unregister(struct blocking_notifier_head *nh,
 					  struct notifier_block *n);
 int os_blocking_notifier_head_create(struct blocking_notifier_head **nh);
 void os_blocking_notifier_head_destroy(struct blocking_notifier_head *nh);
-int os_notifier_block_create(struct notifier_block **nb);
-void os_notifier_block_destroy(struct notifier_block *nb);
 
 int os_device_attr_create(struct device_attribute **dev_attr, const char *name, umode_t mode,
 			  ssize_t (*show)(struct device *dev,
@@ -637,11 +841,14 @@ void os_sysfs_remove_file(struct kobject *kobj, const struct attribute *attr);
 
 void os_init_work(struct work_struct *work, work_func_t func);
 bool os_schedule_work(struct work_struct *work);
+bool os_flush_work(struct work_struct *work);
 bool os_cancel_work_sync(struct work_struct *work);
+bool os_schedule_delayed_work(struct delayed_work *dwork, unsigned long delay);
 struct task_struct *os_kthread_create(int (*threadfn)(void *data),
 				      void *data, const char *namefmt, ...);
 int os_kthread_stop(struct task_struct *k);
 bool os_kthread_should_stop(void);
+int os_wake_up_process(struct task_struct *p);
 
 void os_wmb(void);
 void os_mb(void);
@@ -658,9 +865,16 @@ void os_iounmap(void __iomem *io_addr);
 int os_get_user_pages_fast(unsigned long start, int nr_pages,
 			   unsigned int gup_flags, struct page **pages);
 void os_put_page(struct page *page);
+int os_page_reserved(struct page *page);
+void os_set_pages_reserved(struct page *pages, int n);
+void os_clear_pages_reserved(struct page *pages, int n);
+struct page *os_alloc_pages(gfp_t gfp_mask, unsigned int order);
+void os_free_pages(struct page *page, unsigned int order);
+int os_get_order(unsigned long size);
 
 unsigned int os_ioread32(void __iomem *addr);
 u32 os_readl(const void __iomem *addr);
+void os_iowrite16(u16 b, void __iomem *addr);
 void os_iowrite32(u32 b, void __iomem *addr);
 void os_writel(u32 value, void __iomem *addr);
 
@@ -670,6 +884,7 @@ int os_request_pci_io_addr(struct pci_dev *pdev, u32 index,
 unsigned int os_pci_slot(unsigned int devfn);
 unsigned int os_pci_func(unsigned int devfn);
 unsigned int os_get_pci_dev_virfn(struct pci_dev *pdev);
+struct pci_dev *os_get_pci_dev_physfn(struct pci_dev *pdev);
 struct device *os_get_pci_device_base(struct pci_dev *pdev);
 unsigned short os_get_pci_device_vendor(struct pci_dev *pdev);
 unsigned short os_get_pci_subsystem_vendor(struct pci_dev *pdev);
@@ -721,6 +936,8 @@ struct resource *os_pci_bus_resource_n(const struct pci_bus *bus, int n);
 
 int os_pci_dev_wait(struct pci_dev *dev, char *reset_type, int timeout);
 
+int os_pci_wait_for_pending_transaction(struct pci_dev *dev);
+
 void os_pci_release_related_resources(struct pci_dev *pdev, int DDR_BAR_NUM);
 void os_check_root_pcibus(struct pci_bus *root, struct resource **res);
 struct pci_dev *os_find_parent_pci_dev(struct device *dev);
@@ -730,10 +947,18 @@ void os_pci_dev_put(struct pci_dev *dev);
 struct pci_dev *os_pci_get_device(unsigned int vendor, unsigned int device,
 				  struct pci_dev *from);
 
+int os_pci_sriov_get_totalvfs(struct pci_dev *dev);
+int os_pci_enable_sriov(struct pci_dev *dev, int nr_virtfn);
+void os_pci_disable_sriov(struct pci_dev *dev);
+
 struct pci_dev *os_pci_find_upstream_switch(struct pci_dev *pdev);
 
+bool os_pci_has_same_root_port(struct pci_dev *pdev1, struct pci_dev *pdev2);
 bool os_pci_is_under_same_switch(struct pci_dev *pdev1,
 				 struct pci_dev *pdev2);
+
+int os_pcie_capability_read_dword(struct pci_dev *dev, int where, u32 *val);
+int os_pcie_capability_set_word(struct pci_dev *dev, int where, u16 set);
 
 struct resource *os_request_region(resource_size_t start,
 				   resource_size_t n,
@@ -778,6 +1003,8 @@ int os_fls(unsigned int x);
 int os_fls64(unsigned long x);
 
 resource_size_t os_get_system_available_ram_size(void);
+resource_size_t os_get_system_free_ram_size(void);
+resource_size_t os_get_system_total_ram_size(void);
 void os_get_cached_msi_msg(unsigned int irq, struct msi_msg *msg);
 struct msi_desc *os_irq_get_msi_desc(unsigned int irq);
 struct msi_msg *os_msi_msg_alloc(void);
@@ -798,6 +1025,7 @@ int os_unregister_pm_notifier(struct notifier_block *nb);
 
 void os_dma_buf_put(struct dma_buf *dmabuf);
 struct dma_buf *os_dma_buf_get(int fd);
+void *os_get_dmabuf_from_attachment(struct dma_buf_attachment *attach);
 int os_dma_set_mask_and_coherent(struct device *dev, u64 mask);
 void *os_dma_alloc_coherent(struct device *dev, size_t size, dma_addr_t *dma_handle, gfp_t gfp);
 void os_dma_free_coherent(struct device *dev, size_t size, void *cpu_addr, dma_addr_t dma_handle);
@@ -821,10 +1049,31 @@ int os_create_timer(struct timer_list **timer);
 void os_destroy_timer(struct timer_list *timer);
 
 u64 os_kclock_ns64(void);
+u64 os_ktime_get_ns(void);
 
 void os_ktime_get_real_tm(struct mt_tm *mt_time, int offset);
 
 struct inode *os_file_inode(const struct file *f);
+
+void os_list_sort(void *priv, struct list_head *head,
+		  int (*cmp)(void *priv, const struct list_head *a,
+			     const struct list_head *b));
+struct radix_tree_root *os_create_radix_tree(void);
+void os_destroy_radix_tree(struct radix_tree_root *root);
+void *os_radix_tree_lookup(const struct radix_tree_root *root, unsigned long index);
+void *os_radix_tree_delete(struct radix_tree_root *root, unsigned long index);
+int os_radix_tree_insert(struct radix_tree_root *root, unsigned long index, void *item);
+struct radix_tree_iter *os_create_radix_tree_iter(void);
+void os_destroy_radix_tree_iter(struct radix_tree_iter *iter);
+unsigned long os_get_radix_tree_iter_index(struct radix_tree_iter *iter);
+void **os_radix_tree_iter_init(struct radix_tree_iter *iter, unsigned long start);
+void **os_radix_tree_next_chunk(const struct radix_tree_root *root,
+				struct radix_tree_iter *iter, unsigned int flags);
+void **os_radix_tree_next_slot(void **slot, struct radix_tree_iter *iter, unsigned int flags);
+
+u64 os_eventfd_signal(struct eventfd_ctx *ctx, __u64 n);
+void os_eventfd_ctx_put(struct eventfd_ctx *ctx);
+struct eventfd_ctx *os_eventfd_ctx_fdget(int fd);
 
 int os_ilog2(u64 n);
 
@@ -853,6 +1102,9 @@ bool OS_IS_ERR_OR_NULL(__force const void *ptr);
 long OS_PTR_ERR(__force const void *ptr);
 void *OS_ERR_PTR(long error);
 int OS_READ_ONCE(int *val);
+void OS_WARN_ON(bool condition);
+bool OS_WARN_ON_ONCE(bool condition);
+void OS_BUG_ON(bool condition);
 
 int os_sscanf(const char *str, const char *fmt, ...);
 size_t os_strlen(const char *s);
@@ -861,19 +1113,83 @@ int os_strcmp(const char *cs, const char *ct);
 int os_strncmp(const char *cs, const char *ct, size_t count);
 char *os_strcpy(char *dest, const char *src);
 char *os_strncpy(char *dest, const char *src, size_t count);
+char *os_strchr(const char *, int);
+char *os_strstr(const char *s1, const char *s2);
+int os_kstrtol(const char *s, unsigned int base, long *res);
 int os_sprintf(char *buf, const char *fmt, ...);
+char *os_strtrim(char *src);
 
+int os_iommu_map(struct iommu_domain *domain, unsigned long iova,
+		 phys_addr_t paddr, size_t size, int prot);
+size_t os_iommu_unmap(struct iommu_domain *domain, unsigned long iova, size_t size);
+void os_iommu_group_put(struct iommu_group *group);
+int os_iommu_group_id(struct iommu_group *group);
+struct iommu_group *os_iommu_group_get(struct device *dev);
+int os_iommu_attach_group(struct iommu_domain *domain, struct iommu_group *group);
+void os_iommu_detach_group(struct iommu_domain *domain, struct iommu_group *group);
+struct iommu_domain *os_iommu_domain_alloc(struct bus_type *bus);
+void os_iommu_domain_free(struct iommu_domain *domain);
+struct iommu_domain *os_iommu_get_domain_for_dev(struct device *dev);
+unsigned int os_get_iommu_domain_type(struct iommu_domain *domain);
 bool os_iommu_present(struct bus_type *bus);
+phys_addr_t os_virt_to_phys(void *address);
 
 struct device *os_get_dev_parent_parent(struct device *dev);
+struct device *os_get_dev_parent(struct device *dev);
 void *os_get_device_driver_data(struct device *dev);
 
 char *os_get_current_comm(void);
 u64 os_get_current_pid(void);
+u64 os_get_current_tgid(void);
+
+char *os_get_utsname_version(void);
 
 struct bus_type *os_get_dev_bus_type(struct device *dev);
 
+/**
+ * Interfaces for querying slot information in DMI devices.
+ */
+const struct dmi_device *os_dmi_find_slot_device(const char *name, const struct dmi_device *dev);
+const struct dmi_dev_onboard *os_get_dmi_device_data(const struct dmi_device *dev);
+int os_get_dmi_device_board_segment(const struct dmi_dev_onboard *dev_onboard);
+int os_get_dmi_device_board_bus(const struct dmi_dev_onboard *dev_onboard);
+int os_get_dmi_device_board_devfn(const struct dmi_dev_onboard *dev_onboard);
+int os_get_dmi_device_board_instance(const struct dmi_dev_onboard *dev_onboard);
+const char *os_get_dmi_device_board_name(const struct dmi_dev_onboard *dev_onboard);
+
+void os_bitmap_set(unsigned long *map, unsigned int start, unsigned int nbits);
+void os_bitmap_clear(unsigned long *map, unsigned int start, unsigned int nbits);
+int os_bitmap_empty(const unsigned long *src, unsigned int nbits);
+int os_bitmap_full(const unsigned long *src, unsigned int nbits);
+void os_bitmap_free(const unsigned long *bitmap);
+unsigned long *os_bitmap_zalloc(unsigned int nbits, gfp_t flags);
+unsigned long os_bitmap_find_next_zero_area(unsigned long *map,
+					    unsigned long size,
+					    unsigned long start,
+					    unsigned int nr,
+					    unsigned long align_mask);
+
+void *os_kmem_cache_alloc(struct kmem_cache *cachep, gfp_t flags);
+void os_kmem_cache_free(struct kmem_cache *cachep, void *objp);
+struct kmem_cache *os_kmem_cache_create(const char *name, unsigned int size,
+					unsigned int align, slab_flags_t flags,
+					void (*ctor)(void *));
+void os_kmem_cache_destroy(struct kmem_cache *s);
+
+int os_atomic_xchg(atomic_t *v, int val);
+void os_atomic_set(atomic_t *v, int val);
+void os_atomic_inc(atomic_t *v);
+bool os_atomic_dec_and_test(atomic_t *v);
+int os_atomic_read(atomic_t *v);
+
+struct file *os_filp_open(const char *filename, int flags, umode_t mode);
+int os_filp_close(struct file *filp);
+ssize_t os_kernel_write(void *filp, const char __user *buf, size_t count, loff_t *pos);
+
 DECLARE_OS_STRUCT_COMMON_FUNCS(notifier_block);
+DECLARE_OS_STRUCT_COMMON_FUNCS(poll_table_struct);
+DECLARE_OS_STRUCT_COMMON_FUNCS(wait_queue_entry);
+DECLARE_OS_STRUCT_COMMON_FUNCS(timer_list);
 
 #ifndef KERN_SOH
 #define KERN_SOH	"\001"		/* ASCII Start Of Header */

@@ -74,14 +74,14 @@ struct mtgpu_hdmi_chip {
 static inline void hdmi_reg_write(struct mtgpu_hdmi_ctx *ctx, int offset, u32 val)
 {
 	os_writel(val, ctx->regs + offset);
-	HDMI_DEBUG("offset = 0x%04x value = 0x%08x\n", offset, val);
+	HDMI_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
 }
 
 static inline u32 hdmi_reg_read(struct mtgpu_hdmi_ctx *ctx, int offset)
 {
 	u32 val = os_readl(ctx->regs + offset);
 
-	HDMI_DEBUG("offset = 0x%04x value = 0x%08x\n", offset, val);
+	HDMI_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
 	return val;
 }
 

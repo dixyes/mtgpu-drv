@@ -21,6 +21,7 @@ static PVRSRV_ERR_MAPPING asErrMappingTable[] = {
 	{ -ENOMEM, PVRSRV_ERROR_OUT_OF_MEMORY },
 	{ -ETIME, PVRSRV_ERROR_TIMEOUT },
 	{ -EINTR, PVRSRV_ERROR_INTERRUPTED},
+	{ -ENOTSUPP, PVRSRV_ERROR_NOT_SUPPORTED},
 };
 
 PVRSRV_ERROR LinuxErrnoToPvrError(int errno)
@@ -36,4 +37,20 @@ PVRSRV_ERROR LinuxErrnoToPvrError(int errno)
 	}
 
 	return eError;
+}
+
+int PvrErrorToLinuxErrno(PVRSRV_ERROR eError)
+{
+	IMG_UINT32 i;
+	int err = -EFAULT;
+
+	for (i = 0; i < ARRAY_SIZE(asErrMappingTable); i++)
+	{
+		if (eError == asErrMappingTable[i].eError)
+		{
+			return asErrMappingTable[i].i32LinuxErrno;
+		}
+	}
+
+	return err;
 }

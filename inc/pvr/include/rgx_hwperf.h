@@ -90,11 +90,13 @@ static_assert(RGX_FEATURE_NUM_CLUSTERS <= 16U,
 typedef enum {
 
 	RGX_HWPERF_DM_GP,
-	RGX_HWPERF_DM_TDM,
-	RGX_HWPERF_DM_GEOM,
+	RGX_HWPERF_DM_2D,
+	RGX_HWPERF_DM_TA,
 	RGX_HWPERF_DM_3D,
 	RGX_HWPERF_DM_CDM,
 	RGX_HWPERF_DM_RTU,
+	RGX_HWPERF_DM_SHG,
+	RGX_HWPERF_DM_TDM,
 
 	RGX_HWPERF_DM_LAST,
 
@@ -147,6 +149,7 @@ typedef struct
 	IMG_UINT32 ui32WorkCtx;       /*!< Work context: Render Context for TA/3D; RayTracing Context for RTU/SHG; 0x0 otherwise */
 	IMG_UINT32 ui32CtxPriority;   /*!< Context priority */
 	IMG_UINT32 ui32GPUIdMask;     /*!< GPU IDs active within this event */
+	IMG_UINT64 ui64PFMNormDumpCntr; /*!< Record the number of dumps in PFM normal mode*/
 	IMG_UINT32 ui32KickInfo;      /*!< <31..8> Reserved <7..0> GPU Pipeline DM kick ID, 0 if not using Pipeline DMs */
 	IMG_UINT32 ui32Padding;       /*!< Reserved. To ensure correct alignment */
 	IMG_UINT32 aui32CountBlksStream[RGX_HWPERF_ZERO_OR_MORE_ELEMENTS]; /*!< Optional variable length Counter data */
@@ -607,6 +610,19 @@ typedef struct
 /* Payload size must be multiple of 8 bytes to align start of next packet. */
 static_assert((sizeof(RGX_HWPERF_HOST_ENQ_DATA) & (PVRSRVTL_PACKET_ALIGNMENT-1U)) == 0U,
 			  "sizeof(RGX_HWPERF_HOST_ENQ_DATA) must be a multiple PVRSRVTL_PACKET_ALIGNMENT");
+
+typedef struct
+{
+	RGX_HWPERF_KICK_TYPE ui32NotifyType; /*!< Workload type sent to FW for scheduling on GPU hardware.
+	                                      See RGX_HWPERF_KICK_TYPE */
+	IMG_UINT32 ui32PID;                  /*!< Client process identifier */
+	IMG_UINT32 ui32DMContext;            /*!< GPU Data Master (FW) Context */
+	IMG_UINT32 ui32Padding;              /*!< Align structure size to 8 bytes */
+} RGX_HWPERF_HOST_NOTIFY_DATA;
+
+/* Payload size must be multiple of 8 bytes to align start of next packet. */
+static_assert((sizeof(RGX_HWPERF_HOST_NOTIFY_DATA) & (PVRSRVTL_PACKET_ALIGNMENT-1U)) == 0U,
+			  "sizeof(RGX_HWPERF_HOST_NOTIFY_DATA) must be a multiple PVRSRVTL_PACKET_ALIGNMENT");
 
 typedef struct
 {
@@ -1076,6 +1092,47 @@ static_assert((sizeof(RGX_HWPERF_HOST_CLIENT_INFO_DATA) & (PVRSRVTL_PACKET_ALIGN
 
 typedef enum
 {
+	RGX_HWPERF_HOST_DMA_TYPE_INVALID = 0,  /*!< Invalid */
+	RGX_HWPERF_HOST_DMA_TYPE_USER,         /*!< DMA transfer request from host to device or from device to host */
+	RGX_HWPERF_HOST_DMA_TYPE_P2P,          /*!< DMA transfer from device to another device */
+	RGX_HWPERF_HOST_DMA_TYPE_LAST,         /*!< Do not use */
+} RGX_HWPERF_HOST_DMA_TYPE;
+
+typedef union
+{
+	struct RGX_HWPERF_HOST_DMA_USER_DATA
+	{
+		IMG_UINT32 uiReserved1; /*!< Reserved. Align structure size to 8 bytes */
+		IMG_BOOL bS2D;          /*!< Is copy from host to device */
+		IMG_UINT64 ui64Addr;    /*!< Host address */
+		IMG_UINT64 ui64DevAddr; /*!< Device address */
+	} sUserData;
+
+	struct RGX_HWPERF_HOST_DMA_P2P_DATA
+	{
+		IMG_INT32 i32PeerDevID;      /*!< The identifier of the peer device */
+		IMG_BOOL bPeer2Local;        /*!< Is copy from peer device to local device */
+		IMG_UINT64 ui64LocalDevAddr; /*!< Local device address */
+		IMG_UINT64 ui64PeerDevAddr;  /*!< Peer device address */
+	} sP2PData;
+} RGX_HWPERF_HOST_DMA_DETAIL;
+
+typedef struct
+{
+	RGX_HWPERF_HOST_DMA_TYPE eType;     /*!< Type of the DMA transfer */
+	RGX_HWPERF_HOST_DMA_DETAIL eDetail; /*!< Union of structures. Size of data
+	                                         varies with union member that is present,
+	                                         check ``eType`` value to decode */
+	IMG_PID uiPID;                      /*!< Identifier of the owning process */
+	IMG_PID uiTID;                      /*!< Identifier of the owning thread */
+	IMG_DEVMEM_SIZE_T uiSize;           /*!< Copy size */
+	PVRSRV_TIMELINE hUpdateTimeline;    /*!< Unique identifier for the update timeline resource */
+	IMG_UINT32 ui32ExtJobRef;           /*!< Reference used by callers of the RGX API to track
+	                                         submitted work (for debugging / trace purposes) */
+} RGX_HWPERF_HOST_DMA_DATA;
+
+typedef enum
+{
 	RGX_HWPERF_RESOURCE_CAPTURE_TYPE_NONE,
 	RGX_HWPERF_RESOURCE_CAPTURE_TYPE_DEFAULT_FRAMEBUFFER,
 	RGX_HWPERF_RESOURCE_CAPTURE_TYPE_OFFSCREEN_FB_ATTACHMENTS,
@@ -1203,7 +1260,10 @@ typedef union
 	RGX_HWPERF_HOST_CLIENT_INFO_DATA sHClientInfo; /*!< Host client info,
 	                                               events ``0x0B`` (Host) */
 	RGX_HWPERF_HOST_TIME_CORRELATION_DATA sHTimeCorrelation; /*!< Time correlation 
-	                                               events ``0x0C`` (Host) */											   
+	                                               events ``0x0C`` (Host) */
+	RGX_HWPERF_HOST_DMA_DATA sHDMA;
+	RGX_HWPERF_HOST_NOTIFY_DATA sHNotify;         /*!< Host Notify data,
+	                                               events ``0x0F`` (Host) */
 } RGX_HWPERF_V2_PACKET_DATA, *RGX_PHWPERF_V2_PACKET_DATA;
 
 RGX_FW_STRUCT_SIZE_ASSERT(RGX_HWPERF_V2_PACKET_DATA);
@@ -1439,6 +1499,39 @@ typedef struct
 
 RGX_FW_STRUCT_SIZE_ASSERT(RGX_HWPERF_CONFIG_CNTBLK);
 
+#define MUSA_PFM_NORMAL_MODE (0U)
+#define MUSA_PFM_INTERVAL_MODE (1U)
+#define MUSA_PFM_SWIFT_MASK (0x1e)
+#define MUSA_PFM_SWIFT_DUMP_ONCE_SIZE (256U)
+#define MUSA_PFM_COMMON_DUMP_ONCE_SIZE (512U)
+
+typedef struct
+{
+	IMG_UINT32 ui32CoreId;
+	IMG_UINT32 ui32WrapperSelc;
+	IMG_UINT32 ui32InstanceSelc;
+	IMG_INT32  i32MemIndex;
+} RGX_HWPERF_PFM_INSTANCE_CONFIG;
+
+typedef struct
+{
+	IMG_UINT32 ui32CoreId;
+	IMG_UINT32 ui32WrapperSelc;
+	IMG_UINT32 ui32InstanceEnable;
+	IMG_UINT64 ui64GroupSelc;
+} RGX_HWPERF_PFM_WRAPPER_CONFIG;
+
+typedef struct
+{
+	IMG_BOOL   bEnablePFM;
+	IMG_UINT32 ui32TimeInterval;
+	IMG_UINT32 ui32PointerUpdateFreq;
+	IMG_UINT32 ui32InstBufferSize;
+	IMG_UINT32 ui32MaxInstance;
+	IMG_UINT32 ui32PointerBufferSize;
+	IMG_UINT32 ui32Mode;
+	IMG_BOOL   bIsSysMemory;
+}  RGX_HWPERF_PFM_GLOBAL_CONFIG;
 
 #if defined(__cplusplus)
 }

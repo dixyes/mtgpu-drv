@@ -23,8 +23,8 @@ int mtgpu_get_driver_mode(void);
 int mtgpu_pm_resume(struct device *dev);
 int mtgpu_pm_resume_early(struct device *dev);
 int mtgpu_pm_suspend(struct device *dev);
+int mtgpu_pm_suspend_late(struct device *dev);
 int mtgpu_probe(struct pci_dev *pdev, const struct pci_device_id *id);
-int mtgpu_kick_out_firmware_fb(struct pci_dev *pdev);
 
 void mtgpu_remove(struct pci_dev *pdev);
 

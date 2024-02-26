@@ -32,14 +32,24 @@
 #include <video/videomode.h>
 
 #include "mtgpu_drm_gem.h"
-#include "mtgpu_drm_dispc.h"
+#include "mtgpu_dispc_common.h"
 #include "mtgpu_drm_debugfs.h"
+#include "mtgpu_drm_internal.h"
 #include "../mtgpu/mtgpu_drv.h"
 #include "os-interface-drm.h"
 
 static inline struct mtgpu_dispc *to_mtgpu_dispc(struct drm_crtc *crtc)
 {
-	return container_of(crtc, struct mtgpu_dispc, crtc);
+	return os_get_drm_crtc_drvdata(crtc);
+}
+
+static inline bool mtgpu_is_crtc_active(struct drm_crtc *crtc)
+{
+#if defined(OS_DRM_CRTC_HELPER_FUNCS_USE_DRM_ATOMIC_STATE)
+	return crtc->state->active;
+#else
+	return crtc->enabled;
+#endif
 }
 
 static void mtgpu_get_layer_config(struct drm_plane_state *state,
@@ -93,7 +103,7 @@ static void mtgpu_plane_atomic_update(struct drm_plane *plane,
 		      layer.src_x, layer.src_y, layer.src_w, layer.src_h);
 	DRM_DEV_DEBUG(dispc->dev, "CRTC_X = %d, CRTC_Y = %d, CRTC_W = %d, CRTC_H = %d\n",
 		      layer.dst_x, layer.dst_y, layer.dst_w, layer.dst_h);
-	DRM_DEV_DEBUG(dispc->dev, "layer->addr[0] = 0x%08x, layer->pitch[0] = 0x%08x\n",
+	DRM_DEV_DEBUG(dispc->dev, "layer->addr[0] = 0x%llx, layer->pitch[0] = 0x%08x\n",
 		      layer.addr[0], layer.pitch[0]);
 
 	/* first enable fbc and then dma addr, otherwise dpc may underflow */
@@ -102,7 +112,9 @@ static void mtgpu_plane_atomic_update(struct drm_plane *plane,
 	else if (dispc->glb->fbc_disable)
 		dispc->glb->fbc_disable(&dispc->ctx, index);
 
-	if (dispc->core->layer_config)
+	if (dispc->core->cursor_config && plane->type == DRM_PLANE_TYPE_CURSOR)
+		dispc->core->cursor_config(&dispc->ctx, &layer);
+	else if (dispc->core->layer_config)
 		dispc->core->layer_config(&dispc->ctx, &layer, index);
 }
 
@@ -121,7 +133,9 @@ static void mtgpu_plane_atomic_disable(struct drm_plane *plane,
 
 	DRM_DEV_INFO(dispc->dev, "%s()\n", __func__);
 
-	if (dispc->core->layer_disable)
+	if (dispc->core->cursor_config && plane->type == DRM_PLANE_TYPE_CURSOR)
+		dispc->core->cursor_config(&dispc->ctx, NULL);
+	else if (dispc->core->layer_disable)
 		dispc->core->layer_disable(&dispc->ctx, index);
 
 	if (dispc->glb->fbc_disable)
@@ -421,6 +435,9 @@ static int mtgpu_legacy_cursor_set(struct drm_crtc *crtc, struct drm_file *file,
 	struct mtgpu_layer_config config = {0};
 	struct mtgpu_dispc *dispc = to_mtgpu_dispc(crtc);
 
+	if (!mtgpu_is_crtc_active(crtc))
+		return 0;
+
 	/* handle 0 means cursor hide */
 	if (!handle && dispc->core->cursor_config) {
 		dispc->cursor_info.dev_addr = 0;
@@ -434,7 +451,7 @@ static int mtgpu_legacy_cursor_set(struct drm_crtc *crtc, struct drm_file *file,
 	if (!cursor_bo)
 		return -ENOENT;
 
-	mt_obj = to_mtgpu_obj(cursor_bo);
+	mt_obj = os_get_drm_gem_object_drvdata(cursor_bo);
 	if (!mt_obj->dev_addr) {
 		drm_gem_object_put(cursor_bo);
 		return -EINVAL;
@@ -459,6 +476,8 @@ static int mtgpu_legacy_cursor_set(struct drm_crtc *crtc, struct drm_file *file,
 	config.src_h   = height;
 	config.pitch[0] = width * 4;
 	config.alpha   = 255;
+	config.blend_mode = 0;
+	config.format = DRM_FORMAT_ARGB8888;
 
 	dispc->cursor_info.dev_addr = mt_obj->dev_addr;
 	dispc->cursor_info.width = width;
@@ -475,6 +494,9 @@ static int mtgpu_legacy_cursor_move(struct drm_crtc *crtc, int x, int y)
 	struct mtgpu_layer_config config = {0};
 	struct mtgpu_dispc *dispc = to_mtgpu_dispc(crtc);
 
+	if (!mtgpu_is_crtc_active(crtc))
+		return 0;
+
 	config.addr[0] = dispc->cursor_info.dev_addr;
 	config.dst_x   = x;
 	config.dst_y   = y;
@@ -484,9 +506,17 @@ static int mtgpu_legacy_cursor_move(struct drm_crtc *crtc, int x, int y)
 	config.src_h   = dispc->cursor_info.height;
 	config.pitch[0] = dispc->cursor_info.width * 4;
 	config.alpha   = 255;
+	config.blend_mode = 0;
+	config.format = DRM_FORMAT_ARGB8888;
 
 	dispc->cursor_info.x = x;
 	dispc->cursor_info.y = y;
+
+	if ((!config.addr[0] || !config.dst_w || !config.dst_h) &&
+	    dispc->core->cursor_config) {
+		dispc->core->cursor_config(&dispc->ctx, NULL);
+		return 0;
+	}
 
 	if (dispc->core->cursor_config)
 		dispc->core->cursor_config(&dispc->ctx, &config);
@@ -545,7 +575,7 @@ static void mtgpu_dispc_isr(void *data)
 		int_sts = dispc->core->isr(&dispc->ctx);
 
 	if (int_sts & DISPC_INT_BIT_VSYNC)
-		drm_crtc_handle_vblank(&dispc->crtc);
+		drm_crtc_handle_vblank(dispc->crtc);
 
 	if (int_sts & DISPC_INT_BIT_UNDERRUN)
 		dispc->debugfs.underrun_cnt++;
@@ -627,13 +657,6 @@ static int mtgpu_dispc_component_bind(struct device *dev,
 		goto err_free_dispc;
 	}
 
-	ret = mtgpu_enable_interrupt(dev->parent->parent, res->start);
-	if (ret) {
-		DRM_DEV_ERROR(dev, "failed to enable dispc irq number: %d\n", (int)res->start);
-		ret = -EINVAL;
-		goto err_free_dispc;
-	}
-
 	dispc->ctx.irq = res->start;
 	dispc->ctx.id = pdata->id;
 	dispc->dev = dev;
@@ -667,6 +690,20 @@ static int mtgpu_dispc_component_bind(struct device *dev,
 		ret = dispc->core->ctx_init(&dispc->ctx);
 		if (ret)
 			goto err_free_dispc;
+	}
+
+	/* disable de configs like interrupts as firmware may config them,
+	 * which may lead OOPS in irq handler as drm has not finished
+	 * initial.
+	 */
+	if (dispc->core->deinit)
+		dispc->core->deinit(&dispc->ctx);
+
+	ret = mtgpu_enable_interrupt(dev->parent->parent, res->start);
+	if (ret) {
+		DRM_DEV_ERROR(dev, "failed to enable dispc irq number: %d\n", (int)res->start);
+		ret = -EINVAL;
+		goto err_free_dispc;
 	}
 
 	dispc->glb = chip->glb;
@@ -734,22 +771,30 @@ static int mtgpu_dispc_component_bind(struct device *dev,
 			cursor = plane;
 	}
 
-	ret = drm_crtc_init_with_planes(drm, &dispc->crtc, primary, cursor,
+	dispc->crtc = os_create_drm_crtc();
+	if (!dispc->crtc)
+		goto err_ctx_deinit;
+
+	os_set_drm_crtc_drvdata(dispc->crtc, dispc);
+	ret = drm_crtc_init_with_planes(drm, dispc->crtc, primary, cursor,
 					&mtgpu_crtc_funcs, NULL);
 	if (ret) {
 		DRM_DEV_ERROR(dev, "failed to init CRTC\n");
-		goto err_ctx_deinit;
+		goto err_crtc_free;
 	}
 
-	drm_mode_crtc_set_gamma_size(&dispc->crtc, dispc_cap.gamma_size);
+	drm_mode_crtc_set_gamma_size(dispc->crtc, dispc_cap.gamma_size);
 
-	drm_crtc_helper_add(&dispc->crtc, &mtgpu_crtc_helper_funcs);
+	drm_crtc_helper_add(dispc->crtc, &mtgpu_crtc_helper_funcs);
 
 	mtgpu_dispc_debugfs_create_files(dispc);
 
 	DRM_DEV_INFO(dev, "mtgpu display controller driver loaded successfully\n");
 
 	return 0;
+
+err_crtc_free:
+	os_destroy_drm_crtc(dispc->crtc);
 
 err_ctx_deinit:
 	if (dispc->core->ctx_deinit)
@@ -775,6 +820,8 @@ static void mtgpu_dispc_component_unbind(struct device *dev,
 	ret = mtgpu_set_interrupt_handler(dev->parent->parent, dispc->ctx.irq, NULL, NULL);
 	if (ret)
 		DRM_DEV_ERROR(dev, "failed to deregister dispc irq %d handler\n", dispc->ctx.irq);
+
+	os_destroy_drm_crtc(dispc->crtc);
 
 	if (dispc->core->ctx_deinit)
 		dispc->core->ctx_deinit(&dispc->ctx);

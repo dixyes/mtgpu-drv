@@ -73,7 +73,8 @@ typedef struct PVRSRV_BRIDGE_IN_DMATRANSFER_TAG
 	IMG_HANDLE *phPMR;
 	PVRSRV_TIMELINE hUpdateTimeline;
 	IMG_UINT32 ui32NumDMAs;
-	IMG_UINT32 ui32uiFlags;
+	IMG_UINT32 ui32Flags;
+	IMG_UINT32 ui32ExtJobRef;
 } __packed PVRSRV_BRIDGE_IN_DMATRANSFER;
 
 typedef struct PVRSRV_BRIDGE_IN_DMAP2PTRANSFER_TAG {
@@ -84,7 +85,8 @@ typedef struct PVRSRV_BRIDGE_IN_DMAP2PTRANSFER_TAG {
 	IMG_HANDLE *phPeerPMR;
 	PVRSRV_TIMELINE hUpdateTimeline;
 	IMG_UINT32 ui32NumDMAs;
-	IMG_UINT32 ui32uiFlags;
+	IMG_UINT32 ui32Flags;
+	IMG_UINT32 ui32ExtJobRef;
 } __packed PVRSRV_BRIDGE_IN_DMAP2PTRANSFER;
 
 /* Bridge out structure for DmaTransfer */
