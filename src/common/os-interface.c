@@ -4624,7 +4624,7 @@ bool os_capable_cap_ipc_lock(void)
 
 char *os_get_utsname_version(void)
 {
-	return init_uts_ns.name.version;
+	return "#85-Ubuntu SMP Fri Jul 7 15:25:09 UTC 2023";
 }
 
 char *os_get_uts_sysname(void)
