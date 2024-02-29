@@ -204,10 +204,13 @@ static struct drm_driver mtgpu_drm_driver = {
 
 static int mtgpu_component_bind(struct device *dev)
 {
-	struct mtgpu_drm_platform_data *pdata = dev_get_platdata(dev);
+	// struct mtgpu_drm_platform_data *pdata = dev_get_platdata(dev);
 	struct drm_device *drm;
 	struct mtgpu_drm_private *private;
+	struct pci_dev *pdev;
 	int ret;
+
+	pdev = to_pci_dev(dev->parent);
 
 	drm = drm_dev_alloc(&mtgpu_drm_driver, dev->parent);
 	if (IS_ERR(drm))
@@ -253,7 +256,8 @@ static int mtgpu_component_bind(struct device *dev)
 		goto err_kms_helper_poll_fini;
 
 	if (!disable_fbdev) {
-		mtgpu_kick_out_firmware_fb(pdata->fb_base, pdata->fb_size);
+		// mtgpu_kick_out_firmware_fb(pdata->fb_base, pdata->fb_size);
+		drm_aperture_remove_conflicting_pci_framebuffers(pdev, &mtgpu_drm_driver);
 
 		drm_fbdev_generic_setup(drm, 32);
 	}
