@@ -55,6 +55,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "devicemem.h"
 #include "rgx_fwif_shared.h"
 #include "rgx_fwif_km.h"
+#include "pmr_impl.h"
 
 struct SYNC_CHECKPOINT_RECORD;
 
@@ -135,6 +136,15 @@ typedef struct _SYNC_CHECKPOINT_SIGNAL_
 #define GET_CP_CB_BASE(_idx)   (IMG_OFFSET_ADDR(psDevNode->pui8DeferredSyncCPSignal, \
                                                 ((_idx) * sizeof(_SYNC_CHECKPOINT_DEFERRED_SIGNAL))))
 
+/*************************************************************************/ /*!
+@Function       SyncCheckpointGetState
+@Description    .
+@Input          psSyncCheckpoint        Synchronisation checkpoint to get its state value
+@Return         The state value of this SyncCheckpoint.
+*/
+/*****************************************************************************/
+IMG_UINT32
+SyncCheckpointGetState(PSYNC_CHECKPOINT psSyncCheckpoint);
 
 /*************************************************************************/ /*!
 @Function       SyncCheckpointGetFirmwareAddr
@@ -284,5 +294,29 @@ SyncCheckpointGetRGXFWIFUFOAddr(PSYNC_CHECKPOINT psSyncCheckpoint);
 PPVRSRV_DEVICE_NODE
 SyncCheckpointGetAssociatedDevice(PSYNC_CHECKPOINT_CONTEXT psSyncCheckpointContext);
 #endif /* !defined(SUPPORT_NATIVE_FENCE_SYNC) */
+
+/*************************************************************************/ /*!
+@Function       SyncCheckpointGetPMR
+@Description    .
+@Input          psSyncCheckpoint        Synchronisation checkpoint to get
+					its PMR of
+@Return         The pmr of the sync checkpoint, used when
+		map the pmr to user space.
+*/
+/*****************************************************************************/
+PMR*
+SyncCheckpointGetPMR(PSYNC_CHECKPOINT psSyncCheckpoint);
+
+/*************************************************************************/ /*!
+@Function       SyncCheckpointGetFWObjLinAddr
+@Description    .
+@Input          psSyncCheckpoint        Synchronisation checkpoint to get the LinAddr
+					of its SYNC_CHECKPOINT_FW_OBJ field of
+@Return         The LinAddr of the SYNC_CHECKPOINT_FW_OBJ field of this sync checkpoint,
+		used when map the pmr of the sync checkpoint block to user space..
+*/
+/*****************************************************************************/
+IMG_UINT64
+SyncCheckpointGetFWObjLinAddr(PSYNC_CHECKPOINT psSyncCheckpoint);
 
 #endif /* SYNC_CHECKPOINT_INTERNAL_H */

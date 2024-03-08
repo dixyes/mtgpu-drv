@@ -45,6 +45,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "img_types.h"
 #include "pvrsrv_error.h"
+#include "mtgpu_segment.h"
 
 #define RA_MAX_NAME_LENGTH 20
 
@@ -366,6 +367,9 @@ RA_Get_Usage_Stats(RA_ARENA *pArena, PRA_USAGE_STATS psRAStats);
 
 IMG_INTERNAL void
 RA_Print_Usage_Stats(RA_ARENA *pArena, IMG_INT32 i32SegmentID);
+
+IMG_INTERNAL void
+RA_Get_Segment_Usage_Stats(RA_ARENA *pArena, IMG_INT32 i32SegmentID, struct mtgpu_segment_stats *stats);
 
 IMG_INTERNAL RA_ARENA_ITERATOR *
 RA_IteratorAcquire(RA_ARENA *pArena, IMG_BOOL bIncludeFreeSegments);

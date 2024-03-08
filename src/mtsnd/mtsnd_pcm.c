@@ -57,7 +57,7 @@ static const struct snd_pcm_hardware mtsnd_pcm_hw_gen1 = {
 	.fifo_size =		0,
 };
 
-static const struct snd_pcm_hardware mtsnd_pcm_hw_gen2_gen3 = {
+static const struct snd_pcm_hardware mtsnd_pcm_hw_gen2_to_gen4 = {
 	.info =			SNDRV_PCM_INFO_INTERLEAVED,
 	.formats =		SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S16_BE |
 				SNDRV_PCM_FMTBIT_U16_LE | SNDRV_PCM_FMTBIT_U16_BE |
@@ -87,7 +87,7 @@ static const struct snd_pcm_hardware mtsnd_pcm_hw_gen2_gen3 = {
 static int mtsnd_pcm_open(struct snd_pcm_substream *substream)
 {
 	int gen = -1;
-	unsigned int pcm_idx = snd_pcm_substream_get_index(substream);
+	u32 pcm_idx = snd_pcm_substream_get_index(substream);
 	struct mtsnd_chip *chip = snd_pcm_substream_get_chip(substream);
 	struct snd_pcm_runtime *runtime = substream->runtime;
 
@@ -106,7 +106,7 @@ static int mtsnd_pcm_open(struct snd_pcm_substream *substream)
 		break;
 	case CHIP_GEN2:
 	case CHIP_GEN3:
-		runtime->hw = mtsnd_pcm_hw_gen2_gen3;
+		runtime->hw = mtsnd_pcm_hw_gen2_to_gen4;
 		break;
 	default:
 		return -ENXIO;
@@ -126,7 +126,7 @@ static int mtsnd_pcm_open(struct snd_pcm_substream *substream)
 
 static int mtsnd_pcm_close(struct snd_pcm_substream *substream)
 {
-	unsigned int pcm_idx = snd_pcm_substream_get_index(substream);
+	u32 pcm_idx = snd_pcm_substream_get_index(substream);
 	struct mtsnd_chip *chip = snd_pcm_substream_get_chip(substream);
 
 	dev_info(chip->card->dev, "PCM%d close\n", pcm_idx);
@@ -142,7 +142,7 @@ static int mtsnd_pcm_close(struct snd_pcm_substream *substream)
 static int mtsnd_pcm_hw_params(struct snd_pcm_substream *substream,
 			       struct snd_pcm_hw_params *params)
 {
-	unsigned int pcm_idx = snd_pcm_substream_get_index(substream);
+	u32 pcm_idx = snd_pcm_substream_get_index(substream);
 	struct mtsnd_chip *chip = snd_pcm_substream_get_chip(substream);
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	int err;
@@ -161,7 +161,7 @@ static int mtsnd_pcm_hw_params(struct snd_pcm_substream *substream,
 	}
 
 	/* set the hw buffer */
-	mtsnd_pcm_ata_buffer(chip, pcm_idx, runtime->dma_addr);
+	mtsnd_pcm_ata_buffer(chip, pcm_idx, runtime->dma_addr, params_buffer_bytes(params));
 
 	return 0;
 }
@@ -177,7 +177,7 @@ static int mtsnd_pcm_hw_free(struct snd_pcm_substream *substream)
 
 static int mtsnd_pcm_prepare(struct snd_pcm_substream *substream)
 {
-	unsigned int pcm_idx = snd_pcm_substream_get_index(substream);
+	u32 pcm_idx = snd_pcm_substream_get_index(substream);
 	struct mtsnd_chip *chip = snd_pcm_substream_get_chip(substream);
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct pcm_info pcm;
@@ -235,7 +235,7 @@ static int mtsnd_pcm_prepare(struct snd_pcm_substream *substream)
 
 static int mtsnd_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 {
-	unsigned int pcm_idx = snd_pcm_substream_get_index(substream);
+	u32 pcm_idx = snd_pcm_substream_get_index(substream);
 	struct mtsnd_chip *chip = snd_pcm_substream_get_chip(substream);
 	int i;
 	int err = 0;
@@ -281,10 +281,10 @@ static int mtsnd_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 
 static snd_pcm_uframes_t mtsnd_pcm_pointer(struct snd_pcm_substream *substream)
 {
-	unsigned int pcm_idx = snd_pcm_substream_get_index(substream);
+	u32 pcm_idx = snd_pcm_substream_get_index(substream);
 	struct mtsnd_chip *chip = snd_pcm_substream_get_chip(substream);
 	struct snd_pcm_runtime *runtime = substream->runtime;
-	unsigned int bytes = mtsnd_snd_pointer(chip, pcm_idx);
+	u32 bytes = mtsnd_snd_pointer(chip, pcm_idx);
 
 	if (bytes >= runtime->dma_bytes)
 		bytes = 0;
@@ -294,11 +294,11 @@ static snd_pcm_uframes_t mtsnd_pcm_pointer(struct snd_pcm_substream *substream)
 
 static int mtsnd_pcm_ack(struct snd_pcm_substream *substream)
 {
-	unsigned int pcm_idx = snd_pcm_substream_get_index(substream);
+	u32 pcm_idx = snd_pcm_substream_get_index(substream);
 	struct mtsnd_chip *chip = snd_pcm_substream_get_chip(substream);
 	struct snd_pcm_runtime *runtime = substream->runtime;
-	unsigned int appl_ofs = runtime->control->appl_ptr % runtime->buffer_size;
-	unsigned int bytes = frames_to_bytes(runtime, appl_ofs);
+	u32 appl_ofs = runtime->control->appl_ptr % runtime->buffer_size;
+	u32 bytes = frames_to_bytes(runtime, appl_ofs);
 
 	mtsnd_snd_ack(chip, runtime->control->appl_ptr, runtime->buffer_size,
 		      runtime->dma_bytes, bytes, pcm_idx);
@@ -339,6 +339,7 @@ int mtsnd_create_pcm(struct mtsnd_chip *chip)
 
 		snd_pcm_set_ops(pcm, SNDRV_PCM_STREAM_PLAYBACK, &mtsnd_pcm_ops);
 		/* buffer pre-allocation */
+		dma_set_mask_and_coherent(&chip->pci->dev, DMA_BIT_MASK(mtsnd_query_dma_mask(chip)));
 		snd_pcm_lib_preallocate_pages_for_all(pcm, SNDRV_DMA_TYPE_DEV,
 							&chip->pci->dev,
 							MT_HW_BUFBYTE_SIZE, MT_HW_BUFBYTE_MAX);
@@ -362,9 +363,9 @@ int mtsnd_create_pcm(struct mtsnd_chip *chip)
 
 void mtsnd_handle_pcm(struct mtsnd_pcm *pcm)
 {
-	unsigned int pcm_idx = snd_pcm_substream_get_index(pcm->substream);
+	u32 pcm_idx = snd_pcm_substream_get_index(pcm->substream);
 	struct mtsnd_chip *chip = snd_pcm_substream_get_chip(pcm->substream);
-	unsigned int handle = mtsnd_snd_irq_handle(chip, pcm_idx);
+	u32 handle = mtsnd_snd_irq_handle(chip, pcm_idx);
 
 	if (!chip->pcm[pcm_idx].pcm_running)
 		return;

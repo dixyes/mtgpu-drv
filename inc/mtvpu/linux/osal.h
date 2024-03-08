@@ -5,15 +5,17 @@
 
 #ifndef _MTVPU_OSAL_H_
 #define _MTVPU_OSAL_H_
+
 #include "os-interface.h"
 
 enum {NONE=0, ERR, WARN, INFO, TRACE, MAX_LOG_LEVEL};
 
 extern int mtvpu_log_level;
-#define VLOG(level, fmt, ...)						\
-({									\
-	if (unlikely(level <= mtvpu_log_level))				\
-		os_printk("mtvpu: " fmt, ##__VA_ARGS__);		\
+
+#define VLOG(level, fmt, ...)						      \
+({									                          \
+	if (unlikely(level <= mtvpu_log_level))	    \
+		os_pr_info("[mtvpu]" fmt, ##__VA_ARGS__);	\
 })
 
 u64 osal_gettime(void);

@@ -58,10 +58,14 @@ MODULE_PARM_DESC(disable_fbdev, "0 - enable fbdev, 1 - disable fbdev. The defaul
  * |<-- 32bits -->|<-- 8bits -->|<-- 8bits -->|<-- 8bits -->|<-- 8bits -->|
  * |   reserved   |global_debug | dispc_debug | hdmi_debug  |  dp_debug   |
  */
-ulong display_debug = 0x07070707;
+ulong display_debug = 0x0707070707;
 module_param(display_debug, ulong, 0600);
 MODULE_PARM_DESC(display_debug,
-		 " H->L: global[8] dispc[8] hdmi[8] dp[8]. The default value is 0x07070707.");
+		 " H->L: global[8] dispc[8] hdmi[8] dp[8]. The default value is 0x0707070707.");
+
+bool dsc_enable = true;
+module_param(dsc_enable, bool, 0444);
+MODULE_PARM_DESC(dsc_enable, "0 - disable dsc, 1 - enable dsc. The default value is 1");
 
 static int mtgpu_kick_out_firmware_fb(resource_size_t base, resource_size_t size);
 
@@ -162,7 +166,7 @@ const struct file_operations mtgpu_drm_driver_fops = {
 	.poll		= drm_poll,
 	.read		= drm_read,
 	.llseek		= noop_llseek,
-	.mmap		= mtgpu_gem_vram_mmap,
+	.mmap		= mtgpu_mmap,
 };
 
 static struct drm_driver mtgpu_drm_driver = {
@@ -305,7 +309,6 @@ static struct platform_driver *const component_drivers[] = {
 	&pvr_platform_driver,
 #ifdef VPU_ENABLE
 	&vpu_driver,
-	&jpu_driver
 #endif
 };
 
@@ -434,10 +437,14 @@ int mtgpu_kick_out_firmware_fb(resource_size_t base, resource_size_t size)
 	remove_conflicting_framebuffers(ap, "mtgpudrmfb", false);
 
 	kfree(ap);
-#else
+#elif defined(OS_DRM_APERTURE_REMOVE_CONFLICTING_FRAMEBUFFERS_HAS_FOUR_ARG)
 	drm_aperture_remove_conflicting_framebuffers(base,
 						     size,
 						     false,
+						     &mtgpu_drm_driver);
+#else
+	drm_aperture_remove_conflicting_framebuffers(base,
+						     size,
 						     &mtgpu_drm_driver);
 #endif
 
@@ -457,6 +464,10 @@ int mtgpu_drm_init(void)
 	if (ret)
 		return ret;
 
+	ret = platform_driver_register(&mtgpu_dsc_driver);
+	if (ret)
+		DRM_ERROR("mtgpu dsc driver register failed (%d)\n", ret);
+
 	ret = platform_driver_register(&mtgpu_phy_driver);
 	if (ret)
 		DRM_ERROR("mtgpu phy driver register failed (%d)\n", ret);
@@ -473,6 +484,10 @@ void mtgpu_drm_fini(void)
 	platform_unregister_drivers(component_drivers,
 				    ARRAY_SIZE(component_drivers));
 	pvr_drv_exit();
+
+	platform_driver_unregister(&mtgpu_dsc_driver);
+
 	platform_driver_unregister(&mtgpu_phy_driver);
+
 	platform_driver_unregister(&mtgpu_drm_platform_driver);
 }

@@ -137,7 +137,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "pvrsrv_sync_server.h"
 #include "lock.h"
-
 #if defined(SUPPORT_DMA_TRANSFER)
 #include "mtgpu_dma.h"
 #endif
@@ -686,6 +685,11 @@ IMG_UINT32 OSStringUINT32ToStr(IMG_CHAR *pszBuf, size_t uSize,
 	return ui32Len;
 }
 
+IMG_CHAR *OSStringString(const IMG_CHAR *str1, const IMG_CHAR *str2)
+{
+	return strstr(str1, str2);
+}
+
 #if defined(SUPPORT_NATIVE_FENCE_SYNC) || defined(SUPPORT_BUFFER_SYNC)
 static struct workqueue_struct *gpFenceStatusWq;
 
@@ -946,6 +950,11 @@ IMG_CHAR *OSGetCurrentClientProcessNameKM(void)
 uintptr_t OSGetCurrentClientThreadIDKM(void)
 {
 	return OSGetCurrentThreadID();
+}
+
+pid_t OSGetCurrentTgid(void)
+{
+	return current->tgid;
 }
 
 size_t OSGetPageSize(void)
@@ -2839,63 +2848,6 @@ struct device *OSGetOSDeviceFromDeviceNode(PVRSRV_DEVICE_NODE *psDevNode)
 	return (struct device *)psDevNode->psDevConfig->pvOSDevice;
 }
 
-#if defined(SUPPORT_DMA_TRANSFER)
-
-PVRSRV_ERROR OSDmaTransferP2P(PVRSRV_DEVICE_NODE *psLocalDevNode,
-			      PVRSRV_DEVICE_NODE *psPeerDevNode,
-			      IMG_UINT64 *puiLocalDevPAddr,
-			      IMG_UINT64 *puiPeerDevPAddr,
-			      IMG_DEVMEM_SIZE_T *puiSize,
-			      IMG_BOOL bPeer2Local)
-{
-	struct device *psLocalDev, *psPeerDev;
-
-	psLocalDev = OSGetPcieDeviceFromDeviceNode(psLocalDevNode);
-	psPeerDev = OSGetPcieDeviceFromDeviceNode(psPeerDevNode);
-
-	return mtgpu_dma_transfer_p2p(psLocalDev, psPeerDev, puiLocalDevPAddr,
-				      puiPeerDevPAddr, puiSize, 1, bPeer2Local);
-}
-
-PVRSRV_ERROR OSDmaTransferUser(PVRSRV_DEVICE_NODE *psDevNode,
-			       IMG_UINT64 uiDmaDevAddr,
-			       IMG_UINT64 *puiAddress,
-			       IMG_DEVMEM_SIZE_T uiSize,
-			       IMG_BOOL bS2D)
-{
-	struct device *pdev = OSGetPcieDeviceFromDeviceNode(psDevNode);
-
-	return mtgpu_dma_transfer_user(pdev,
-				       uiDmaDevAddr,
-				       puiAddress,
-				       uiSize,
-				       bS2D);
-}
-
-PVRSRV_ERROR OSDmaTransferSparseUser(PVRSRV_DEVICE_NODE *psDevNode,
-				     IMG_UINT64 *puiDmaDevAddr,
-				     IMG_UINT64 *puiAddress,
-				     IMG_DEVMEM_SIZE_T uiSize,
-				     bool *pbValidPage,
-				     IMG_UINT32 uiOffsetInPage,
-				     IMG_UINT32 uiSizeInPages,
-				     IMG_UINT32 uiValidPages,
-				     IMG_BOOL bS2D)
-{
-	struct device *pdev = OSGetPcieDeviceFromDeviceNode(psDevNode);
-
-	return mtgpu_dma_transfer_sparse_user(pdev,
-					      puiDmaDevAddr,
-					      puiAddress,
-					      uiSize,
-					      pbValidPage,
-					      uiOffsetInPage,
-					      uiSizeInPages,
-					      uiValidPages,
-					      bS2D);
-}
-#endif /* if defined(SUPPORT_DMA_TRANSFER) */
-
 IMG_CPU_VIRTADDR OSDmaAllocCoherent(struct device *pvOSDevice,
 				    size_t uiSize,
 				    dma_addr_t *pHandle)
@@ -3881,60 +3833,6 @@ ssize_t OSKernelWrite(void *pvFile, const char __user *pszBuf, size_t count, lof
 	return kernel_write(pvFile, pszBuf, count, psPos);
 }
 
-void *OSGetKernelParamArg(const struct kernel_param *psKernelParam)
-{
-	return psKernelParam->arg;
-}
-
-bool OSQueueWork(struct workqueue_struct *psWorkQueue, struct work_struct *psWork)
-{
-	return queue_work(psWorkQueue, psWork);
-}
-
-struct workqueue_struct *OSAllocWorkqueue(const IMG_CHAR *pszFormat, unsigned int flags, int max_active)
-{
-	return alloc_workqueue(pszFormat, flags, max_active);
-}
-
-void OSDestroyWorkqueue(struct workqueue_struct *psWorkQueue)
-{
-	destroy_workqueue(psWorkQueue);
-}
-
-struct mt_work_struct {
-	struct work_struct work;
-	void *pvData;
-};
-
-void *OSCreateWork(work_func_t pfnFunc)
-{
-	struct mt_work_struct *work = kzalloc(sizeof(struct mt_work_struct), GFP_KERNEL);
-	if (!work)
-		return NULL;
-
-	INIT_WORK(&work->work, pfnFunc);
-
-	return work;
-}
-
-void OSDestroyWork(struct work_struct *psWork)
-{
-	kfree(psWork);
-}
-
-void OSSetWorkDrvdata(struct work_struct *psWork, void *pvData)
-{
-	struct mt_work_struct *mt_work = container_of(psWork, struct mt_work_struct, work);
-
-	mt_work->pvData = pvData;
-}
-
-void *OSGetWorkDrvdata(struct work_struct *psWork)
-{
-	struct mt_work_struct *mt_work = container_of(psWork, struct mt_work_struct, work);
-
-	return mt_work->pvData;
-}
 void *OSGetDmaBufPrivateData(struct dma_buf *psDmaBuf)
 {
 	return psDmaBuf->priv;
@@ -4389,4 +4287,59 @@ struct dma_buf_attachment *OSDmaBufAttach(struct dma_buf *psDmBuf,
 bool OSIsErrOrNull(__force const void *pvPtr)
 {
 	return IS_ERR_OR_NULL(pvPtr);
+}
+
+void *OSGetKernelParamArg(const struct kernel_param *psKernelParam)
+{
+	return psKernelParam->arg;
+}
+
+bool OSQueueWork(struct workqueue_struct *psWorkQueue, struct work_struct *psWork)
+{
+	return queue_work(psWorkQueue, psWork);
+}
+
+struct workqueue_struct *OSAllocWorkqueue(const IMG_CHAR *pszFormat, unsigned int flags, int max_active)
+{
+	return alloc_workqueue(pszFormat, flags, max_active);
+}
+
+void OSDestroyWorkqueue(struct workqueue_struct *psWorkQueue)
+{
+	destroy_workqueue(psWorkQueue);
+}
+
+struct mt_work_struct {
+	struct work_struct work;
+	void *pvData;
+};
+
+void *OSCreateWork(work_func_t pfnFunc)
+{
+	struct mt_work_struct *work = kzalloc(sizeof(struct mt_work_struct), GFP_KERNEL);
+	if (!work)
+		return NULL;
+
+	INIT_WORK(&work->work, pfnFunc);
+
+	return work;
+}
+
+void OSDestroyWork(struct work_struct *psWork)
+{
+	kfree(psWork);
+}
+
+void OSSetWorkDrvdata(struct work_struct *psWork, void *pvData)
+{
+	struct mt_work_struct *mt_work = container_of(psWork, struct mt_work_struct, work);
+
+	mt_work->pvData = pvData;
+}
+
+void *OSGetWorkDrvdata(struct work_struct *psWork)
+{
+	struct mt_work_struct *mt_work = container_of(psWork, struct mt_work_struct, work);
+
+	return mt_work->pvData;
 }

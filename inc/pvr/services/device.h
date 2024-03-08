@@ -118,6 +118,8 @@ typedef struct _DEVICE_MEMORY_INFO_
 
 	/* Blueprints for creating new device memory contexts */
 	IMG_UINT32              uiNumHeapConfigs;
+	IMG_UINT64              ui64ClientHeapPageSizeFlag;
+	IMG_UINT64              ui64FWHeapPageSizeFlag;
 	DEVMEM_HEAP_CONFIG      *psDeviceMemoryHeapConfigArray;
 	DEVMEM_HEAP_BLUEPRINT   *psDeviceMemoryHeap;
 } DEVICE_MEMORY_INFO;
@@ -222,6 +224,11 @@ typedef struct _PVRSRV_DEVICE_DEBUG_INFO_
 
 #if defined(PVRSRV_ENABLE_PVR_ION_STATS)
 	struct _pvr_ion_stats_state_ *psPvrIonStatsState;
+#endif
+
+#if (RGX_NUM_OS_SUPPORTED > 1)
+	DI_ENTRY *psVgpuSchedulerEntry;
+	DI_ENTRY *psVgpuCswTimeEntry;
 #endif
 } PVRSRV_DEVICE_DEBUG_INFO;
 

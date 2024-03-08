@@ -43,7 +43,7 @@ static char *id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;
 module_param_array(id, charp, NULL, 0444);
 MODULE_PARM_DESC(id, "ID string for MT soundcard.");
 
-unsigned int snd_debug = 0x7;
+u32 snd_debug = 0x7;
 module_param(snd_debug, int, 0444);
 MODULE_PARM_DESC(snd_debug,
 		 "mtsnd audio debug print control");
@@ -90,7 +90,7 @@ static irqreturn_t mtsnd_irq_handle(int irq, void *dev_id)
 {
 	int i;
 	struct mtsnd_chip *chip = dev_id;
-	unsigned int src = get_pcm_compr_irq(chip);
+	u32 src = get_pcm_compr_irq(chip);
 
 	for (i = 0; i < get_pcm_count(chip); i++) {
 		if (check_pcm_irq(chip, i, src))
@@ -232,6 +232,8 @@ static int mtsnd_create(struct snd_card *card, struct pci_dev *pci,
 		strcpy(card->longname, "MooreThreadsGen2");
 	else if (get_chip_type(chip) == CHIP_GEN3)
 		strcpy(card->longname, "MooreThreadsGen3");
+	else if (get_chip_type(chip) == CHIP_GEN4)
+		strcpy(card->longname, "MooreThreadsGen4");
 
 	*rchip = chip;
 	return 0;

@@ -35,6 +35,7 @@
 #include "mtgpu_dp_common.h"
 #include "mtgpu_phy_common.h"
 #include "mtgpu_drm_debugfs.h"
+#include "mtgpu_drm_dsc.h"
 
 static const u8 display_port_type[] = {
 	DRM_MODE_CONNECTOR_Unknown,    /*PORT_DISABLED*/
@@ -86,6 +87,8 @@ mtgpu_dp_connector_detect(struct drm_connector *connector, bool force)
 	}
 
 	dp->connected = dp->core->is_plugin(&dp->ctx);
+	if (dp->connected && dp->ctx.dsc_param.dsc_capable)
+		mtgpu_dp_dsc_discover(dp);
 
 	if (dp->connected && !dp->edid) {
 		do {
@@ -142,7 +145,12 @@ mtgpu_dp_connector_best_encoder(struct drm_connector *connector)
 static int mtgpu_dp_mode_supported_by_product(struct mtgpu_dp *dp,
 					      struct drm_display_mode *mode)
 {
-	if (mode->clock / 100 > dp->ctx.max_pclk_100khz)
+	struct mtgpu_dp_dsc_param *dp_dsc_param = &dp->ctx.dsc_param;
+	bool dsc_support = (dp_dsc_param->dsc_capable &&
+			    dp_dsc_param->sink_dsc_support);
+
+	/* If both DE and sink support dsc, we no need check pclk */
+	if (!dsc_support && mode->clock / 100 > dp->ctx.max_pclk_100khz)
 		return MODE_CLOCK_HIGH;
 
 	if (mode->hdisplay > dp->ctx.max_hres)
@@ -247,12 +255,30 @@ mtgpu_dp_encoder_atomic_mode_set(struct drm_encoder *encoder,
 {
 	struct mtgpu_dp *dp = encoder_to_mtgpu_dp(encoder);
 	struct drm_display_mode *adjusted_mode = &crtc_state->adjusted_mode;
+	int max_pclk;
 
 	DRM_DEV_DEBUG(dp->dev, "%s()\n", __func__);
 
 	drm_display_mode_to_videomode(adjusted_mode, dp->ctx.vm);
 	dp->ctx.bpp = 24;
 	dp->ctx.pclk = adjusted_mode->clock;
+
+	if (dp->ctx.dsc_param.dsc_capable) {
+		mtgpu_dp_get_sinkcaps(dp);
+
+		max_pclk = mtgpu_dp_link_rate_to_pclk(dp->ctx.max_rate,
+						      dp->ctx.lane_cnt,
+						      dp->ctx.bpp);
+
+		/* max_pclk < dp->ctx.pclk:
+		 * Use DSC when pixel clock exceed DP link clock!
+		 * and the sink must support dsc,too.
+		 */
+		if (dp->ctx.dsc_param.sink_dsc_support && max_pclk < dp->ctx.pclk)
+			mtgpu_compute_dsc_params(encoder, crtc_state->crtc);
+		else
+			mtgpu_dsc_param_restore(encoder, crtc_state->crtc);
+	}
 
 	return;
 }
@@ -535,6 +561,31 @@ static int find_dp_phy_pdev_fn(struct device *dev, void *data)
 	return 0;
 }
 
+static int dsc_dev_match(struct device *dev, void *name)
+{
+	return !strncmp(dev_name(dev), (const char *)name, strlen((const char *)name));
+}
+
+static void mtgpu_dp_dsc_dev_find(struct mtgpu_dp *dp, struct device *dev)
+{
+	struct mtgpu_dsc *dsc;
+	struct device *dsc_dev;
+
+	if (dp->ctx.dsc_param.dsc_capable) {
+		dsc_dev = device_find_child(dev, MTGPU_DEVICE_NAME_DSC, dsc_dev_match);
+		if (dsc_dev) {
+			dsc = dev_get_drvdata(dsc_dev);
+			if (dsc)
+				dp->dsc = dsc;
+			else
+				DRM_DEV_ERROR(dev, "get dsc failed\n");
+		} else {
+			dp->ctx.dsc_param.dsc_capable = false;
+			DRM_DEV_INFO(dev, "dsc device not exist\n");
+		}
+	}
+}
+
 static int mtgpu_dp_component_bind(struct device *dev,
 				   struct device *master, void *data)
 {
@@ -608,6 +659,21 @@ static int mtgpu_dp_component_bind(struct device *dev,
 		}
 	}
 
+	if (pdata->soc_gen == GPU_SOC_GEN3) {
+		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "cust-regs");
+		if (!res) {
+			DRM_DEV_ERROR(dev, "failed to get display cust-regs\n");
+			ret = -EIO;
+			goto err_free_dp;
+		}
+
+		dp->ctx.cust_regs = devm_ioremap(dev, res->start, resource_size(res));
+		if (IS_ERR(dp->ctx.cust_regs)) {
+			ret = PTR_ERR(dp->ctx.cust_regs);
+			goto err_free_dp;
+		}
+	}
+
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "glb-regs");
 	if (!res) {
 		DRM_DEV_ERROR(dev, "failed to get display glb-regs\n");
@@ -652,7 +718,9 @@ static int mtgpu_dp_component_bind(struct device *dev,
 	dp->ctx.max_hres = pdata->max_hres;
 	dp->ctx.max_vres = pdata->max_vres;
 	dp->ctx.max_pclk_100khz = pdata->max_pclk_100khz;
+	dp->ctx.dsc_param.dsc_capable = pdata->dsc_capable && dsc_enable;
 	dp->port_type = pdata->port_type;
+
 	dev_set_drvdata(dev, dp);
 	INIT_DELAYED_WORK(dp->hpd_work, mtgpu_dp_hpd_work);
 	INIT_WORK(dp->hpd_irq_work, mtgpu_dp_hpd_irq_work);
@@ -716,6 +784,7 @@ static int mtgpu_dp_component_bind(struct device *dev,
 	}
 
 	mtgpu_dp_debugfs_create_files(dp);
+	mtgpu_dp_dsc_dev_find(dp, dev);
 
 	DRM_DEV_INFO(dev, "mtgpu DisplayPort driver loaded successfully\n");
 

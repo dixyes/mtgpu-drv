@@ -267,6 +267,7 @@ typedef struct {
     Uint32          picSize4Compress;
     Uint32          picInfo4Compress;
     Uint32          waitFor2ndField;
+    vpu_buffer_t    vbRangeMap[2];
 } DecInfo;
 
 #define CODA9_AVC_Q_MATRIX_OFFSET       (0x3500)

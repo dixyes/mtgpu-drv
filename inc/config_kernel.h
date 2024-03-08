@@ -8,9 +8,9 @@
 #define PVRHMMU_MODNAME ""
 #define PVRSYNC_MODNAME "pvr_sync"
 #define MT_BUILD_OS_TYPE "Desktop"
-#define MT_BUILD_TAG "352ee78"
-#define MT_BUILD_VPU "3e5c79f"
-#define MT_BUILD_SND "a14807c"
+#define MT_BUILD_TAG "582bba1"
+#define MT_BUILD_VPU "60909fc"
+#define MT_BUILD_SND "45edde8"
 #define SUPPORT_RGX 1
 #define PVRSRV_HWPERF_COUNTERS_PERBLK 12
 #define RELEASE

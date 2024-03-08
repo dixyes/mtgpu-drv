@@ -41,7 +41,7 @@ struct parsed_hdmi_eld {
 	char monitor_name[ELD_MAX_MNL + 1];
 	int	manufacture_id;
 	int	product_id;
-	unsigned long long	port_id;
+	u64	port_id;
 	int	support_hdcp;
 	int	support_ai;
 	int	conn_type;
@@ -51,5 +51,5 @@ struct parsed_hdmi_eld {
 	struct cea_snd sad[ELD_MAX_SAD];
 };
 
-unsigned int snd_hdmi_show_eld(struct parsed_hdmi_eld *e, char* buf, int buflen);
+u32 snd_hdmi_show_eld(struct parsed_hdmi_eld *e, char* buf, int buflen);
 #endif /* _ELD_H */

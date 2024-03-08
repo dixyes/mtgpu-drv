@@ -101,8 +101,8 @@ typedef IMG_UINT64 PVRSRV_MEMALLOCFLAGS_T;
  * | Shared-buffer  |
  *
  * --- Memory Alloc FLAGS ---
- * | 36             |
- * | Vram Only |
+ * | 36             | 37                |
+ * | Vram Only      | No MT-Link Access |
  *
  * --- SEGMENT HINTS ---
  * |  53 54 55  |
@@ -640,12 +640,17 @@ typedef IMG_UINT64 PVRSRV_MEMALLOCFLAGS_T;
 #define PVRSRV_IS_USER_MEM_FLAG(uiFlags)		(((uiFlags) & \
 			PVRSRV_MEMALLOCFLAG_USER_MEM) == PVRSRV_MEMALLOCFLAG_USER_MEM)
 
-/*
+/*!
  * Flag to alloc memory only on vram
  */
 #define PVRSRV_MEMALLOCFLAG_VARM_ONLY   (1ULL << 36)
 #define PVRSRV_CHECK_VARM_ONLY(uiFlags) (((uiFlags)& \
 			PVRSRV_MEMALLOCFLAG_VARM_ONLY) == PVRSRV_MEMALLOCFLAG_VARM_ONLY)
+
+/*!
+ * @Description  Flag to choice pcie
+ */
+#define PVRSRV_MEMALLOCFLAG_NO_MTLINK_ACCESS  (1ULL << 37)
 
 /*!
   @Description Check memory alloc flag valid
@@ -840,6 +845,9 @@ typedef IMG_UINT64 PVRSRV_MEMALLOCFLAGS_T;
 /*!
   @Description  Flag to alloc vpu memory group (address >= 4G)
  */
+#define PVRSRV_MEMALLOCFLAG_VPU_GROUP1	 \
+	(((PVRSRV_MEMALLOCFLAGS_T)(PVRSRV_PHYS_HEAP_VPU_GROUP1)) << PVRSRV_PHYS_HEAP_HINT_SHIFT)
+
 #define PVRSRV_MEMALLOCFLAG_VPU_GROUP2	 \
 	(((PVRSRV_MEMALLOCFLAGS_T)(PVRSRV_PHYS_HEAP_VPU_GROUP2)) << PVRSRV_PHYS_HEAP_HINT_SHIFT)
 

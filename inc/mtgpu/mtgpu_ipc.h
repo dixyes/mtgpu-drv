@@ -205,21 +205,14 @@ void mtgpu_ipc_remove_device(struct mtgpu_device *mtdev);
  *
  * @param  dev gpu device
  * @param  msg message
- *
- * @return status
- */
-int mtgpu_ipc_transmit(struct device *dev, struct ipc_msg *msg);
-
-/**
- * send ipc message, use the send message as reply message buffer if it have a reply message
- *
- * @param  dev gpu device
- * @param  msg message
  * @param  ext_msg a extended message for send and recv, must be kfree() when discarded
+ * @param  polling_wait_usec the polling interval time in usec, 0 indicates waiting for wake_up()
+ *         events instead of polling method.
  *
  * @return status
  */
-int mtgpu_ipc_transmit_ext(struct device *dev, struct ipc_msg *msg, struct ipc_msg_ext **ext_msg);
+int mtgpu_ipc_transmit_ext(struct device *dev, struct ipc_msg *msg, struct ipc_msg_ext **ext_msg,
+			   int polling_wait_usec);
 
 /**
  * set the async_msg_handler. it will be called when receiving a unexpected message.
@@ -255,6 +248,8 @@ int mtgpu_ipc_report_handler_unregister(struct mtgpu_ipc_info *ipc_info,
 
 int mtgpu_ipc_init(void);
 void mtgpu_ipc_exit(void);
+
+#define mtgpu_ipc_transmit(dev, msg) mtgpu_ipc_transmit_ext(dev, msg, NULL, 0)
 
 #endif /* __MTGPU_IPC_H__ */
 

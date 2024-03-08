@@ -81,6 +81,54 @@ const struct proc_ops mtlink_test_proc_ops = {
 	.proc_release = os_single_release,
 };
 
+const struct proc_ops mtlink_topo_switch_proc_ops = {
+	.proc_open = mtlink_topo_switch_proc_open,
+	.proc_read = os_seq_read,
+	.proc_write = mtlink_topo_switch_proc_write,
+	.proc_lseek = os_seq_lseek,
+	.proc_release = os_single_release,
+};
+
+const struct proc_ops mtlink_err_proc_ops = {
+	.proc_open = mtlink_ctrl_err_proc_open,
+	.proc_read = os_seq_read,
+	.proc_write = mtlink_ctrl_err_proc_write,
+	.proc_lseek = os_seq_lseek,
+	.proc_release = os_single_release,
+};
+
+const struct proc_ops mtlink_debug_proc_ops = {
+	.proc_open = mtlink_debug_proc_open,
+	.proc_read = os_seq_read,
+	.proc_write = mtlink_debug_proc_write,
+	.proc_lseek = os_seq_lseek,
+	.proc_release = os_single_release,
+};
+
+const struct proc_ops mtlink_trigger_bdl_proc_ops = {
+	.proc_open = mtlink_trigger_bdl_proc_open,
+	.proc_read = os_seq_read,
+	.proc_write = mtlink_trigger_bdl_proc_write,
+	.proc_lseek = os_seq_lseek,
+	.proc_release = os_single_release,
+};
+
+const struct proc_ops mtlink_irqcounter_enable_proc_ops = {
+	.proc_open = mtlink_irqcounter_eanble_proc_open,
+	.proc_read = os_seq_read,
+	.proc_write = mtlink_irqcounter_eanble_proc_write,
+	.proc_lseek = os_seq_lseek,
+	.proc_release = os_single_release,
+};
+
+const struct proc_ops mtlink_irqcounter_counter_proc_ops = {
+	.proc_open = mtlink_irqcounter_counter_proc_open,
+	.proc_read = os_seq_read,
+	.proc_write = mtlink_irqcounter_counter_proc_write,
+	.proc_lseek = os_seq_lseek,
+	.proc_release = os_single_release,
+};
+
 const struct proc_ops process_util_proc_ops = {
 	.proc_open = mtgpu_proc_util_open,
 	.proc_read = os_seq_read,
@@ -109,6 +157,54 @@ const struct file_operations mtlink_test_proc_ops = {
 	.open = mtlink_test_proc_open,
 	.read = os_seq_read,
 	.write = mtlink_test_proc_write,
+	.llseek = os_seq_lseek,
+	.release = os_single_release,
+};
+
+const struct file_operations mtlink_topo_switch_proc_ops = {
+	.open = mtlink_topo_switch_proc_open,
+	.read = os_seq_read,
+	.write = mtlink_topo_switch_proc_write,
+	.llseek = os_seq_lseek,
+	.release = os_single_release,
+};
+
+const struct file_operations mtlink_err_proc_ops = {
+	.open = mtlink_ctrl_err_proc_open,
+	.read = os_seq_read,
+	.write = mtlink_ctrl_err_proc_write,
+	.llseek = os_seq_lseek,
+	.release = os_single_release,
+};
+
+const struct file_operations mtlink_debug_proc_ops = {
+	.open = mtlink_debug_proc_open,
+	.read = os_seq_read,
+	.write = mtlink_debug_proc_write,
+	.llseek = os_seq_lseek,
+	.release = os_single_release,
+};
+
+const struct file_operations mtlink_trigger_bdl_proc_ops = {
+	.open = mtlink_trigger_bdl_proc_open,
+	.read = os_seq_read,
+	.write = mtlink_trigger_bdl_proc_write,
+	.llseek = os_seq_lseek,
+	.release = os_single_release,
+};
+
+const struct file_operations mtlink_irqcounter_enable_proc_ops = {
+	.open = mtlink_irqcounter_eanble_proc_open,
+	.read = os_seq_read,
+	.write = mtlink_irqcounter_eanble_proc_write,
+	.llseek = os_seq_lseek,
+	.release = os_single_release,
+};
+
+const struct file_operations mtlink_irqcounter_counter_proc_ops = {
+	.open = mtlink_irqcounter_counter_proc_open,
+	.read = os_seq_read,
+	.write = mtlink_irqcounter_counter_proc_write,
 	.llseek = os_seq_lseek,
 	.release = os_single_release,
 };
@@ -250,11 +346,11 @@ static struct pci_device_id mtgpu_pci_tbl[] = {
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_G3D80, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
-	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S4000, PCI_ANY_ID, PCI_ANY_ID,
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S4000_8CORE, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_G3S90, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
-	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S4000i, PCI_ANY_ID, PCI_ANY_ID,
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S4000_7CORE, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S10, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&sudi_drvdata},
@@ -280,12 +376,14 @@ static struct pci_device_id mtgpu_pci_tbl[] = {
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_G3D80, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
-	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S4000, PCI_ANY_ID, PCI_ANY_ID,
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S4000_8CORE, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_G3S90, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
-	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S4000i, PCI_ANY_ID, PCI_ANY_ID,
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S4000_7CORE, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_QUYUAN1_VF, PCI_ANY_ID, PCI_ANY_ID,
+	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan1_drvdata},
 #if (RGX_NUM_OS_SUPPORTED > 1)
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S1000, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&sudi_drvdata},

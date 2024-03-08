@@ -229,6 +229,12 @@ void RGXHWPerfHostPostDMAEvent(PVRSRV_RGXDEV_INFO *psRgxDevInfo,
 			       PVRSRV_TIMELINE hTimeline,
 			       IMG_UINT32 ui32ExtJobRef);
 
+void RGXHWPerfHostPostDebugEvent(PVRSRV_RGXDEV_INFO *psRgxDevInfo,
+				 RGX_HWPERF_HOST_EVENT_TYPE eEventType,
+				 IMG_UINT64 *aui64Values,
+				 IMG_UINT32 ui32ValuesCount,
+				 const IMG_CHAR *pszName);
+
 IMG_BOOL RGXHWPerfHostIsEventEnabled(PVRSRV_RGXDEV_INFO *psRgxDevInfo, RGX_HWPERF_HOST_EVENT_TYPE eEvent);
 
 #define _RGX_HWPERF_HOST_FILTER(CTX, EV) \
@@ -620,6 +626,48 @@ do { \
 	} \
 } while (0)
 
+/**
+ * @param I      Device info pointer
+ * @param N      Tag name
+ */
+#define RGXSRV_HWPERF_HOST_DEBUG_TAG_START(I, N, ...) \
+do { \
+	if (RGXHWPerfHostIsEventEnabled((I), RGX_HWPERF_HOST_DEBUG_START)) \
+	{ \
+		IMG_UINT64 aui64Values[] = { __VA_ARGS__ }; \
+		IMG_UINT32 ui32Count = ARRAY_SIZE(aui64Values); \
+		RGXHWPerfHostPostDebugEvent((I), RGX_HWPERF_HOST_DEBUG_START, \
+			aui64Values, ui32Count, (N)); \
+	} \
+} while (0)
+
+/**
+ * @param I      Device info pointer
+ * @param N      Tag name
+ */
+#define RGXSRV_HWPERF_HOST_DEBUG_TAG_END(I, N, ...) \
+do { \
+	if (RGXHWPerfHostIsEventEnabled((I), RGX_HWPERF_HOST_DEBUG_END)) \
+	{ \
+		IMG_UINT64 aui64Values[] = { __VA_ARGS__ }; \
+		IMG_UINT32 ui32Count = ARRAY_SIZE(aui64Values); \
+		RGXHWPerfHostPostDebugEvent((I), RGX_HWPERF_HOST_DEBUG_END, \
+			aui64Values, ui32Count, (N)); \
+	} \
+} while (0)
+
+/**
+ * @param I      Device info pointer
+ */
+#define RGXSRV_HWPERF_HOST_FUNCTION_START(I, ...) \
+		RGXSRV_HWPERF_HOST_DEBUG_TAG_START((I), __FUNCTION__, __VA_ARGS__)
+
+/**
+ * @param I      Device info pointer
+ */
+#define RGXSRV_HWPERF_HOST_FUNCTION_END(I, ...) \
+		RGXSRV_HWPERF_HOST_DEBUG_TAG_END((I), __FUNCTION__, __VA_ARGS__)
+
 #else
 
 #define RGXSRV_HWPERF_ENQ(C, P, X, E, I, K, CF, UF, UT, CHKUID, UPDUID, D, CE)
@@ -641,6 +689,10 @@ do { \
 #define RGXSRV_HWPERF_HOST_TIME_CORRELATION(I, S, C)
 #define RGXSRV_HWPERF_HOST_DMA_USER(I, EV, PID, TID, SW_TL, E, S2D, SADDR, DADDR)
 #define RGXSRV_HWPERF_HOST_DMA_P2P(I, EV, PID, TID, SW_TL, E, P2L, PDEV, LADDR, PADDR)
+#define RGXSRV_HWPERF_HOST_DEBUG_TAG_START(I, N, ...)
+#define RGXSRV_HWPERF_HOST_DEBUG_TAG_END(I, N, ...)
+#define RGXSRV_HWPERF_HOST_FUNCTION_START(I, ...)
+#define RGXSRV_HWPERF_HOST_FUNCTION_END(I, ...)
 
 #endif
 

@@ -14,6 +14,7 @@
 #define _VDI_H_
 
 #include "vputypes.h"
+#include "vpuconfig.h"
 
 /************************************************************************/
 /* COMMON REGISTERS                                                     */

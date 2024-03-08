@@ -102,6 +102,10 @@ bool mtgpu_fec_enable;
 module_param(mtgpu_fec_enable, bool, 0444);
 MODULE_PARM_DESC(mtgpu_fec_enable, "mtgpu fec enable(1)/disable(0)");
 
+char *fec_kernel_params;
+module_param(fec_kernel_params, charp, 0444);
+MODULE_PARM_DESC(fec_kernel_params, "mtgpu fec kernel extra params");
+
 int enable_mtlink;
 module_param(enable_mtlink, int, 0444);
 MODULE_PARM_DESC(enable_mtlink, "1:enable mtlink, 0:disable mtlink");
@@ -110,6 +114,11 @@ unsigned long mtlink_timer_expires = 5000;
 module_param(mtlink_timer_expires, ulong, 0444);
 MODULE_PARM_DESC(mtlink_timer_expires,
 		 "timer expires(ms) from pcie probe to mtlink init, default 5000ms");
+
+int mtlink_topo_type;
+module_param(mtlink_topo_type, int, 0444);
+MODULE_PARM_DESC(mtlink_topo_type,
+		 "0:default, normal topology, 1:eight-card fc topology, 2:two groups of four-card fc topology");
 
 /**
  * pstate mode
@@ -121,21 +130,17 @@ module_param(mtgpu_pstate_mode, byte, 0444);
 MODULE_PARM_DESC(mtgpu_pstate_mode,
 		 "mtgpu pstate mode: 0 = disable, 1 = enable");
 
-#if defined(CONFIG_VPS)
-int mtgpu_vpu_mode = MTGPU_VPU_MODE_DISABLE;
-#else
-int mtgpu_vpu_mode = MTGPU_VPU_MODE_DEFAULT;
-#endif
-module_param(mtgpu_vpu_mode, int, 0444);
-MODULE_PARM_DESC(mtgpu_vpu_mode, "0: default, 1: test mode, 2: disable all vpu modules.");
+int enable_vpu_test = 0;
+module_param(enable_vpu_test, int, 0444);
+MODULE_PARM_DESC(enable_vpu_test, "0: default, 1: enable vpu test mode");
 
-int disable_vpu;
+#if defined(CONFIG_VPS)
+int disable_vpu = 1;
+#else
+int disable_vpu = 0;
+#endif
 module_param(disable_vpu, int, 0444);
 MODULE_PARM_DESC(disable_vpu, "0: default, 1: disable vpu module.");
-
-int disable_jpu;
-module_param(disable_jpu, int, 0444);
-MODULE_PARM_DESC(disable_jpu, "0: default, 1: disable jpu module.");
 
 unsigned int mtgpu_page_size = 0;
 module_param(mtgpu_page_size, uint, 0444);
@@ -197,4 +202,9 @@ MODULE_PARM_DESC(vgpu_mm_mapping_mode,
 int mtgpu_vdma_enable = MTGPU_VGPU_VDMA_DEFAULT;
 module_param(mtgpu_vdma_enable, int, 0444);
 MODULE_PARM_DESC(mtgpu_vdma_enable, "vdma enable mode (0: not enable, 1: enable)");
+
+unsigned long mtgpu_win_fw_context_switch_value;
+module_param(mtgpu_win_fw_context_switch_value, ulong, 0444);
+MODULE_PARM_DESC(mtgpu_win_fw_context_switch_value,
+	"windows firmware DM(TDM, TA, 3D, CDM) context switch. Each bit represents each DM (0: not enable, 1: enable)");
 #endif

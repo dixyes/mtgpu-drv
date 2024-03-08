@@ -335,4 +335,7 @@ static void __exit pvr_nohw_exit(void)
 late_initcall(pvr_nohw_init);
 module_exit(pvr_nohw_exit);
 
+MODULE_AUTHOR("MooreThreads Corporation");
+MODULE_LICENSE("Dual MIT/GPL");
+
 #endif

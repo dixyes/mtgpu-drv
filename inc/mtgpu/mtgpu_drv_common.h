@@ -11,7 +11,6 @@ struct pci_device_id;
 extern struct device_attribute dev_attr_mtgpu_info;
 
 bool mtgpu_pstate_is_enabled(void);
-bool mtgpu_sriov_enabled(struct pci_dev *pdev);
 bool mtgpu_display_is_dummy(void);
 bool mtgpu_display_is_none(void);
 bool mtgpu_card_support_display(struct mtgpu_device *mtdev);

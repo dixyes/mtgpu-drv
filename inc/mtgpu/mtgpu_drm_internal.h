@@ -17,6 +17,7 @@ struct dma_buf;
 struct vm_area_struct;
 struct drm_plane_state;
 struct drm_framebuffer;
+struct file;
 
 #define MTGEM_TYPE_GPU_START 0
 #define MTGEM_TYPE_VPU_START 100
@@ -57,6 +58,6 @@ struct drm_gem_object *mtgpu_gem_prime_import(struct drm_device *drm,
 struct drm_gem_object *mtgpu_gem_prime_import_sg_table(struct drm_device *drm,
                                                        struct dma_buf_attachment *attach,
                                                        struct sg_table *sgt);
-int mtgpu_gem_vram_mmap(struct file *filp, struct vm_area_struct *vma);
+int mtgpu_mmap(struct file *filp, struct vm_area_struct *vma);
 
 #endif /* __MTGPU_DRM_INTERNAL_H__ */

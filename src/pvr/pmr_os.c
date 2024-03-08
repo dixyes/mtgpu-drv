@@ -91,7 +91,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  * feature.
  *
  */
-#if defined(CONFIG_X86) || defined(PVR_MMAP_USE_VM_INSERT) || ((defined(CONFIG_ARM) || defined(CONFIG_ARM64)) && defined(CONFIG_ARCH_HAS_PTE_SPECIAL))
+#if defined(CONFIG_X86) || defined(PVR_MMAP_USE_VM_INSERT)
 #define PMR_OS_USE_VM_INSERT_PAGE 1
 #endif
 
@@ -101,6 +101,15 @@ static void OSSetVMAFlags(struct vm_area_struct *psVma, unsigned long ulFlags)
 	psVma->vm_flags |= ulFlags;
 #else
 	vm_flags_set(psVma, (vm_flags_t)ulFlags);
+#endif
+}
+
+static void OSClearVMAFlags(struct vm_area_struct *psVma, unsigned long ulFlags)
+{
+#ifdef OS_VM_FLAGS_IS_NOT_CONST
+	psVma->vm_flags &= ~ulFlags;
+#else
+	vm_flags_clear(psVma, (vm_flags_t)ulFlags);
 #endif
 }
 
@@ -519,7 +528,7 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 	 */
 	if (PMR_IsSystem(psPMR))
 	{
-		ps_vma->vm_flags &= ~VM_PFNMAP;
+		OSClearVMAFlags(ps_vma, VM_PFNMAP);
 		ui32LoopCount = (1 << (uiLog2PageSize - PAGE_SHIFT));
 	}
 

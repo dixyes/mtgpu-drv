@@ -436,6 +436,7 @@ typedef struct _MMU_DEVICEATTRIBS_
 					       IMG_UINT32 (**ppfnDerivePxEProt4)(IMG_UINT32),
 					       IMG_UINT64 (**ppfnDerivePxEProt8)(IMG_UINT32, IMG_UINT32));
 	IMG_UINT32 (*pfnGetHeapPageShift)(IMG_UINT32 uiLog2OSPageSize);
+	IMG_UINT64 (*pfnGetPageFlagByPageShift)(IMG_UINT32 uiLog2DataPageSize);
 	void (*pfnGetLevelData)(IMG_DEV_VIRTADDR sDevVAddrStart,
 				IMG_DEV_VIRTADDR sDevVAddrEnd,
 				IMG_UINT32 uiLog2DataPageSize,
@@ -490,6 +491,8 @@ struct _MMU_CONTEXT_
 	POS_LOCK hHashLock;
 	HASH_TABLE *psHashTab;
 
+	IMG_UINT64 ui64PageSizeFlag;
+
 	/* Base level info structure. Must be last member in structure */
 	MMU_Levelx_INFO sBaseLevelInfo;
 };
@@ -511,9 +514,10 @@ struct _MMU_CONTEXT_
 /*****************************************************************************/
 PVRSRV_ERROR
 MMU_ContextCreate(struct _CONNECTION_DATA_ *psConnection,
-                  struct _PVRSRV_DEVICE_NODE_ *psDevNode,
-                  MMU_CONTEXT **ppsMMUContext,
-                  MMU_DEVICEATTRIBS *psDevAttrs);
+		  struct _PVRSRV_DEVICE_NODE_ *psDevNode,
+		  MMU_CONTEXT **ppsMMUContext,
+		  IMG_BOOL bKernelMemoryCtx,
+		  MMU_DEVICEATTRIBS *psDevAttrs);
 
 
 /*************************************************************************/ /*!
@@ -914,6 +918,13 @@ MMU_ContextDerivePCPDumpSymAddr(MMU_CONTEXT *psMMUContext,
                                 IMG_CHAR *pszPDumpSymbolicNameBuffer,
                                 size_t uiPDumpSymbolicNameBufferSize);
 
+PVRSRV_ERROR
+PH1MMU_PDumpWritePageCatBase(MMU_CONTEXT *psMMUContext,
+			     const IMG_CHAR *pszSpaceName,
+			     IMG_DEVMEM_OFFSET_T uiOffset,
+			     IMG_UINT32 ui32AlignShift,
+			     IMG_UINT64 ui64PageSizeFlag);
+
 /*************************************************************************/ /*!
 @Function       MMU_PDumpWritePageCatBase
 
@@ -972,6 +983,20 @@ MMU_ReleasePDumpMMUContext(MMU_CONTEXT *psMMUContext,
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(MMU_PDumpWritePageCatBase)
 #endif
+
+static INLINE void
+PH1MMU_PDumpWritePageCatBase(MMU_CONTEXT *psMMUContext,
+			     const IMG_CHAR *pszSpaceName,
+			     IMG_DEVMEM_OFFSET_T uiOffset,
+			     IMG_UINT32 ui32AlignShift,
+			     IMG_UINT64 ui64PageSizeFlag)
+{
+	PVR_UNREFERENCED_PARAMETER(psMMUContext);
+	PVR_UNREFERENCED_PARAMETER(pszSpaceName);
+	PVR_UNREFERENCED_PARAMETER(uiOffset);
+	PVR_UNREFERENCED_PARAMETER(ui32AlignShift);
+	PVR_UNREFERENCED_PARAMETER(ui64PageSizeFlag);
+}
 static INLINE void
 MMU_PDumpWritePageCatBase(MMU_CONTEXT *psMMUContext,
                           const IMG_CHAR *pszSpaceName,

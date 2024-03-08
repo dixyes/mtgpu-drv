@@ -43,6 +43,8 @@
 #include <linux/uaccess.h>
 #include <linux/semaphore.h>
 #include <linux/dma-mapping.h>
+#include <linux/dma-fence.h>
+#include <linux/dma-fence-array.h>
 #include <linux/log2.h>
 #include <linux/poll.h>
 #include <linux/kref.h>
@@ -70,6 +72,10 @@
 #include <linux/radix-tree.h>
 #include <linux/utsname.h>
 #include <linux/dmi.h>
+#include <linux/fs.h>
+#include <linux/file.h>
+#include <linux/anon_inodes.h>
+#include <linux/sync_file.h>
 
 #include "mtgpu_device.h"
 #include "os-interface.h"
@@ -89,6 +95,11 @@ struct mt_delayed_work_struct {
 	void *data;
 };
 
+struct mt_dma_fence {
+	struct dma_fence dma_fence;
+	void *data;
+};
+
 struct mt_miscdevice {
 	struct miscdevice miscdev;
 	void *data;
@@ -99,6 +110,53 @@ const u64 os_value[] = {
 	DECLEAR_OS_VALUE
 #undef X
 };
+
+
+struct file *os_anon_inode_getfile(const char *name, const struct mt_file_operations *ops, void *priv,
+				   int flags)
+{
+	struct file_operations *fops;
+
+	fops = kzalloc(sizeof(*fops), GFP_KERNEL);
+	if (!fops)
+		return NULL;
+
+	fops->owner		= THIS_MODULE;
+	fops->open		= ops->open;
+	fops->read		= ops->read;
+	fops->write		= ops->write;
+	fops->unlocked_ioctl	= ops->unlocked_ioctl;
+	fops->mmap		= ops->mmap;
+	fops->poll		= ops->poll;
+	fops->release		= ops->release;
+	fops->compat_ioctl	= ops->compat_ioctl;
+
+	return anon_inode_getfile(name, fops, priv, flags);
+}
+
+void os_kfree_fops(struct file *filp)
+{
+	kfree(filp->f_op);
+}
+
+int os_stream_open(struct inode *inode, struct file *filp)
+{
+#ifdef OS_FUNC_STREAM_OPEN_EXIST
+	return stream_open(inode, filp);
+#else
+	return nonseekable_open(inode,filp);
+#endif
+}
+
+void os_get_file(struct file *filp)
+{
+	get_file(filp);
+}
+
+void os_fput(struct file *filp)
+{
+	fput(filp);
+}
 
 IMPLEMENT_OS_STRUCT_COMMON_FUNCS(interval_tree_node);
 
@@ -370,6 +428,11 @@ void *os_kmalloc(size_t size)
 	return kmalloc(size, GFP_KERNEL);
 }
 
+void *os_kmalloc_array(size_t n, size_t size)
+{
+	return kmalloc_array(n, size, GFP_KERNEL);
+}
+
 void *os_kmalloc_atomic(size_t size)
 {
 	return kmalloc(size, GFP_ATOMIC);
@@ -459,11 +522,6 @@ struct page *os_phys_to_page(phys_addr_t pa)
 #endif
 }
 
-struct apertures_struct *os_alloc_apertures(unsigned int max_num)
-{
-	return alloc_apertures(max_num);
-}
-
 int os_sg_table_create(struct sg_table **sgt)
 {
 	*sgt = kzalloc(sizeof(struct sg_table), GFP_KERNEL);
@@ -526,6 +584,11 @@ void os_sg_free_table(struct sg_table *sgt)
 	sg_free_table(sgt);
 }
 
+void os_get_task_comm(char *to, int size)
+{
+	__get_task_comm(to, size, current);
+}
+
 void *os_vmap(struct page **pages, unsigned int count)
 {
 	return vmap(pages, count, VM_MAP, pgprot_noncached(PAGE_KERNEL));
@@ -583,19 +646,6 @@ void os_dma_unmap_resource(struct device *dev, dma_addr_t addr, size_t size, u64
 int os_dma_mapping_error(struct device *dev, dma_addr_t dma_addr)
 {
 	return dma_mapping_error(dev, dma_addr);
-}
-
-int os_dma_direct_map_sg_dummy(struct device *dev, struct scatterlist *sgl, int nents, u64 dir)
-{
-	struct scatterlist *sg;
-	u32 sg_idx;
-
-	os_for_each_sg(sgl, sg, nents, sg_idx) {
-		sg_dma_address(sg) = page_to_phys(sg_page(sg));
-		sg_dma_len(sg) = sg->length;
-	}
-
-	return nents;
 }
 
 void os_dma_sync_sg_for_device(struct device *dev, struct scatterlist *sg,
@@ -682,7 +732,11 @@ IMPLEMENT_GET_OS_MEMBER_FUNC(vm_area_struct, vm_file);
 
 void os_set_vm_area_struct_vm_flags(struct vm_area_struct *vma, unsigned long flag)
 {
-	vma->vm_flags = flag;
+#if defined(OS_VM_FLAGS_IS_NOT_CONST)
+	vma->vm_flags |= flag;
+#else
+	vm_flags_set(vma, (vm_flags_t)flag);
+#endif
 }
 
 void *os_memcpy(void *dst, const void *src, size_t size)
@@ -970,6 +1024,11 @@ void os_tasklet_schedule(struct tasklet_struct *tasklet)
 	tasklet_schedule(tasklet);
 }
 
+unsigned long os_nsecs_to_jiffies64(u64 n)
+{
+	return (unsigned long)nsecs_to_jiffies64(n);
+}
+
 static struct mt_work_struct *os_get_mt_work(struct work_struct *work)
 {
 	return container_of(work, struct mt_work_struct, work);
@@ -1164,7 +1223,7 @@ void *os_pde_data(const struct inode *inode)
 #endif
 }
 
-void *os_miscdevice_create()
+void *os_miscdevice_create(void)
 {
 	return kzalloc(sizeof(struct mt_miscdevice), GFP_KERNEL);
 }
@@ -1257,6 +1316,16 @@ int os_get_miscdevice_minor(struct miscdevice *misc)
 	return misc->minor;
 }
 
+void os_set_file_fpos(struct file *file, loff_t f_pos)
+{
+	file->f_pos = f_pos;
+}
+
+loff_t os_get_file_fpos(struct file *file)
+{
+	return file->f_pos;
+}
+
 void os_set_file_private_data(struct file *file, void *private_data)
 {
 	file->private_data = private_data;
@@ -1333,9 +1402,9 @@ int os_ida_alloc(struct ida *ida)
 	return ida_alloc(ida, GFP_KERNEL);
 }
 
-int os_ida_alloc_range(struct ida *ida, unsigned int min, unsigned int max)
+int os_ida_alloc_range(struct ida *ida, unsigned int min, unsigned int max, gfp_t gfp)
 {
-	return ida_alloc_range(ida, min, max, GFP_KERNEL);
+	return ida_alloc_range(ida, min, max, gfp);
 }
 
 void os_ida_free(struct ida *ida, unsigned long id)
@@ -1480,6 +1549,18 @@ void os_mb(void)
 	mb(); /* memory barrier */
 }
 
+int os_smp_load_acquire(int *p)
+{
+	/* To get the ptr data coherency */
+	return smp_load_acquire(p);
+}
+
+void os_smp_store_release(int *p, int v)
+{
+	/* To save the ptr data coherency */
+	smp_store_release(p, v);
+}
+
 int os_arch_io_reserve_memtype_wc(resource_size_t base, resource_size_t size)
 {
 	return arch_io_reserve_memtype_wc(base, size);
@@ -1503,6 +1584,11 @@ void os_arch_phys_wc_del(int handle)
 void __iomem *os_ioremap(phys_addr_t phys_addr, size_t size)
 {
 	return ioremap(phys_addr, size);
+}
+
+void __iomem *os_ioremap_wc(phys_addr_t phys_addr, size_t size)
+{
+	return ioremap_wc(phys_addr, size);
 }
 
 void __iomem *os_ioremap_cache(resource_size_t offset, unsigned long size)
@@ -2386,7 +2472,11 @@ void os_pci_disable_sriov(struct pci_dev *dev)
 int os_iommu_map(struct iommu_domain *domain, unsigned long iova,
 		 phys_addr_t paddr, size_t size, int prot)
 {
+#ifdef OS_IOMMU_MAP_USE_GFP_ARG
+	return iommu_map(domain, iova, paddr, size, prot, GFP_KERNEL);
+#else
 	return iommu_map(domain, iova, paddr, size, prot);
+#endif
 }
 
 size_t os_iommu_unmap(struct iommu_domain *domain, unsigned long iova, size_t size)
@@ -2451,7 +2541,11 @@ phys_addr_t os_virt_to_phys(void *address)
 
 struct bus_type *os_get_dev_bus_type(struct device *dev)
 {
-	return dev->bus;
+	return
+#if !defined(OS_BUS_TYPE_IS_NOT_CONST)
+		(struct bus_type *)
+#endif
+		dev->bus;
 }
 
 void os_bitmap_set(unsigned long *map, unsigned int start, unsigned int nbits)
@@ -2515,6 +2609,16 @@ void os_kmem_cache_destroy(struct kmem_cache *s)
 	kmem_cache_destroy(s);
 }
 
+void os_call_rcu(struct rcu_head *head, rcu_callback_t func)
+{
+	call_rcu(head, func);
+}
+
+void os_rcu_barrier(void)
+{
+	rcu_barrier();
+}
+
 int os_atomic_xchg(atomic_t *v, int val)
 {
 	return atomic_xchg(v, val);
@@ -2538,6 +2642,21 @@ bool os_atomic_dec_and_test(atomic_t *v)
 int os_atomic_read(atomic_t *v)
 {
 	return atomic_read(v);
+}
+
+void os_atomic64_set(atomic64_t *v, s64 i)
+{
+	atomic64_set(v, i);
+}
+
+s64 os_atomic64_inc_return(atomic64_t *v)
+{
+	return atomic64_inc_return(v);
+}
+
+s64 os_atomic64_read(const atomic64_t *v)
+{
+	return atomic64_read(v);
 }
 
 struct file *os_filp_open(const char *filename, int flags, umode_t mode)
@@ -2750,6 +2869,21 @@ int os_fls64(unsigned long x)
 	return fls64(x);
 }
 
+u64 os_cpu_to_le64(u64 data)
+{
+	return cpu_to_le64(data);
+}
+
+u32 os_cpu_to_le32(u32 data)
+{
+	return cpu_to_le32(data);
+}
+
+u64 os_div64_u64(u64 dividend, u64 divisor)
+{
+	return div64_u64(dividend, divisor);
+}
+
 resource_size_t os_get_system_available_ram_size(void)
 {
 	resource_size_t available_ram_size;
@@ -2927,6 +3061,210 @@ char *os_get_utsname_version(void)
 	return init_uts_ns.name.version;
 }
 
+DEFINE_MUTEX(fence_cache_mutex);
+
+static struct mt_dma_fence *os_get_mt_dma_fence(struct dma_fence *dma_fence)
+{
+	return container_of(dma_fence, struct mt_dma_fence, dma_fence);
+}
+
+void *os_get_dma_fence_drvdata(struct dma_fence *dma_fence)
+{
+	struct mt_dma_fence *mt_dma_fence = os_get_mt_dma_fence(dma_fence);
+
+	return mt_dma_fence->data;
+}
+
+void os_set_dma_fence_drvdata(struct dma_fence *dma_fence, void *data)
+{
+	struct mt_dma_fence *mt_dma_fence = os_get_mt_dma_fence(dma_fence);
+
+	mt_dma_fence->data = data;
+}
+
+IMPLEMENT_GET_OS_MEMBER_FUNC(dma_fence, context);
+IMPLEMENT_GET_OS_MEMBER_FUNC(dma_fence, ops);
+
+u64 os_get_dma_fence_seqno(struct dma_fence *dma_fence)
+{
+	return dma_fence->seqno;
+}
+
+void os_set_dma_fence_struct_seqno(struct dma_fence *dma_fence, u64 seqno)
+{
+	dma_fence->seqno = seqno;
+}
+
+void *os_create_dma_fence(void)
+{
+	return kzalloc(sizeof(struct mt_dma_fence), GFP_KERNEL);
+}
+
+void os_destroy_dma_fence(struct dma_fence *dma_fence)
+{
+	kfree(dma_fence);
+}
+
+void *os_create_dma_fence_cb(void)
+{
+	return kzalloc(sizeof(struct dma_fence_cb), GFP_KERNEL);
+}
+
+void os_destroy_dma_fence_cb(struct dma_fence_cb *dma_fence_cb)
+{
+	kfree(dma_fence_cb);
+}
+
+void os_dma_fence_init(struct dma_fence *fence,
+		       const struct dma_fence_ops *ops,
+		       spinlock_t *lock, u64 context, u64 seqno)
+{
+	dma_fence_init(fence, ops, lock, context, seqno);
+}
+
+int os_dma_fence_ops_init(struct dma_fence_ops **ops,
+			  const struct mt_dma_fence_ops *mt_ops)
+{
+	struct dma_fence_ops *dma_ops;
+
+	dma_ops = kzalloc(sizeof(**ops), GFP_KERNEL);
+	if (!dma_ops)
+		return -ENOMEM;
+
+	dma_ops->get_driver_name = mt_ops->get_driver_name;
+	dma_ops->get_timeline_name = mt_ops->get_timeline_name;
+	dma_ops->enable_signaling = mt_ops->enable_signaling;
+	dma_ops->signaled = mt_ops->signaled;
+	dma_ops->wait = mt_ops->wait;
+	dma_ops->release = mt_ops->release;
+	dma_ops->fence_value_str = mt_ops->fence_value_str;
+	dma_ops->timeline_value_str = mt_ops->timeline_value_str;
+
+	*ops = dma_ops;
+
+	return 0;
+}
+
+int os_dma_fence_get_status(struct dma_fence *fence)
+{
+	return dma_fence_get_status(fence);
+}
+
+long os_dma_fence_wait_timeout(struct dma_fence *fence, bool intr, long timeout)
+{
+	return dma_fence_wait_timeout(fence, intr, timeout);
+}
+
+long os_dma_fence_wait_any_timeout(struct dma_fence **fences, u32 count,
+				   bool intr, long timeout, u32 *idx)
+{
+	return dma_fence_wait_any_timeout(fences, count, intr, timeout, idx);
+}
+
+void os_dma_fence_put(struct dma_fence *fence)
+{
+	dma_fence_put(fence);
+}
+
+struct dma_fence *os_dma_fence_get(struct dma_fence *fence)
+{
+	return dma_fence_get(fence);
+}
+
+void os_dma_fence_signal(struct dma_fence *fence)
+{
+	dma_fence_signal(fence);
+}
+
+#if !defined(OS_FUNC_DMA_FENCE_GET_STUB_EXIST)
+static const char *os_dma_fence_stub_get_name(struct dma_fence *fence)
+{
+	return "stub";
+}
+#endif
+
+struct dma_fence *os_dma_fence_get_stub(void)
+{
+#if defined(OS_FUNC_DMA_FENCE_GET_STUB_EXIST)
+	return dma_fence_get_stub();
+#else
+	static struct dma_fence dma_fence_stub;
+	static DEFINE_SPINLOCK(dma_fence_stub_lock);
+	static const struct dma_fence_ops dma_fence_stub_ops = {
+		.get_driver_name = os_dma_fence_stub_get_name,
+		.get_timeline_name = os_dma_fence_stub_get_name,
+	};
+
+	spin_lock(&dma_fence_stub_lock);
+	if (!dma_fence_stub.ops) {
+		dma_fence_init(&dma_fence_stub,
+			       &dma_fence_stub_ops,
+			       &dma_fence_stub_lock,
+			       0, 0);
+		dma_fence_signal_locked(&dma_fence_stub);
+	}
+	spin_unlock(&dma_fence_stub_lock);
+
+	return dma_fence_get(&dma_fence_stub);
+#endif
+}
+
+bool os_dma_fence_is_array(struct dma_fence *fence)
+{
+	return dma_fence_is_array(fence);
+}
+
+struct dma_fence_array *os_to_dma_fence_array(struct dma_fence *fence)
+{
+	return to_dma_fence_array(fence);
+}
+
+struct dma_fence **os_dma_fence_array_get_fences(struct dma_fence_array *array)
+{
+	return array->fences;
+}
+
+u32 os_dma_fence_array_get_fences_num(struct dma_fence_array *array)
+{
+	return array->num_fences;
+}
+
+bool os_dma_fence_is_signaled(struct dma_fence *fence)
+{
+	return dma_fence_is_signaled(fence);
+}
+
+u64 os_dma_fence_context_alloc(unsigned num)
+{
+	return dma_fence_context_alloc(num);
+}
+
+int os_dma_fence_add_callback(struct dma_fence *fence, struct dma_fence_cb *cb,
+			      dma_fence_func_t func)
+{
+	return dma_fence_add_callback(fence, cb, func);
+}
+
+int os_get_unused_fd_flags(unsigned flag)
+{
+	return get_unused_fd_flags(flag);
+}
+
+void os_fd_install_sync_file(int fd, struct sync_file *sync_file)
+{
+	fd_install(fd, sync_file->file);
+}
+
+struct sync_file *os_sync_file_create(struct dma_fence *fence)
+{
+	return sync_file_create(fence);
+}
+
+struct dma_fence *os_sync_file_get_fence(int fd)
+{
+	return sync_file_get_fence(fd);
+}
+
 /*About dev print*/
 static void __os_dev_printk(const char *level, const struct device *dev,
 			    struct va_format *vaf)
@@ -2936,6 +3274,11 @@ static void __os_dev_printk(const char *level, const struct device *dev,
 				dev_driver_string(dev), dev_name(dev), vaf);
 	else
 		printk("%s(NULL device *): %pV", level, vaf);
+}
+
+void *OS_ERR_CAST(__force const void *ptr)
+{
+	return ERR_CAST(ptr);
 }
 
 void *OS_ERR_PTR(long error)
@@ -2963,9 +3306,9 @@ int OS_READ_ONCE(int *val)
 	return READ_ONCE(*val);
 }
 
-void OS_WARN_ON(bool condition)
+bool OS_WARN_ON(bool condition)
 {
-	WARN_ON(condition);
+	return WARN_ON(condition);
 }
 
 bool OS_WARN_ON_ONCE(bool condition)
@@ -2998,6 +3341,16 @@ char *os_strcat(char *dest, const char *src)
 size_t os_strlen(const char *s)
 {
 	return strlen(s);
+}
+
+size_t os_strlcat(char *dest, const char *src, size_t count)
+{
+	return strlcat(dest, src, count);
+}
+
+size_t os_strlcpy(char *dest, const char *src, size_t size)
+{
+	return strlcpy(dest, src, size);
 }
 
 int os_strcmp(const char *cs, const char *ct)
@@ -3033,6 +3386,11 @@ char *os_strstr(const char *s1, const char *s2)
 int os_kstrtol(const char *s, unsigned int base, long *res)
 {
 	return kstrtol(s, base, res);
+}
+
+char *os_strsep(char **s, const char *delim)
+{
+	return strsep(s, delim);
 }
 
 int os_sprintf(char *buf, const char *fmt, ...)

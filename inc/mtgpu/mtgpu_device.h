@@ -13,6 +13,7 @@ struct mtlink_device;
 struct mtgpu_device;
 struct mtgpu_platform_data;
 struct crypto_shash;
+struct mtgpu_mdev_vpu_info;
 
 enum hw_module_type {
 	MTGPU_HW_MODULE_GPU = 0,
@@ -21,8 +22,8 @@ enum hw_module_type {
 	MTGPU_HW_MODULE_DP_PHY,
 	MTGPU_HW_MODULE_HDMI,
 	MTGPU_HW_MODULE_VPU,
-	MTGPU_HW_MODULE_JPU,
 	MTGPU_HW_MODULE_AUDIO,
+	MTGPU_HW_MODULE_DSC,
 };
 
 struct mtgpu_resource {
@@ -172,8 +173,6 @@ int mtgpu_register_audio_device(struct mtgpu_device *mtdev);
 void mtgpu_unregister_audio_device(struct mtgpu_device *mtdev);
 int mtgpu_register_video_device(struct mtgpu_device *mtdev);
 void mtgpu_unregister_video_device(struct mtgpu_device *mtdev);
-int mtgpu_register_jpu_device(struct mtgpu_device *mtdev);
-void mtgpu_unregister_jpu_device(struct mtgpu_device *mtdev);
 int mtgpu_register_gpu_device_with_coreid(struct mtgpu_device *mtdev, int logic_core_id,
 					  int physical_core_id);
 void mtgpu_unregister_gpu_device(struct mtgpu_device *mtdev);
@@ -190,6 +189,8 @@ int mtgpu_register_hdmi_device(struct mtgpu_device *mtdev);
 void mtgpu_pci_dev_config_data_release(struct mtgpu_device *mtdev);
 void mtgpu_gpu_timer_enable(struct mtgpu_device *mtdev);
 void mtgpu_gpu_timer_disable(struct mtgpu_device *mtdev);
+int mtgpu_guest_get_vpu_info(struct mtgpu_device *mtdev, struct mtgpu_mdev_vpu_info *vpu_info);
 int mtgpu_guest_notify_host_vpu(struct device *dev);
+struct platform_device *mtgpu_get_first_valid_drm_device(struct mtgpu_device *mtdev);
 
 #endif /* __MTGPU_DEVICE_H__ */

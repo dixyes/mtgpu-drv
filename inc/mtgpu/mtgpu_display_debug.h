@@ -22,6 +22,8 @@ extern ulong display_debug;
 #define DISP_PRINT_WARN		BIT(1)
 #define DISP_PRINT_ERROR	BIT(0)
 
+#define DSC_DEBUG_MASK		(0xFF00000000UL)
+#define DSC_DEBUG_CTL		((display_debug & DSC_DEBUG_MASK)   >> 32)
 #define GLB_DEBUG_MASK		(0xFF000000UL)
 #define GLB_DEBUG_CTL		((display_debug & GLB_DEBUG_MASK)   >> 24)
 #define DISPC_DEBUG_MASK	(0x00FF0000UL)
@@ -30,6 +32,79 @@ extern ulong display_debug;
 #define HDMI_DEBUG_CTL		((display_debug & HDMI_DEBUG_MASK)  >> 8)
 #define DP_DEBUG_MASK		(0x000000FFUL)
 #define DP_DEBUG_CTL		((display_debug & DP_DEBUG_MASK)    >> 0)
+
+/* DSC debug log */
+#define DSC_TRACE(fmt, ...)									\
+({											\
+	if (DSC_DEBUG_CTL & DISP_PRINT_TRACE)						\
+		os_pr_info("DSC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+})
+
+#define DSC_DEBUG(fmt, ...)								\
+({											\
+	if (DSC_DEBUG_CTL & DISP_PRINT_DEBUG)						\
+		os_pr_info("DSC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+})
+
+#define DSC_INFO(fmt, ...)								\
+({											\
+	if (DSC_DEBUG_CTL & DISP_PRINT_INFO)						\
+		os_pr_info("DSC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+})
+
+#define DSC_WARN(fmt, ...)								\
+({											\
+	if (DSC_DEBUG_CTL & DISP_PRINT_WARN)						\
+		os_pr_warn("DSC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+})
+
+#define DSC_ERROR(fmt, ...)								\
+({											\
+	if (DSC_DEBUG_CTL & DISP_PRINT_ERROR)						\
+		os_pr_err("DSC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+})
+
+#define DSC_INFO_ONCE(fmt, ...)								\
+({												\
+	if (DSC_DEBUG_CTL & DISP_PRINT_INFO) {						\
+		static bool _section(.data.once) __print_once;					\
+												\
+		if (!__print_once) {								\
+			__print_once = true;							\
+			os_pr_info("DSC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+		}										\
+	}											\
+})
+
+#define DSC_WARN_ONCE(fmt, ...)								\
+({												\
+	if (DSC_DEBUG_CTL & DISP_PRINT_WARN) {						\
+		static bool _section(.data.once) __print_once;					\
+												\
+		if (!__print_once) {								\
+			__print_once = true;							\
+			os_pr_warn("DSC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+		}										\
+	}											\
+})
+
+#define DSC_ERROR_ONCE(fmt, ...)								\
+({												\
+	if (DSC_DEBUG_CTL & DISP_PRINT_ERROR) {						\
+		static bool _section(.data.once) __print_once;					\
+												\
+		if (!__print_once) {								\
+			__print_once = true;							\
+			os_pr_err("DSC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+		}										\
+	}											\
+})
+
+#define DSC_ERROR_RATELIMITATED(fmt, ...)							\
+({												\
+	if (DSC_DEBUG_CTL & DISP_PRINT_ERROR)							\
+		os_pr_err_ratelimited("DSC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);\
+})
 
 /* global debug log */
 #define GLB_TRACE(fmt, ...)							\

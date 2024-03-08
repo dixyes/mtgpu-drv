@@ -283,6 +283,10 @@ __u32 SyncCheckpointGetEnqueuedCount(PSYNC_CHECKPOINT psSyncCheckpoint);
 __u32 SyncCheckpointGetReferenceCount(PSYNC_CHECKPOINT psSyncCheckpoint);
 PVRSRV_TIMELINE SyncCheckpointGetTimeline(PSYNC_CHECKPOINT psSyncCheckpoint);
 const char *SyncCheckpointGetStateString(PSYNC_CHECKPOINT psSyncCheckpoint);
+__u32 SyncCheckpointGetStateValue(PSYNC_CHECKPOINT psSyncCheckpoint);
+void SyncCheckpointTakeFwRefCount(PSYNC_CHECKPOINT psSyncCheckpoint);
+void SyncCheckpointToSyncPrim(PSYNC_CHECKPOINT psSyncCheckpoint);
+void SyncCheckpointSetState(PSYNC_CHECKPOINT psSyncCheckpoint, IMG_UINT32 ui32Value);
 #if defined(SUPPORT_NATIVE_FENCE_SYNC)
 struct _PVRSRV_DEVICE_NODE_ *SyncCheckpointGetAssociatedDevice(PSYNC_CHECKPOINT_CONTEXT psSyncCheckpointContext);
 #endif

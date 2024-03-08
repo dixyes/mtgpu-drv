@@ -7,6 +7,7 @@
 #define _MTGPU_DISPC_COMMON_H_
 
 #include "mtgpu_display_debug.h"
+#include "os-interface-drm.h"
 
 struct wait_queue_head;
 typedef struct wait_queue_head wait_queue_head_t;
@@ -89,6 +90,7 @@ struct mtgpu_dispc_ctx {
 	bool update_done;
 	bool disable_done;
 	wait_queue_head_t *waitq;
+	bool dsc_en;
 	u16 *gamma_store;
 	u32 gamma_size;
 	/* Whether to restore csc when updating plane. */

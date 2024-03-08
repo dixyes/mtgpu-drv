@@ -10,7 +10,6 @@ struct drm_device;
 struct drm_file;
 
 int mtgpu_bo_create_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
-int mtgpu_bo_destroy_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
 int mtgpu_bo_from_userptr_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
 int mtgpu_bo_get_mmap_offset_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
 

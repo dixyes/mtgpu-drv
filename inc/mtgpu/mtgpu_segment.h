@@ -14,7 +14,8 @@
 #define MTGPU_SEGMENT_ID_VPU_GUEST	2
 
 #define MTGPU_SEGMENT_STEP_SIZE         0x400000000ULL
-#define MTGPU_MAX_SEGMENT               5
+#define MTGPU_MAX_SEGMENT               8
+#define MTGPU_MAX_NORMAL_SEGMENT	5
 #define MTVPU_MAX_SEGMENT               4
 #define MTGPU_SEGMENT_NORMAL_SIZE       0x100000000ULL
 #define MTGPU_VPU_GROUP			2
@@ -42,6 +43,13 @@ struct mtgpu_segment {
 struct mtgpu_segment_info {
 	int segment_cnt;
 	struct mtgpu_segment *segments;
+};
+
+struct mtgpu_segment_stats {
+	u64 start;
+	u64 size;
+	u64 freed;
+	u64 max_block_size;
 };
 
 #if !defined(NO_HARDWARE)

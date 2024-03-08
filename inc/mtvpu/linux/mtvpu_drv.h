@@ -6,16 +6,20 @@
 #ifndef _MTVPU_DRV_H_
 #define _MTVPU_DRV_H_
 
+#ifndef SOC_MODE
 #include "mtgpu_defs.h"
+#endif
 #include "vpuapi.h"
+#include "jdi.h"
 
 #include "mtvpu_conf.h"
 #include "mtvpu_mon.h"
-#include "mtjpu_drv.h"
 
 #define INST_Q_DEPTH  COMMAND_QUEUE_DEPTH
 
 #define WAV5_MAX_CORE  6 // for QY2
+
+#define MAX_HOST_VPU_GROUPS_GEN1_GEN2 3	//For SUDI and QY1 in VDI case, host only has groups <=3
 
 #define SYNC_INTR_SIZE (WAV5_MAX_CORE * INST_MAX_SIZE)
 #define SYNC_ADDR_SIZE (WAV5_MAX_CORE * INST_MAX_SIZE * INST_Q_DEPTH)
@@ -25,12 +29,19 @@
 #define MTVPU_SEGMENT_NUM       16
 #define MTVPU_SEGMENT_VM       -1
 
-#if (defined SUPPORT_ION) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0))
+#ifdef SUPPORT_ION
 #define ion_phys_addr_t phys_addr_t
 #endif
 
+#ifdef SOC_MODE
+#define APOLLO_VPU_MEM_BASE 0xB08000000
+#define APOLLO_VPU_MEM_SIZE 0xc0000000
+#define MTGPU_CORE_COUNT_MAX 32
+#define gpu_page_size 0x1000
+#else
 extern u32 gpu_page_size;
 extern u32 gpu_page_shift;
+#endif
 
 struct file_operations;
 struct platform_device;
@@ -111,6 +122,7 @@ struct mt_core {
 
 	struct mt_node *common_node; /* common mem */
 	struct vpu_instance_pool pool; /* vdi mem */
+	struct jpu_instance_pool jpu_pool;
 
 	int mem_group_id;
 	u64 mem_group_base;
@@ -122,6 +134,7 @@ struct mt_core {
 	bool serve_all;
 	struct wait_queue_head *core_wait;
 	struct wait_queue_head *inst_wait[INST_MAX_SIZE];
+	char irq_name[32];
 
 	int core_intr_reason;
 	int core_wait_reason;
@@ -210,6 +223,9 @@ struct mt_chip {
 
 	struct drm_device *drm_host; /* for host use */
 
+#ifdef SOC_MODE
+	struct drm_mm *mm;
+#endif
 	int mem_group_id[MTVPU_SEGMENT_NUM];
 	u64 mem_group_base[MTVPU_SEGMENT_NUM];
 	u64 mem_group_size[MTVPU_SEGMENT_NUM];
@@ -235,28 +251,27 @@ struct mt_chip {
 	u64 bar_base;
 
 	struct mt_core core[CORE_MAX_SIZE];
-	struct semaphore *host_thread_sema;
+	struct semaphore *host_thread_semas[MAX_HOST_VPU_GROUPS_GEN1_GEN2];
 
 	struct mt_sync sync;
 
-	struct task_struct *host_thread;
-	struct task_struct *group3_thread;
+	struct task_struct *host_threads[MAX_HOST_VPU_GROUPS_GEN1_GEN2];
 	struct task_struct *sync_thread;
 
-	struct list_head vm_head; /* vm list */
-	struct list_head vm_head_group3; /* vm list for group3 */
-
+	struct list_head vm_heads[MAX_HOST_VPU_GROUPS_GEN1_GEN2]; /* vm list */
 	struct mt_host_mdev mdev[HOST_OSID_SIZE];
+	int mdev_count;
 
 	struct mt_virm vm;
-	struct mutex *vm_lock;
-	struct mutex *vm_lock_group3;
+	struct mutex *vm_locks[MAX_HOST_VPU_GROUPS_GEN1_GEN2];
+
 	struct mt_codec_limit codec_limit;
 
 	struct dentry *debugfs;
 
 	struct timer_list *timer;
-	struct mtjpu_device *device_jpu;
+
+	struct semaphore *jpu_core_sema;
 };
 
 struct mt_open {
@@ -273,19 +288,22 @@ struct mtvpu_gem_priv {
 	struct vm_area_struct *vma;
 };
 
-void vpu_unref_core_nolock(struct mt_chip *chip, int idx);
-void vpu_unref_core_lock(struct mt_chip *chip, int idx);
+void vpu_ref_core_nolock(struct mt_chip *chip, int idx, struct mt_virm *vm);
+void vpu_ref_core_lock(struct mt_chip *chip, int idx, struct mt_virm *vm);
+void vpu_unref_core_nolock(struct mt_chip *chip, int idx, struct mt_virm *vm);
+void vpu_unref_core_lock(struct mt_chip *chip, int idx, struct mt_virm *vm);
 
 int vpu_init_irq(struct mt_chip *chip, struct platform_device *pdev);
 int vpu_init_mpc(struct mt_chip *chip);
 void vpu_free_irq(struct mt_chip *chip);
 int vpu_load_firmware(struct mt_chip *chip, int idx, struct mt_virm *vm);
 int vpu_check_fw_version(struct mt_chip *chip, int idx);
-int vpu_host_thread(void *arg);
+int vpu_host_thread_group1(void *arg);
+int vpu_host_thread_group2(void *arg);
 int vpu_host_thread_group3(void *arg);
 int vpu_sync_thread(void *arg);
 int vpu_fill_drm_ioctls(struct drm_ioctl_desc *dst, int num);
-int vpu_run_ioctl(int ioctl, struct drm_device *drm, void *data, struct mt_virm *vm);
+int vpu_host_run_ioctl(int ioctl, struct drm_device *drm, void *data, struct mt_virm *vm);
 int vpu_sleep_wake(Uint32 core_idx, int is_sleep_wake);
 int vpu_reset_core(struct mt_chip *chip, int idx);
 int vpu_hw_reset(Uint32 core_idx);
@@ -295,6 +313,9 @@ int vpu_resume(struct device *dev);
 
 s64 vpu_get_clk(struct mt_chip *chip, int idx);
 s64 vpu_get_max_clk(struct mt_chip *chip, int idx);
+
+int jpu_request_core(struct drm_device *drm);
+void jpu_release_core(struct drm_device *drm, int idx);
 
 extern int enable_pm_mtvpu_backup_device_memory;
 

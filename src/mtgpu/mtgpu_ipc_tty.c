@@ -111,7 +111,8 @@ void mtgpu_ipc_tty_handler(struct mtgpu_ipc_tty *ipctty, void *data)
 	tty_flip_buffer_push(&ipc_tty->port);
 
 	/* Filter extra tty format info and output. */
-	dev_info(ipctty->dev, "[FEC] %.*s", d->dsize, d->data);
+	if (d->tty_idx < 2)
+		dev_info(ipctty->dev, "[FEC] %.*s", d->dsize, d->data);
 }
 
 static void ipc_tty_console_write(struct console *co, const char *b,
@@ -156,7 +157,6 @@ int mtgpu_ipc_tty_create(struct device *dev, struct mtgpu_ipc_tty **ipc_tty_out)
 	struct tty_driver *tty;
 	struct mtgpu_ipc_tty *ipc_tty_p, *ipc_tty;
 	struct device *ttydev;
-	char tty_name[32] = {0};
 
 	ipc_tty = kcalloc(IPC_TTY_COUNT, sizeof(*ipc_tty), GFP_KERNEL);
 	if (!ipc_tty)
@@ -169,8 +169,12 @@ int mtgpu_ipc_tty_create(struct device *dev, struct mtgpu_ipc_tty **ipc_tty_out)
 		return PTR_ERR(tty);
 
 	tty->driver_name = "mtgpu_ipc_tty";
-	sprintf(tty_name, "ipctty.%s.", dev_name(dev));
-	tty->name = tty_name;
+	tty->name = kasprintf(GFP_KERNEL, "ipctty.%s.", dev_name(dev));
+	if (!tty->name) {
+		dev_err(dev, "failed to allocate tty name\n");
+		ret = -ENOMEM;
+		goto err_tty_name;
+	}
 	tty->type = TTY_DRIVER_TYPE_SERIAL;
 	tty->subtype = SERIAL_TYPE_NORMAL;
 	tty->init_termios = tty_std_termios;
@@ -220,6 +224,8 @@ int mtgpu_ipc_tty_create(struct device *dev, struct mtgpu_ipc_tty **ipc_tty_out)
 err_tty_register_driver:
 	tty_unregister_driver(tty);
 	tty_driver_kref_put(tty);
+	kfree(tty->name);
+err_tty_name:
 	kfree(ipc_tty);
 	*ipc_tty_out = NULL;
 
@@ -245,5 +251,6 @@ void mtgpu_ipc_tty_destroy(struct device *dev, struct mtgpu_ipc_tty *ipc_tty)
 
 	tty_unregister_driver(tty);
 	tty_driver_kref_put(tty);
+	kfree(ipc_tty->tty->name);
 	kfree(ipc_tty);
 }

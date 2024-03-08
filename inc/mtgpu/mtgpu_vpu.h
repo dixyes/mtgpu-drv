@@ -8,7 +8,6 @@
 
 #ifdef VPU_ENABLE
 #include "mtvpu_api.h"
-#include "mtjpu_drv.h"
 #else
 static inline int mtvpu_drm_open(void *arg1, void *arg2)
 {

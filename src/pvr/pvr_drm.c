@@ -77,6 +77,10 @@
 #include "mtgpu_dma_next.h"
 #include "mtgpu_drv_next.h"
 #include "mtgpu_info.h"
+#include "mtgpu_semaphore.h"
+#include "mtgpu_fence.h"
+#include "mtgpu_job.h"
+#include "mtgpu_context.h"
 
 #include "kernel_compatibility.h"
 
@@ -281,9 +285,9 @@ struct drm_ioctl_desc pvr_drm_ioctls[128] = {
 #if !defined(NO_HARDWARE)
 	DRM_IOCTL_DEF_DRV(MTGPU_DEVICE_INIT, mtgpu_device_init_ioctl,
 			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
-	DRM_IOCTL_DEF_DRV(MTGPU_BO_CREATE, mtgpu_bo_create_ioctl,
+	DRM_IOCTL_DEF_DRV(MTGPU_QUERY_INFO, mtgpu_query_info_ioctl,
 			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
-	DRM_IOCTL_DEF_DRV(MTGPU_BO_DESTROY, mtgpu_bo_destroy_ioctl,
+	DRM_IOCTL_DEF_DRV(MTGPU_BO_CREATE, mtgpu_bo_create_ioctl,
 			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
 	DRM_IOCTL_DEF_DRV(MTGPU_BO_FROM_USERPTR, mtgpu_bo_from_userptr_ioctl,
 			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
@@ -297,12 +301,34 @@ struct drm_ioctl_desc pvr_drm_ioctls[128] = {
 			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
 	DRM_IOCTL_DEF_DRV(MTGPU_VM_UNMAP, mtgpu_vm_unmap_ioctl,
 			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(MTGPU_TIMELINE_CREATE, mtgpu_timeline_create_ioctl,
+			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(MTGPU_TIMELINE_DESTROY, mtgpu_timeline_destroy_ioctl,
+			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(MTGPU_TIMELINE_READ, mtgpu_timeline_read_ioctl,
+			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(MTGPU_FENCE_WAIT, mtgpu_fence_wait_ioctl,
+			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(MTGPU_FENCE_TO_FD, mtgpu_fence_to_fd_ioctl,
+			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(MTGPU_CONTEXT_CREATE, mtgpu_context_create_ioctl,
+			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(MTGPU_CONTEXT_DESTROY, mtgpu_context_destroy_ioctl,
+			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(MTGPU_JOB_SUBMIT, mtgpu_job_submit_ioctl,
+			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(MTGPU_SEMAPHORE_SUBMIT, mtgpu_semaphore_submit_ioctl,
+			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(MTGPU_SEMAPHORE_CREATE, mtgpu_semaphore_create_ioctl,
+			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(MTGPU_SEMAPHORE_DESTROY, mtgpu_semaphore_destroy_ioctl,
+			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(MTGPU_JOB_SUBMIT2, mtgpu_job_submit2_ioctl,
+			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
 #if defined SUPPORT_DMA_TRANSFER
 	DRM_IOCTL_DEF_DRV(MTGPU_DMA_TRANSFER, mtgpu_dma_transfer_ioctl,
 			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
 #endif /* SUPPORT_DMA_TRANSFER */
-	DRM_IOCTL_DEF_DRV(MTGPU_QUERY_INFO, mtgpu_query_info_ioctl,
-			  DRM_RENDER_ALLOW | DRM_UNLOCKED),
 #endif
 };
 

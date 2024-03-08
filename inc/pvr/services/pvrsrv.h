@@ -540,16 +540,15 @@ struct vm_area_struct;
 int PVRSRV_MMap(struct file *file, struct vm_area_struct *ps_vma);
 
 SEGMENT_INFO *pvr_get_segment_info(PVRSRV_DEVICE_NODE *psDeviceNode);
+PVRSRV_ERROR mtgpu_get_segment_stats(struct drm_device *ddev, int segment_id, struct mtgpu_segment_stats *stats);
 
 int mtgpu_system_alloc(struct drm_device *ddev, size_t size,
 		       u64 **cpu_pa_array, void **handle);
 int mtgpu_vram_alloc(struct drm_device *ddev, int segment_id, size_t size,
 		     dma_addr_t *dev_addr, void **handle);
 void mtgpu_vram_free(void *handle);
-int mtgpu_vram_mmap(void *handle, void *vma);
 int mtgpu_vram_vmap(void *handle, size_t size, u64 *private_data, void **kaddr);
 void mtgpu_vram_vunmap(void *handle, u64 private_data);
-int mtgpu_mmap(struct file *file, struct vm_area_struct *vma);
 #if (RGX_NUM_OS_SUPPORTED > 1)
 /* In virtualization scenarios, check the fw mode */
 IMG_BOOL mtgpu_is_win_fw_mode(void);
@@ -563,6 +562,10 @@ PVRSRV_ERROR PVRSRVGetDevice(PVRSRV_DEVICE_NODE *psDeviceNode, struct device **p
 PVRSRV_ERROR MTCpuPhysToPcieObNocAddr(PVRSRV_DEVICE_NODE *psDevNode,
 				      IMG_UINT64 ui64CpuPAddr,
 				      IMG_UINT64 *puiObNocAddr);
+
+PVRSRV_ERROR MTGetPcieAccessSysMemAddrRange(PVRSRV_DEVICE_NODE *psDevNode,
+					    IMG_UINT64 *pui64SysMemStart,
+					    IMG_UINT64 *pui64SysMemEnd);
 
 IMG_BOOL PVRSRVIsIOMMUOn(PVRSRV_DEVICE_NODE *psDevNode);
 IMG_BOOL PVRSRVHasSamePcieRootPort(struct device *psLocalPcieDev,

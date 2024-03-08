@@ -319,7 +319,21 @@ pvr_buffer_sync_check_fences_create(struct pvr_fence_context *fence_ctx,
 		kfree(shared_fences);
 	}
 
+#if defined(OS_ENUM_DMA_RESV_USAGE_EXIST)
+	/*
+	 * data->nr_fences may be less than fence_count in 5.19 kernel, so change
+	 * "data->nr_fences != fence_count" to "data->nr_fences > fence_count".
+	 * In 5.19 kernel, dma_resv_get_fences() only return not signal fences.
+	 * if a fence is signal between two calls to dma_resv_get_fences(),
+	 * then the num_fences(number of fences) obtained from the first call to
+	 * dma_resv_get_fences() will less than second call to dma_resv_get_fences()
+	 * resulting from data->nr_fences less than fence_count. So this case shouled
+	 * not considered as abnormal.
+	 */
+	WARN_ON((i != nr_pmrs) || (data->nr_fences > fence_count));
+#else
 	WARN_ON((i != nr_pmrs) || (data->nr_fences != fence_count));
+#endif
 
 	return data;
 

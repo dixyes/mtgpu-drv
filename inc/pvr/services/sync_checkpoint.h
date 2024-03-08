@@ -54,6 +54,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "device_connection.h"
 #include "opaque_types.h"
 
+struct _CONNECTION_DATA_;
+struct drm_mtgpu_fence;
+struct drm_mtgpu_semaphore;
+
 #ifndef CHECKPOINT_TYPES
 #define CHECKPOINT_TYPES
 typedef struct SYNC_CHECKPOINT_CONTEXT_TAG *PSYNC_CHECKPOINT_CONTEXT;
@@ -434,6 +438,29 @@ SyncCheckpointResolveFence(PSYNC_CHECKPOINT_CONTEXT psSyncCheckpointContext,
                            IMG_UINT64 *puiFenceUID,
                            PDUMP_FLAGS_T ui32PDumpFlags);
 
+PVRSRV_ERROR
+SyncCheckpointResolveFenceV2(PSYNC_CHECKPOINT_CONTEXT psSyncCheckpointContext,
+			     struct _CONNECTION_DATA_ *psConnection,
+			     struct drm_mtgpu_fence *psUpdateFence,
+			     struct drm_mtgpu_fence *pasCheckFences,
+			     IMG_UINT32 ui32NumCheckFence,
+			     IMG_INT32 iForeignFenceFd,
+			     IMG_UINT32 *pui32NumSyncCheckpoints,
+			     PSYNC_CHECKPOINT **papsSyncCheckpoints,
+			     IMG_UINT64 **ppui64Seqnos,
+			     IMG_UINT64 *pui64FenceUID,
+			     PDUMP_FLAGS_T ui32PDumpFlags);
+
+PVRSRV_ERROR
+SyncCheckpointResolveSemaphore(struct _CONNECTION_DATA_ *psConnection,
+			       struct drm_mtgpu_semaphore *pasCheckSemas,
+			       IMG_UINT32 ui32NumCheckSema,
+			       IMG_UINT32 *pui32NumSyncCheckpoints,
+			       PSYNC_CHECKPOINT **papsSyncCheckpoints,
+			       IMG_UINT32 **ppui32values,
+			       IMG_UINT64 *pui64SemaUID,
+			       PDUMP_FLAGS_T ui32PDumpFlags);
+
 /*************************************************************************/ /*!
 @Function       SyncCheckpointCreateFence
 
@@ -479,6 +506,16 @@ SyncCheckpointCreateFence(PPVRSRV_DEVICE_NODE psDeviceNode,
                           void **ppvTimelineUpdateSyncPrim,
                           IMG_UINT32 *pui32TimelineUpdateValue,
                           PDUMP_FLAGS_T ui32PDumpFlags);
+
+PVRSRV_ERROR
+SyncCheckpointCreateFenceV2(PPVRSRV_DEVICE_NODE psDevNode,
+			    struct _CONNECTION_DATA_ *psConnection,
+			    const IMG_CHAR *pszFenceName,
+			    PSYNC_CHECKPOINT_CONTEXT psSyncCheckpointContext,
+			    struct drm_mtgpu_fence *psUpdateFence,
+			    IMG_UINT64 *puiUpdateFenceUID,
+			    PSYNC_CHECKPOINT *psNewSyncCheckpoint,
+			    PDUMP_FLAGS_T ui32PDumpFlags);
 
 /*************************************************************************/ /*!
 @Function       SyncCheckpointRollbackFenceData
@@ -654,6 +691,19 @@ void
 SyncCheckpointRecordLookup(PPVRSRV_DEVICE_NODE psDevNode,
                            IMG_UINT32 ui32FwAddr,
                            IMG_CHAR * pszSyncInfo, size_t len);
+
+/*************************************************************************/ /*!
+@Function       SyncCheckpointGetOffset
+
+@Description    Returns the offset of checkpoint in the sync_block.
+
+@Input          psSyncCheckpoint        Synchronisation checkpoint to get the
+                                        offset for.
+
+@Return         None
+*/
+/*****************************************************************************/
+IMG_UINT32 SyncCheckpointGetOffset(PSYNC_CHECKPOINT psSyncCheckpoint);
 
 #if defined(PDUMP)
 /*************************************************************************/ /*!

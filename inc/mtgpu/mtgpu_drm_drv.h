@@ -28,6 +28,7 @@ extern struct platform_driver mtgpu_dispc_driver;
 extern struct platform_driver mtgpu_hdmi_driver;
 extern struct platform_driver mtgpu_dp_driver;
 extern struct platform_driver mtgpu_phy_driver;
+extern struct platform_driver mtgpu_dsc_driver;
 
 int mtgpu_drm_init(void);
 void mtgpu_drm_fini(void);

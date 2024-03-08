@@ -6,7 +6,7 @@
 #ifndef _MTVPU_CONF_H_
 #define _MTVPU_CONF_H_
 
-#define CORE_MAX_SIZE 12
+#define CORE_MAX_SIZE 16
 #define INST_MAX_SIZE 32
 #define MEM_GROUP_MAX_SIZE 8
 #define MEM_POOL_MAX_SIZE 256
@@ -64,8 +64,7 @@ struct mt_conf {
 };
 
 int vpu_init_conf(int devId, struct mt_chip *chip, bool guest);
-int vpu_chip_add(struct mt_chip *chip);
-int vpu_chip_del(struct mt_chip *chip);
+int vpu_deinit_conf(struct mt_chip *chip);
 
 struct mt_chip *get_chip(int coreIdx);
 struct mt_core *get_core(int coreIdx);

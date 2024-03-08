@@ -28,6 +28,9 @@ int mtlink_get_link_status(struct mtgpu_device *mtdev, int link_id,
 
 struct mtlink_device *mtlink_get_link_device_by_chip_id(int chip_id);
 
+int mtlink_link_device_reset(struct mtlink_device *link_device);
+void mtlink_topo_rebuild(u32 cmd);
+
 #if !defined(NO_HARDWARE)
 bool mtlink_supported_betwin_devices(struct device *dev1, struct device *dev2);
 int mtlink_get_card_id(struct device *dev, int *card_id, int *card_id_shift, int *card_id_mask);

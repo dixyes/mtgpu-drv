@@ -75,6 +75,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvr_bridge_k.h"
 
 #include "pvr_fence.h"
+#include "mtgpu_sync.h"
 
 #if defined(SUPPORT_NATIVE_FENCE_SYNC)
 #include "pvr_sync.h"
@@ -296,6 +297,13 @@ int PVRSRVDriverInit(void)
 	{
 		return os_err;
 	}
+#if !defined(NO_HARDWARE)
+	os_err = mtgpu_sync_init();
+	if (os_err != 0)
+	{
+		return os_err;
+	}
+#endif
 #endif
 
 	os_err = pvr_apphint_init();
@@ -349,6 +357,9 @@ void PVRSRVDriverDeinit(void)
 
 #if defined(SUPPORT_NATIVE_FENCE_SYNC)
 	pvr_sync_deinit();
+#if !defined(NO_HARDWARE)
+	mtgpu_sync_deinit();
+#endif
 #endif
 
 	PVRSRVCommonDriverDeInit();

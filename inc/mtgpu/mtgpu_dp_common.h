@@ -20,6 +20,8 @@
 #define DP_DUAL_PIX_MODE	1
 #define DP_QUAD_PIX_MODE	2
 
+#define DP_DSC_SDP_BUFFER_SIZE	144
+
 typedef void (*hdmi_codec_plugged_cb)(struct device *dev, bool plugged);
 
 struct wait_queue_head;
@@ -44,11 +46,25 @@ struct mtgpu_dp_debugfs {
 	u8  lane_cnt;
 };
 
+struct mtgpu_dp_dsc_param {
+	u8 dsc_dpcd[DP_DSC_RECEIVER_CAP_SIZE];
+	bool dsc_capable;
+	bool sink_dsc_support;
+	bool dsc_en;
+	u32 compressed_bpp;
+	u32 slice_width;
+	u32 slice_height;
+	u32 slice_num;
+	u32 pps_packed[32];
+	u8 sdp_buff[DP_DSC_SDP_BUFFER_SIZE];
+};
+
 struct mtgpu_dp_ctx {
 	void __iomem *regs;
 	void __iomem *glb_regs;
 	void __iomem *tzc_regs;
 	void __iomem *amt_regs;
+	void __iomem *cust_regs;
 	int irq;
 	int id;
 	struct videomode *vm;
@@ -65,6 +81,7 @@ struct mtgpu_dp_ctx {
 	u32 pixel_mode;
 	wait_queue_head_t *waitq;
 	void *private;
+	struct mtgpu_dp_dsc_param dsc_param;
 };
 
 struct mtgpu_dp_ops {
@@ -93,6 +110,9 @@ struct mtgpu_dp_ops {
 	void (*audio_disable)(struct mtgpu_dp_ctx *ctx);
 	void (*audio_mute)(struct mtgpu_dp_ctx *ctx, bool enable);
 	int (*audio_set_param)(struct mtgpu_dp_ctx *ctx, struct hdmi_codec_params *params);
+	void (*dsc_pps_set)(struct mtgpu_dp_ctx *ctx);
+	void (*dsc_disable)(struct mtgpu_dp_ctx *ctx);
+	void (*dsc_config)(struct mtgpu_dp_ctx *ctx);
 };
 
 struct mtgpu_dp_glb_ops {
@@ -115,6 +135,7 @@ struct mtgpu_dp {
 	struct mtgpu_dp_glb_ops *glb;
 	struct mtgpu_phy *phy;
 	struct delayed_work *hpd_work;
+	struct mtgpu_dsc *dsc;
 	struct work_struct *hpd_irq_work;
 	u8 dpcd[DP_RECEIVER_CAP_SIZE];
 	u8 train_set[4];
@@ -190,6 +211,25 @@ u32 dptx_glb_reg_read(struct mtgpu_dp_ctx *ctx, int offset)
 	return val;
 }
 
+static inline void dptx_cust_reg_write(struct mtgpu_dp_ctx *ctx, int offset, u32 val)
+{
+	os_writel(val, ctx->cust_regs + offset);
+	os_readl(ctx->cust_regs + offset);
+
+	DP_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
+}
+
+static inline u32 dptx_cust_reg_read(struct mtgpu_dp_ctx *ctx, int offset)
+{
+	u32 val;
+
+	val = os_readl(ctx->cust_regs + offset);
+
+	DP_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
+
+	return val;
+}
+
 extern struct mtgpu_dp_chip mtgpu_dp_chip_sudi;
 extern struct mtgpu_dp_chip mtgpu_dp_chip_qy1;
 extern struct mtgpu_dp_chip mtgpu_dp_chip_qy2;
@@ -224,6 +264,13 @@ struct mtgpu_dp *dwork_to_mtgpu_dp(struct work_struct *work)
 	return os_get_dwork_drvdata(work);
 }
 
+static inline
+int mtgpu_dp_link_rate_to_pclk(int link_rate, u8 lane_num, u8 bpp)
+{
+	return link_rate * lane_num * 8 / bpp;
+}
+
+int mtgpu_dp_get_sinkcaps(struct mtgpu_dp *dp);
 void mtgpu_dp_encoder_enable(struct drm_encoder *encoder);
 void mtgpu_dp_encoder_disable(struct drm_encoder *encoder);
 void mtgpu_dp_hpd_work(struct work_struct *work);
@@ -231,5 +278,7 @@ void mtgpu_dp_hpd_irq_work(struct work_struct *work);
 void mtgpu_dp_irq_handler(void *data);
 int  mtgpu_dp_kernel_struct_create(struct mtgpu_dp *dp);
 void mtgpu_dp_kernel_struct_destroy(struct mtgpu_dp *dp);
+void mtgpu_dp_dsc_discover(struct mtgpu_dp *dp);
+void mtgpu_dp_dsp_pps_pack(struct mtgpu_dp *dp, u32 *pps_data);
 
 #endif /* _MTGPU_DP_COMMON_H_ */

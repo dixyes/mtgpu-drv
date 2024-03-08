@@ -44,7 +44,7 @@ struct mtsnd_bar {
 };
 
 struct mtsnd_codec {
-	unsigned int c_state;
+	u32 c_state;
 	struct device *dev;
 	struct hdmi_codec_pdata *hcd;
 	struct parsed_hdmi_eld *eld;
@@ -53,12 +53,12 @@ struct mtsnd_codec {
 };
 
 struct mtsnd_pcm {
-	unsigned int index;
+	u32 index;
 
-	unsigned int open_pcm: 1;
-	unsigned int pcm_running: 1;
+	u32 open_pcm: 1;
+	u32 pcm_running: 1;
 	unsigned long pcm_device_addr;
-	unsigned long long iis_clock;
+	u64 iis_clock;
 
 	void *private_data;
 	struct snd_pcm_substream *substream;
@@ -75,7 +75,7 @@ struct mtsnd_chip {
 	int irq;
 	int idx;
 
-	unsigned int open_compr: 1;
+	u32 open_compr: 1;
 
 	/* dev convert addr */
 	unsigned long compr_device_addr;

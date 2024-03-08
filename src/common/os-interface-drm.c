@@ -340,7 +340,12 @@ IMPLEMENT_GET_OS_MEMBER_FUNC(videomode, vactive);
 IMPLEMENT_GET_OS_MEMBER_FUNC(videomode, vfront_porch);
 IMPLEMENT_GET_OS_MEMBER_FUNC(videomode, vback_porch);
 IMPLEMENT_GET_OS_MEMBER_FUNC(videomode, vsync_len);
-IMPLEMENT_GET_OS_MEMBER_FUNC(videomode, flags);
+
+/* Special member 'flags': need to be forced to convert to u32 */
+u32 os_get_videomode_flags(struct videomode *vm)
+{
+	return (u32)(vm->flags);
+}
 
 /* get hdmi_codec_params member */
 IMPLEMENT_GET_OS_MEMBER_FUNC(hdmi_codec_params, sample_rate);

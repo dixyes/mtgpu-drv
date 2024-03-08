@@ -221,7 +221,6 @@ struct mtgpu_device {
 	struct mtgpu_region pcie_mem;
 	struct mtgpu_region bar2_check_mem;
 	struct mtgpu_region vpu_mem;
-	struct mtgpu_region jpu_mem;
 	struct mtgpu_region smc_mem;
 	struct mtgpu_region pcie_dma;
 	struct mtgpu_region gpu_mem;
@@ -238,7 +237,6 @@ struct mtgpu_device {
 	struct platform_device *disp_dev[MTGPU_DISP_DEV_NUM];
 	struct platform_device *drm_dev[MTGPU_CORE_COUNT_MAX];
 	struct platform_device *video_dev;
-	struct platform_device *jpu_dev;
 	struct platform_device *audio_dev;
 
 	u64 real_vram_size;

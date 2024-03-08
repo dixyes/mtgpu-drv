@@ -27,6 +27,8 @@
 /* MTGPU_FEC_BL_BASE follows closely after MTGPU_DSP_MEM_SIZE */
 #define MTGPU_FEC_BL_BASE		(0x1000000UL)
 #define MTGPU_FEC_IMAGE_BASE		(0x1800000UL)
+#define MTGPU_FEC_KERNEL_PARAMS_BASE	(MTGPU_FEC_BL_BASE + 0xFFC00)
+#define MTGPU_FEC_KERNEL_PARAMS_LEN	0x400
 /* Specify fec reserved size as MTGPU_SMC_RESERVED_SIZE by default to avoid
  * memory allocation issue in small ddr capability SKUs. Meanwhile assign module
  * params proper size to support full FEC function.
@@ -57,9 +59,9 @@
 #define DEVICE_ID_QUYUAN2		(0x0300)
 #define DEVICE_ID_MTT_S90		(0x0301)
 #define DEVICE_ID_MTT_G3D80		(0x0303)
-#define	DEVICE_ID_MTT_S4000		(0x0323)
+#define	DEVICE_ID_MTT_S4000_8CORE	(0x0323)
 #define DEVICE_ID_MTT_G3S90		(0x0321)
-#define DEVICE_ID_MTT_S4000i		(0x0327)
+#define DEVICE_ID_MTT_S4000_7CORE	(0x0327)
 
 #define DEVICE_ID_QUYUAN1_VF		(0x02aa)
 #define DEVICE_ID_QUYUAN2_VF		(0x03aa)
@@ -71,6 +73,7 @@
 #define DEVICE_IS_SUDI(mtdev)     (GET_DEVICE_ID(mtdev) == DEVICE_ID_SUDI104)
 #define DEVICE_IS_QUYUAN1(mtdev)  (GET_DEVICE_ID(mtdev) == DEVICE_ID_QUYUAN1)
 #define DEVICE_IS_QUYUAN2(mtdev)  (GET_DEVICE_ID(mtdev) == DEVICE_ID_QUYUAN2)
+#define DEVICE_IS_PINGHU1(mtdev)  (GET_DEVICE_ID(mtdev) == DEVICE_ID_PINGHU1)
 
 /* ALL MT Soc Platform common definition */
 #define PCI_STD_NUM_BARS			6
@@ -78,13 +81,13 @@
 #define MTGPU_DEVICE_NAME		"mtgpu"
 
 #define MTGPU_DEVICE_NAME_VIDEO		"mtgpu_video"
-#define MTGPU_DEVICE_NAME_JPU		"mtgpu_jpu"
 #define MTGPU_DEVICE_NAME_AUDIO		"mtgpu_audio"
 
 #define MTGPU_DEVICE_NAME_DISPC		"mtgpu-dispc"
 #define MTGPU_DEVICE_NAME_DP		"mtgpu-dp"
 #define MTGPU_DEVICE_NAME_DP_PHY	"mtgpu-dp-phy"
 #define MTGPU_DEVICE_NAME_HDMI		"mtgpu-hdmi"
+#define MTGPU_DEVICE_NAME_DSC		"mtgpu-dsc"
 
 /* Valid values for the MTGPU_MEMORY_CONFIG configuration option */
 #define MTGPU_MEMORY_LOCAL			1
@@ -175,10 +178,6 @@ enum mtgpu_interrupt_id {
 #define BYTES_COUNT_32_BIT		4
 #define BYTES_COUNT_16_BIT		2
 #define BYTES_COUNT_8_BIT		1
-
-#define MTGPU_VPU_MODE_DEFAULT	0
-#define MTGPU_VPU_MODE_TEST		1
-#define MTGPU_VPU_MODE_DISABLE	2
 
 enum pstate_mode {
 	PSTATE_DISABLED = 0, /* pstate disabled */

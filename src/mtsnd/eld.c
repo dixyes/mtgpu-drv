@@ -133,7 +133,7 @@ static int cea_sampling_frequencies[8] = {
 
 static void hdmi_update_short_audio_desc(struct mtsnd_chip *chip,
 					 struct cea_snd *a,
-					 const unsigned char *buf)
+					 const u8 *buf)
 {
 	int i;
 	int val;
@@ -212,7 +212,7 @@ static void hdmi_update_short_audio_desc(struct mtsnd_chip *chip,
  * Be careful, ELD buf could be totally rubbish!
  */
 static int eld_parse(struct mtsnd_chip *chip, struct parsed_hdmi_eld *e,
-			  const unsigned char *buf, int size)
+			  const u8 *buf, int size)
 {
 	int mnl;
 	int i;
@@ -280,7 +280,7 @@ out_fail:
 int mtsnd_check_eld(struct mtsnd_chip *chip, int codec_index)
 {
 	struct mtsnd_codec *codec;
-	unsigned char eld_raw[ELD_MAX_SIZE] = {0};
+	u8 eld_raw[ELD_MAX_SIZE] = {0};
 
 	if (unlikely(codec_index < 0 || codec_index >= get_codec_count(chip)))
 		return -EINVAL;
@@ -311,9 +311,9 @@ int mtsnd_check_eld(struct mtsnd_chip *chip, int codec_index)
  * @buflen: the max buffer length
  *
  */
-static unsigned int snd_print_pcm_bits(int pcm, char *buf, int buflen)
+static u32 snd_print_pcm_bits(int pcm, char *buf, int buflen)
 {
-	static unsigned int bits[] = { 8, 16, 20, 24, 32 };
+	static u32 bits[] = { 8, 16, 20, 24, 32 };
 	int i, used_len = 0;
 
 	used_len += snprintf(buf + used_len, buflen - used_len,  "    bits:");
@@ -330,9 +330,9 @@ static unsigned int snd_print_pcm_bits(int pcm, char *buf, int buflen)
  * SNDRV_PCM_RATE_* and AC_PAR_PCM values don't match, print correct rates with
  * hdmi-specific routine.
  */
-static unsigned int hdmi_print_pcm_rates(int pcm, char *buf, int buflen)
+static u32 hdmi_print_pcm_rates(int pcm, char *buf, int buflen)
 {
-	static unsigned int alsa_rates[] = {
+	static u32 alsa_rates[] = {
 		5512, 8000, 11025, 16000, 22050, 32000, 44100, 48000, 64000,
 		88200, 96000, 176400, 192000, 384000
 	};
@@ -349,7 +349,7 @@ static unsigned int hdmi_print_pcm_rates(int pcm, char *buf, int buflen)
 	return used_len;
 }
 
-static unsigned int hdmi_show_short_audio_desc(struct cea_snd *a, char* buf, int buflen)
+static u32 hdmi_show_short_audio_desc(struct cea_snd *a, char* buf, int buflen)
 {
 	int used_len = 0;
 
@@ -369,7 +369,7 @@ static unsigned int hdmi_show_short_audio_desc(struct cea_snd *a, char* buf, int
 	return used_len;
 }
 
-unsigned int snd_hdmi_show_eld(struct parsed_hdmi_eld *e, char* buf, int buflen)
+u32 snd_hdmi_show_eld(struct parsed_hdmi_eld *e, char* buf, int buflen)
 {
 	int i;
 	int used_len = 0;

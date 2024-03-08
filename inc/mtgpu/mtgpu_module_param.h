@@ -21,13 +21,14 @@ extern int mtgpu_ipc_debug;
 extern unsigned long mtgpu_ipc_timeout_ms;
 extern int mtgpu_ipc_tty_support;
 extern bool mtgpu_fec_enable;
+extern char *fec_kernel_params;
 extern int enable_mtlink;
 extern unsigned long mtlink_timer_expires;
+extern int mtlink_topo_type;
 extern unsigned char mtgpu_pstate_mode;
 extern unsigned int mtgpu_page_size;
-extern int mtgpu_vpu_mode;
+extern int enable_vpu_test;
 extern int disable_vpu;
-extern int disable_jpu;
 extern int vpu_group_max;
 extern bool disable_driver;
 extern int irq_vector_cnt;
@@ -41,6 +42,7 @@ extern bool mtgpu_load_windows_firmware;
 extern bool mtgpu_vgpu_full_vgpu_types;
 extern int vgpu_mm_mapping_mode;
 extern int mtgpu_vdma_enable;
+extern unsigned long mtgpu_win_fw_context_switch_value;
 #endif
 
 #endif /*__MTGPU_MODULE_PARAM_H__*/

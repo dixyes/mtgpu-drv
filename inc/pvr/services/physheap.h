@@ -48,6 +48,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "opaque_types.h"
 #include "pmr_impl.h"
 #include "physheap_config.h"
+#include "mtgpu_segment.h"
 
 #ifndef PHYSHEAP_H
 #define PHYSHEAP_H
@@ -133,6 +134,9 @@ typedef IMG_UINT32 (*PFN_GET_PAGE_SHIFT)(void);
 @Return         none
 */ /**************************************************************************/
 typedef void (*PFN_GET_MEM_STATS)(PHEAP_IMPL_DATA, IMG_UINT64 *, IMG_UINT64 *);
+typedef void (*PFN_GET_SEGMENT_MEM_STATS)(PHYS_HEAP *psPhysHeap,
+					  IMG_INT32 i32SegmentID,
+					  struct mtgpu_segment_stats *psStats);
 
 #if defined(SUPPORT_GPUVIRT_VALIDATION)
 typedef PVRSRV_ERROR (*PFN_PAGES_ALLOC_GPV)(PHYS_HEAP *psPhysHeap, size_t uiSize,
@@ -201,6 +205,7 @@ typedef struct PHEAP_IMPL_FUNCS_TAG
 	PFN_GET_PAGE_SHIFT pfnGetPageShift;
 	PFN_GET_MEM_STATS pfnGetPMRFactoryMemStats;
 	PFN_CREATE_PMR pfnCreatePMR;
+	PFN_GET_SEGMENT_MEM_STATS pfnGetSegmentMemStats;
 #if defined(SUPPORT_GPUVIRT_VALIDATION)
 	PFN_PAGES_ALLOC_GPV pfnPagesAllocGPV;
 #endif
@@ -362,6 +367,10 @@ PhysHeapGetMemInfoPkd(PPVRSRV_DEVICE_NODE psDevNode,
 					  IMG_UINT32 ui32PhysHeapCount,
 					  PVRSRV_PHYS_HEAP *paePhysHeapID,
 					  PHYS_HEAP_MEM_STATS_PKD_PTR paPhysHeapMemStats);
+
+void PVRSRVGetHeapSegmentStats(PPVRSRV_DEVICE_NODE psDeviceNode,
+			       IMG_INT32 i32SegmentID,
+			       struct mtgpu_segment_stats *psStats);
 
 /*************************************************************************/ /*!
 @Function       PhysheapGetPhysMemUsage

@@ -16,6 +16,8 @@
 #define GPU_SOC_GEN2		2
 #define GPU_SOC_GEN3		3
 
+#define MAX_NUM_DEV		256
+
 struct vgpu_info;
 struct mtgpu_vz_data {
 	/* Heap for gpu mmu table */
@@ -87,20 +89,13 @@ struct mtgpu_platform_data {
 	struct ion_device *ion_dev;
 #endif
 
-	char uuid[DEV_UUID_LEN];
+	u8 uuid[DEV_UUID_LEN];
 };
 
 struct mtgpu_video_platform_data {
 	resource_size_t video_mem_base;
 	resource_size_t video_mem_size;
 	resource_size_t pcie_mem_base;
-#if defined(SUPPORT_ION)
-	struct ion_device **ion_dev;
-#endif
-	u16 pcie_dev_id;
-};
-
-struct mtgpu_jpu_platform_data {
 #if defined(SUPPORT_ION)
 	struct ion_device **ion_dev;
 #endif
@@ -127,6 +122,7 @@ struct mtgpu_dp_platform_data {
 	u16 max_pclk_100khz;
 	u8 port_type;
 	u8 soc_gen;
+	u8 dsc_capable;
 };
 
 struct mtgpu_dp_phy_platform_data {
@@ -142,6 +138,11 @@ struct mtgpu_hdmi_platform_data {
 	u8 port_type;
 };
 
+struct mtgpu_dsc_platform_data {
+	u8 id;
+	u8 soc_gen;
+};
+
 extern struct mtgpu_driver_data sudi_drvdata;
 extern struct mtgpu_driver_data quyuan1_drvdata;
 extern struct mtgpu_driver_data quyuan2_drvdata;
@@ -149,11 +150,23 @@ extern struct mtgpu_driver_data quyuan2_drvdata;
 extern const struct proc_ops config_proc_ops;
 extern const struct proc_ops mpc_enable_proc_ops;
 extern const struct proc_ops mtlink_test_proc_ops;
+extern const struct proc_ops mtlink_topo_switch_proc_ops;
+extern const struct proc_ops mtlink_err_proc_ops;
+extern const struct proc_ops mtlink_debug_proc_ops;
+extern const struct proc_ops mtlink_trigger_bdl_proc_ops;
+extern const struct proc_ops mtlink_irqcounter_enable_proc_ops;
+extern const struct proc_ops mtlink_irqcounter_counter_proc_ops;
 extern const struct proc_ops process_util_proc_ops;
 #else
 extern const struct file_operations config_proc_ops;
 extern const struct file_operations mpc_enable_proc_ops;
 extern const struct file_operations mtlink_test_proc_ops;
+extern const struct file_operations mtlink_topo_switch_proc_ops;
+extern const struct file_operations mtlink_err_proc_ops;
+extern const struct file_operations mtlink_debug_proc_ops;
+extern const struct file_operations mtlink_trigger_bdl_proc_ops;
+extern const struct file_operations mtlink_irqcounter_enable_proc_ops;
+extern const struct file_operations mtlink_irqcounter_counter_proc_ops;
 extern const struct file_operations process_util_proc_ops;
 #endif
 
@@ -169,6 +182,7 @@ int mtgpu_set_interrupt_handler(struct device *mtdev, int interrupt_id,
 				void *handler_data);
 int mtgpu_get_driver_mode(void);
 u64 mtgpu_get_vram_size(struct mtgpu_device *mtdev);
+bool mtgpu_sriov_is_supported(struct pci_dev *pdev);
 bool mtgpu_sriov_enabled(struct pci_dev *pdev);
 bool mtgpu_pstate_is_enabled(void);
 

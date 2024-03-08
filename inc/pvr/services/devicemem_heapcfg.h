@@ -80,6 +80,9 @@ struct _CONNECTION_DATA_;
 /* Blueprint for a single heap */
 typedef struct _DEVMEM_HEAP_BLUEPRINT_
 {
+	/* id of this heap */
+	IMG_UINT32 uiHeapId;
+
 	/* Name of this heap - for debug purposes, and perhaps for lookup
 	by name */
 	const IMG_CHAR *pszName;
@@ -128,13 +131,14 @@ typedef struct _DEVMEM_HEAP_BLUEPRINT_
 
 } DEVMEM_HEAP_BLUEPRINT;
 
-void HeapCfgBlueprintInit(const IMG_CHAR        *pszName,
-	                      IMG_UINT64             ui64HeapBaseAddr,
-	                      IMG_DEVMEM_SIZE_T      uiHeapLength,
-	                      IMG_DEVMEM_SIZE_T      uiReservedRegionLength,
-	                      IMG_UINT32             ui32Log2DataPageSize,
-	                      IMG_UINT32             uiLog2ImportAlignment,
-	                      DEVMEM_HEAP_BLUEPRINT *psHeapBlueprint);
+void HeapCfgBlueprintInit(const IMG_UINT32	ui32HeapId,
+			  const IMG_CHAR        *pszName,
+			  IMG_UINT64             ui64HeapBaseAddr,
+			  IMG_DEVMEM_SIZE_T      uiHeapLength,
+			  IMG_DEVMEM_SIZE_T      uiReservedRegionLength,
+			  IMG_UINT32             ui32Log2DataPageSize,
+			  IMG_UINT32             uiLog2ImportAlignment,
+			  DEVMEM_HEAP_BLUEPRINT *psHeapBlueprint);
 
 /* Entire named heap config */
 typedef struct _DEVMEM_HEAP_CONFIG_
@@ -173,16 +177,17 @@ HeapCfgHeapConfigName(struct _CONNECTION_DATA_ *psConnection,
 
 PVRSRV_ERROR
 HeapCfgHeapDetails(struct _CONNECTION_DATA_ *psConnection,
-    const struct _PVRSRV_DEVICE_NODE_ *psDeviceNode,
-    IMG_UINT32 uiHeapConfigIndex,
-    IMG_UINT32 uiHeapIndex,
-    IMG_UINT32 uiHeapNameBufSz,
-    IMG_CHAR *pszHeapNameOut,
-    IMG_DEV_VIRTADDR *psDevVAddrBaseOut,
-    IMG_DEVMEM_SIZE_T *puiHeapLengthOut,
-    IMG_DEVMEM_SIZE_T *puiReservedRegionLengthOut,
-    IMG_UINT32 *puiLog2DataPageSizeOut,
-    IMG_UINT32 *puiLog2ImportAlignmentOut
+		   const struct _PVRSRV_DEVICE_NODE_ *psDeviceNode,
+		   IMG_UINT32 uiHeapConfigIndex,
+		   IMG_UINT32 uiHeapIndex,
+		   IMG_UINT32 *puiHeapId,
+		   IMG_UINT32 uiHeapNameBufSz,
+		   IMG_CHAR *pszHeapNameOut,
+		   IMG_DEV_VIRTADDR *psDevVAddrBaseOut,
+		   IMG_DEVMEM_SIZE_T *puiHeapLengthOut,
+		   IMG_DEVMEM_SIZE_T *puiReservedRegionLengthOut,
+		   IMG_UINT32 *puiLog2DataPageSizeOut,
+		   IMG_UINT32 *puiLog2ImportAlignmentOut
 );
 
 #endif

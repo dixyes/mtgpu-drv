@@ -17,7 +17,7 @@
 #define _section(s) __section(#s)
 #endif
 
-extern unsigned int snd_debug;
+extern u32 snd_debug;
 
 #define SND_PRINT_TRACE		(1UL << 4)
 #define SND_PRINT_DEBUG		(1UL << 3)

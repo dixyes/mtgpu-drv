@@ -77,6 +77,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 	X(EBADMSG) \
 	X(ENOPKG) \
 	X(ENOENT) \
+	X(EIO) \
 	X(EFAULT) \
 	X(DRM_UT_CORE) \
 	X(VERIFYING_UNSPECIFIED_SIGNATURE) \
@@ -90,7 +91,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 	X(EMFILE) \
 	X(ERANGE) \
 	X(EEXIST) \
-	X(EIO) \
 	X(WQ_UNBOUND) \
 	X(WQ_FREEZABLE)
 
@@ -687,6 +687,7 @@ IMG_CHAR *OSGetCurrentClientProcessNameKM(void);
 @Return         ID of current client thread
 *****************************************************************************/
 uintptr_t OSGetCurrentClientThreadIDKM(void);
+pid_t OSGetCurrentTgid(void);
 
 /*************************************************************************/ /*!
 @Function       OSMemCmp
@@ -928,6 +929,12 @@ PVRSRV_ERROR OSStringToUINT32(const IMG_CHAR *pStr, IMG_UINT32 ui32Base,
                 else returns length of number string
 */ /**************************************************************************/
 IMG_UINT32 OSStringUINT32ToStr(IMG_CHAR *pszBuf, size_t uSize, IMG_UINT32 ui32Num);
+
+/*************************************************************************/ /*!
+@Function       OSStringString
+@Description    OS function to support the standard C strstr() function.
+*/ /**************************************************************************/
+IMG_CHAR *OSStringString(const IMG_CHAR *str1, const IMG_CHAR *str2);
 
 /*************************************************************************/ /*!
 @Function       OSEventObjectCreate
@@ -1812,31 +1819,6 @@ void __user *OSValidateAndGetCPUUserVA(PMR *psPMR,
 				       IMG_DEVMEM_OFFSET_T uiOffset,
 				       IMG_DEVMEM_SIZE_T uiSize);
 
-#if defined(SUPPORT_DMA_TRANSFER)
-PVRSRV_ERROR OSDmaTransferP2P(PVRSRV_DEVICE_NODE *psLocalDevNode,
-			      PVRSRV_DEVICE_NODE *psPeerDevNode,
-			      IMG_UINT64 *puiLocalDevPAddr,
-			      IMG_UINT64 *puiPeerDevPAddr,
-			      IMG_DEVMEM_SIZE_T *puiSize,
-			      IMG_BOOL bPeer2Local);
-
-PVRSRV_ERROR OSDmaTransferUser(PVRSRV_DEVICE_NODE *psDevNode,
-			       IMG_UINT64 uiDmaDevAddr,
-			       IMG_UINT64 *puiAddress,
-			       IMG_DEVMEM_SIZE_T uiSize,
-			       IMG_BOOL bS2D);
-
-PVRSRV_ERROR OSDmaTransferSparseUser(PVRSRV_DEVICE_NODE *psDevNode,
-				     IMG_UINT64 *puiDmaDevAddr,
-				     IMG_UINT64 *puiAddress,
-				     IMG_DEVMEM_SIZE_T uiSize,
-				     bool *pbValidPage,
-				     IMG_UINT32 uiOffsetInPage,
-				     IMG_UINT32 uiSizeInPages,
-				     IMG_UINT32 uiValidPages,
-				     IMG_BOOL bS2D);
-#endif /* if defined(SUPPORT_DMA_TRANSFER) */
-
 IMG_CPU_VIRTADDR OSDmaAllocCoherent(struct device *pvOSDevice,
 				    size_t uiSize,
 				    dma_addr_t *pHandle);
@@ -2029,20 +2011,6 @@ const IMG_UINT8 *OSGetFirmwareData(const struct firmware *psFw);
 
 ssize_t OSKernelWrite(void *pvFile, const char __user *pszBuf, size_t count, loff_t *psPos);
 
-struct kernel_param;
-void *OSGetKernelParamArg(const struct kernel_param *psKernelParam);
-
-struct work_struct;
-struct workqueue_struct;
-typedef void (*work_func_t)(struct work_struct *work);
-bool OSQueueWork(struct workqueue_struct *psWorkQueue, struct work_struct *psWork);
-struct workqueue_struct *OSAllocWorkqueue(const char *pszFormat, unsigned int flags, int max_active);
-void OSDestroyWorkqueue(struct workqueue_struct *psWorkQueue);
-void *OSCreateWork(work_func_t pfnFunc);
-void OSDestroyWork(struct work_struct *psWork);
-void OSSetWorkDrvdata(struct work_struct *psWork, void *pvData);
-void *OSGetWorkDrvdata(struct work_struct *psWork);
-
 void *OSGetDmaBufPrivateData(struct dma_buf *psDmaBuf);
 size_t OSGetDmaBufSize(struct dma_buf *psDmaBuf);
 const struct dma_buf_ops *OSGetDmaBufOps(struct dma_buf *psDmaBuf);
@@ -2134,6 +2102,20 @@ struct dma_buf_attachment *OSDmaBufAttach(struct dma_buf *psDmBuf,
 					  struct device *psDev);
 
 bool OSIsErrOrNull(__force const void *pvPtr);
+
+struct kernel_param;
+void *OSGetKernelParamArg(const struct kernel_param *psKernelParam);
+
+struct work_struct;
+struct workqueue_struct;
+typedef void (*work_func_t)(struct work_struct *work);
+bool OSQueueWork(struct workqueue_struct *psWorkQueue, struct work_struct *psWork);
+struct workqueue_struct *OSAllocWorkqueue(const char *pszFormat, unsigned int flags, int max_active);
+void OSDestroyWorkqueue(struct workqueue_struct *psWorkQueue);
+void *OSCreateWork(work_func_t pfnFunc);
+void OSDestroyWork(struct work_struct *psWork);
+void OSSetWorkDrvdata(struct work_struct *psWork, void *pvData);
+void *OSGetWorkDrvdata(struct work_struct *psWork);
 
 #endif /* OSFUNC_H */
 /******************************************************************************

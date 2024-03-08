@@ -13,8 +13,6 @@
 #ifndef _VPU_TYPES_H_
 #define _VPU_TYPES_H_
 
-#include "vpuconfig.h"
-
 #if defined(__KERNEL__)
   #include "linux-types.h"
 #endif

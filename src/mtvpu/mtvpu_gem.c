@@ -6,7 +6,9 @@
 #include <linux/slab.h>
 #include <linux/device.h>
 
+#include <linux/io.h>
 #include <drm/drm_file.h>
+#include <drm/drm_gem.h>
 #if defined(OS_DRM_DRMP_H_EXIST)
 #include <drm/drmP.h>
 #else
@@ -18,10 +20,12 @@
 #include "ion/ion.h"
 #endif
 
+#ifndef SOC_MODE
 #include "mtgpu_drv.h"
 #include "mtgpu_drm_gem.h"
 #include "mtgpu_drm_drv.h"
 #include "mtgpu_drm_internal.h"
+#endif
 
 #include "mtvpu_drv.h"
 #include "mtvpu_gem.h"
@@ -124,7 +128,12 @@ struct mt_node *gem_malloc_node(struct mt_chip *chip, int idx, u32 pool_id, stru
 	if (host || vpu_fixed_mem_qy2(chip, type))
 		ret = vpu_mem_pool_alloc(chip, pool_id, size, &node->dev_addr);
 	else
+#ifdef SOC_MODE
+		ret = mtvpu_vram_alloc(drm, core->mem_group_id, size, &node->dev_addr, &node->handle);
+		pr_info("gem malloc node size %llx, addr %llx\n", size, node->dev_addr);
+#else
 		ret = mtgpu_vram_alloc(drm, core->mem_group_id, size, &node->dev_addr, &node->handle);
+#endif
 
 	drm_gem_private_object_init(drm, node->obj, size);
 
@@ -184,7 +193,11 @@ struct mt_node *gem_malloc(struct mt_chip *chip, int idx, int instIdx, u64 size,
 		       node->dev_addr + size, size);
 
 		if (node->handle)
+#ifdef SOC_MODE
+			mtvpu_vram_free(node->obj, node->handle);
+#else
 			mtgpu_vram_free(node->handle);
+#endif
 			
 		if (node->obj) {
 			drm_gem_object_release(node->obj);
@@ -205,7 +218,11 @@ struct mt_node *gem_malloc(struct mt_chip *chip, int idx, int instIdx, u64 size,
 void gem_free_node(struct mt_chip *chip, struct mt_node *node)
 {
 	if (node->vir_addr)
+#ifdef SOC_MODE
+		memunmap(node->vir_addr);
+#else
 		iounmap(node->vir_addr);
+#endif
 
 	if (node->bak_addr)
 		vfree(node->bak_addr);
@@ -217,7 +234,11 @@ void gem_free_node(struct mt_chip *chip, struct mt_node *node)
 	if (node->pool_id > 0)
 		vpu_mem_pool_free(chip, node->pool_id);
 	else
+#ifdef SOC_MODE
+		mtvpu_vram_free(node->obj, node->handle);
+#else
 		mtgpu_vram_free(node->handle);
+#endif
 
 	drm_gem_object_release(node->obj);
 #endif
@@ -271,6 +292,9 @@ void gem_clear(struct mt_core *core, u64 dev_addr)
 		list_for_each_entry(node, &core->mm_head[inst], list) {
 			if (node->dev_addr == dev_addr) {
 				memset_io(node->vir_addr, 0, node->obj->size);
+#ifdef SOC_MODE
+				os_dcache_clean(node->vir_addr, node->obj->size);
+#endif
 				return;
 			}
 		}

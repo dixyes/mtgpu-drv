@@ -208,6 +208,10 @@ typedef enum {
 	                                             See RGX_HWPERF_HOST_DMA_DATA */
 	RGX_HWPERF_HOST_NOTIFY     = 0x0F,          /*!< ``0x0F`` Kernel driver has added more data to GPU.
 	                                             See RGX_HWPERF_HOST_NOTIFY_DATA */
+	RGX_HWPERF_HOST_DEBUG_START = 0x10,         /*!< ``0x10`` Debug event start.
+	                                             See RGX_HWPERF_HOST_DEBUG_DATA */
+	RGX_HWPERF_HOST_DEBUG_END = 0x11,           /*!< ``0x10`` Debug event end.
+	                                             See RGX_HWPERF_HOST_DEBUG_DATA */
 	/*! last */
 	RGX_HWPERF_HOST_LAST_TYPE,
 

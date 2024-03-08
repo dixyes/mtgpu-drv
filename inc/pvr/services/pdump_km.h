@@ -611,12 +611,13 @@ PDumpWriteShiftedMaskedValue(PVRSRV_DEVICE_NODE *psDeviceNode,
                              IMG_UINT32 uiPDumpFlags);
 
 PVRSRV_ERROR
-PHPDumpWriteSymbAddress(PVRSRV_DEVICE_NODE *psDeviceNode,
-			IMG_DEVMEM_OFFSET_T uiDestOffset,
-			const IMG_CHAR *pszRefSymbolicName,
-			const IMG_CHAR *pszPDumpDevName,
-			IMG_UINT32 ui32AlignShift,
-			IMG_UINT64 ui64PageSizeFlag);
+PH1PDumpWriteSymbAddress(PVRSRV_DEVICE_NODE *psDeviceNode,
+			 const IMG_CHAR *pszDestSpaceName,
+			 IMG_DEVMEM_OFFSET_T uiDestOffset,
+			 const IMG_CHAR *pszRefSymbolicName,
+			 const IMG_CHAR *pszPDumpDevName,
+			 IMG_UINT32 ui32AlignShift,
+			 IMG_UINT64 ui64PageSizeFlag);
 
 /*
 	PDumpWriteSymbAddress():

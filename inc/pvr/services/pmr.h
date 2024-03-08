@@ -75,7 +75,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #define PMR_MAX_TRANSLATION_STACK_ALLOC				(32)
 
-extern IMG_UINT32 PMR_MAX_SUPPORTED_PAGE_COUNT;
 extern u32 gpu_page_size;
 extern u32 gpu_page_shift;
 
@@ -671,6 +670,11 @@ PMR_CpuPhysAddr(const PMR *psPMR,
 PVRSRV_ERROR
 PMRGetUID(PMR *psPMR,
           IMG_UINT64 *pui64UID);
+
+PVRSRV_ERROR
+PMRGetSize(PMR *psPMR,
+           IMG_UINT64 *uiLogicalSize);
+
 /*
  * PMR_ChangeSparseMem()
  *
@@ -1065,16 +1069,6 @@ PMRInit(void);
 PVRSRV_ERROR
 PMRDeInit(void);
 
-/*
- * PMRSetMaxSupportedPageCount()
- *
- * To be called to set the PMR to support the maximum number of physical
- * pages in a single allocation according to the page size of GPU passed
- * in during device initialization.
- *
- */
-PVRSRV_ERROR
-PMRSetMaxSupportedPageCount(IMG_UINT32 ui32GpuPageSize);
 
 #if defined(PVRSRV_ENABLE_GPU_MEMORY_INFO)
 PVRSRV_ERROR
@@ -1090,7 +1084,8 @@ PMR_CreatePAInfo(struct _PVRSRV_DEVICE_NODE_ *psDevNode,
 		 IMG_UINT32 ui32Log2PageSize,
 		 IMG_UINT32 uiReqPageNums,
 		 IMG_DEVMEM_OFFSET_T uiLogicalOffset,
-		 PMR_PA_INFO **ppsPMRPAInfo);
+		 PMR_PA_INFO **ppsPMRPAInfo,
+		 IMG_UINT64 uiMappingFlags);
 
 void PMR_DestroyPAInfo(PMR_PA_INFO *psPMRPAInfo);
 

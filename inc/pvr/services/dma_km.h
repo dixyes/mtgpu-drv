@@ -55,6 +55,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvrsrv_sync_km.h"
 #include "connection_server.h"
 
+struct PageArrayPAInfo {
+	IMG_UINT64 *pui64PageDevPAddr;
+	IMG_BOOL *pbPagesValid;
+	IMG_UINT32 ui32OffsetInPage;
+	IMG_UINT32 ui32PageNum;
+};
+
 PVRSRV_ERROR DmaDeviceParams(CONNECTION_DATA *psConnection,
 							 PVRSRV_DEVICE_NODE *psDevNode,
 							 IMG_UINT32 *ui32DmaBuffAlign,

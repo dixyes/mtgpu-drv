@@ -128,11 +128,40 @@ typedef struct
 	IMG_UINT32 ui32TxtActCyc;		/*!< Meta TXTACTCYC register value */
 	IMG_UINT32 ui32FWPerfCount0;	/*!< Meta/MIPS PERF_COUNT0 register */
 	IMG_UINT32 ui32FWPerfCount1;	/*!< Meta/MIPS PERF_COUNT1 register */
+	IMG_UINT64 ui64SoCTimestamp;	/*!< SoC timestamp */
 	IMG_UINT32 ui32TimeCorrIndex;	/*!< Internal field */
 	IMG_UINT32 ui32Padding;			/*!< Reserved */
 } RGX_HWPERF_FW_DATA;
 
 RGX_FW_STRUCT_SIZE_ASSERT(RGX_HWPERF_FW_DATA);
+
+typedef enum
+{
+	RGX_HWPERF_FW_DBG_SECTION_A_START,
+	RGX_HWPERF_FW_DBG_SECTION_A_FINISH,
+	RGX_HWPERF_FW_DBG_SECTION_B_START,
+	RGX_HWPERF_FW_DBG_SECTION_B_FINISH,
+	RGX_HWPERF_FW_DBG_SECTION_C_START,
+	RGX_HWPERF_FW_DBG_SECTION_C_FINISH,
+	RGX_HWPERF_FW_DBG_SECTION_D_START,
+	RGX_HWPERF_FW_DBG_SECTION_D_FINISH,
+	RGX_HWPERF_FW_DBG_SECTION_E_START,
+	RGX_HWPERF_FW_DBG_SECTION_E_FINISH,
+} RGX_HWPERF_FW_DBG_SECTION;
+
+typedef struct
+{
+	IMG_UINT64                ui64SoCTimestamp;  /*!< SoC timestamp */
+	IMG_UINT32                ui32TimeCorrIndex; /*!< Index to the time correlation when the packet was generated */
+	RGX_HWPERF_DM             eDM;               /*!< Data Master number, see RGX_HWPERF_DM */
+	RGX_HWPERF_FW_DBG_SECTION eSection;          /*!< Code section to profile distinguishable by A, B, C, D, E */
+	IMG_UINT32                ui32DMContext;     /*!< GPU Data Master (FW) Context */
+	IMG_UINT64                ui64UserData1;     /*!< Customized data section */
+	IMG_UINT64                ui64UserData2;
+	IMG_UINT64                ui64UserData3;
+} RGX_HWPERF_FW_DBG_DATA;
+
+RGX_FW_STRUCT_SIZE_ASSERT(RGX_HWPERF_FW_DBG_DATA);
 
 /*! This structure holds the data of a hardware packet, including counters. */
 typedef struct
@@ -144,6 +173,7 @@ typedef struct
 	IMG_UINT32 ui32WorkTarget;    /*!< RenderTarget for a TA,3D; Frame context for RTU, 0x0 otherwise */
 	IMG_UINT32 ui32ExtJobRef;     /*!< Client driver context job reference used for tracking/debugging */
 	IMG_UINT32 ui32IntJobRef;     /*!< RGX Data master context job reference used for tracking/debugging */
+	IMG_UINT64 ui64SoCTimestamp;  /*!< SoC timestamp */
 	IMG_UINT32 ui32TimeCorrIndex; /*!< Index to the time correlation at the time the packet was generated */
 	IMG_UINT32 ui32BlkInfo;       /*!< <31..16> NumBlocks <15..0> Counter block stream offset */
 	IMG_UINT32 ui32WorkCtx;       /*!< Work context: Render Context for TA/3D; RayTracing Context for RTU/SHG; 0x0 otherwise */
@@ -539,25 +569,26 @@ typedef union
 /*! This structure holds the packet payload data for UFO event. */
 typedef struct
 {
-	RGX_HWPERF_UFO_EV eEvType;     /*!< Subtype of the event. See RGX_HWPERF_UFO_EV */
-	IMG_UINT32 ui32TimeCorrIndex;  /*!< Index to the timer correlation data
-	                                 at the time the packet was generated.
-	                                 Used to approximate Host timestamps for
-	                                 these events. */
-	IMG_UINT32 ui32PID;            /*!< Client process identifier */
-	IMG_UINT32 ui32ExtJobRef;      /*!< Reference used by callers of the RGX
-	                                 API to track submitted work (for
-	                                 debugging/trace purposes) */
-	IMG_UINT32 ui32IntJobRef;      /*!< Internal reference used to track
-	                                 submitted work (for debugging / trace
-	                                 purposes) */
-	IMG_UINT32 ui32DMContext;      /*!< GPU Data Master (FW) Context */
-	IMG_UINT32 ui32StreamInfo;     /*!< Encoded number of elements in the
-	                                 stream and stream data offset in the
-	                                 payload */
-	RGX_HWPERF_DM eDM;             /*!< Data Master number, see RGX_HWPERF_DM */
-	IMG_UINT32 ui32Padding;        /*!< Unused, reserved */
-	IMG_UINT32 aui32StreamData[RGX_HWPERF_ONE_OR_MORE_ELEMENTS];  /*!< Series of tuples holding UFO objects data */
+	RGX_HWPERF_UFO_EV eEvType;                                      /*!< Subtype of the event. See RGX_HWPERF_UFO_EV */
+	IMG_UINT64        ui64SoCTimestamp;                             /*!< SoC timestamp */
+	IMG_UINT32        ui32TimeCorrIndex;                            /*!< Index to the timer correlation data
+	                                                                  at the time the packet was generated.
+	                                                                  Used to approximate Host timestamps for
+	                                                                  these events. */
+	IMG_UINT32 ui32PID;                                             /*!< Client process identifier */
+	IMG_UINT32 ui32ExtJobRef;                                       /*!< Reference used by callers of the RGX
+	                                                                  API to track submitted work (for
+	                                                                  debugging/trace purposes) */
+	IMG_UINT32 ui32IntJobRef;                                       /*!< Internal reference used to track
+	                                                                  submitted work (for debugging / trace
+	                                                                  purposes) */
+	IMG_UINT32 ui32DMContext;                                       /*!< GPU Data Master (FW) Context */
+	IMG_UINT32 ui32StreamInfo;                                      /*!< Encoded number of elements in the
+	                                                                  stream and stream data offset in the
+	                                                                  payload */
+	RGX_HWPERF_DM eDM;                                              /*!< Data Master number, see RGX_HWPERF_DM */
+	IMG_UINT32    ui32Padding;                                      /*!< Unused, reserved */
+	IMG_UINT32    aui32StreamData[RGX_HWPERF_ONE_OR_MORE_ELEMENTS]; /*!< Series of tuples holding UFO objects data */
 } RGX_HWPERF_UFO_DATA;
 
 RGX_FW_STRUCT_SIZE_ASSERT(RGX_HWPERF_UFO_DATA);
@@ -1089,6 +1120,16 @@ typedef struct
 
 static_assert((sizeof(RGX_HWPERF_HOST_CLIENT_INFO_DATA) & (PVRSRVTL_PACKET_ALIGNMENT-1U)) == 0U,
 			  "sizeof(RGX_HWPERF_HOST_CLIENT_INFO_DATA) must be a multiple PVRSRVTL_PACKET_ALIGNMENT");
+#define RGX_HWPERF_HOST_DEBUG_VALUES_LENGTH 8
+typedef struct
+{
+	IMG_UINT32 ui32PID;
+	IMG_UINT32 ui32TID;
+	IMG_UINT32 ui32ValuesSize;
+	IMG_UINT32 ui32NameSize;
+	IMG_UINT64 aui64Values[RGX_HWPERF_HOST_DEBUG_VALUES_LENGTH];
+	IMG_CHAR acFuncName[RGX_HWPERF_ONE_OR_MORE_ELEMENTS];
+} RGX_HWPERF_HOST_DEBUG_DATA;
 
 typedef enum
 {
@@ -1213,8 +1254,8 @@ typedef struct
  * various FW and Host events */
 typedef union
 {
-	RGX_HWPERF_FW_DATA             sFW;           /*!< Firmware event packet data,
-	                                               events ``0x01-0x06`` */
+	RGX_HWPERF_FW_DATA             sFW;           /*!< Firmware event packet data, events ``0x01-0x04`` */
+	RGX_HWPERF_FW_DBG_DATA         sFWDBG;        /*!< DBG data, events ``0x05-0x06`` */
 	RGX_HWPERF_HW_DATA             sHW;           /*!< Hardware event packet data,
 	                                               events ``0x07-0x19``, ``0x28-0x29``
 	                                               See RGX_HWPERF_HW_DATA */
@@ -1264,6 +1305,7 @@ typedef union
 	RGX_HWPERF_HOST_DMA_DATA sHDMA;
 	RGX_HWPERF_HOST_NOTIFY_DATA sHNotify;         /*!< Host Notify data,
 	                                               events ``0x0F`` (Host) */
+	RGX_HWPERF_HOST_DEBUG_DATA sHDebug;
 } RGX_HWPERF_V2_PACKET_DATA, *RGX_PHWPERF_V2_PACKET_DATA;
 
 RGX_FW_STRUCT_SIZE_ASSERT(RGX_HWPERF_V2_PACKET_DATA);

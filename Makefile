@@ -26,6 +26,7 @@ mtgpu-objs += src/common/os-interface.o \
 	src/mtgpu/mtgpu_drv.o \
 	src/mtgpu/mtgpu_module_param.o \
 	src/mtgpu/drm_compatibility.o \
+	src/mtgpu/mtgpu_drm_dsc.o \
 	src/mtgpu/mtgpu_drm_dp.o \
 	src/mtgpu/mtgpu_drm_dispc.o \
 	src/mtgpu/mtgpu_drm_drv.o \
@@ -40,16 +41,12 @@ mtgpu-objs += src/common/os-interface.o \
 	src/mtvpu/mtvpu_api.o \
 	src/mtvpu/mtvpu_drv.o \
 	src/mtvpu/mtvpu_gem.o \
-	src/mtjpu/mtjpu_drv.o \
 	src/pvr/error_mapping.o \
 	src/pvr/interrupt_support.o \
 	src/pvr/module_common.o \
-	src/pvr/osconnection_server.o \
 	src/pvr/osfunc.o \
-	src/pvr/osmmap_stub.o \
 	src/pvr/pci_support.o \
 	src/pvr/physmem_osmem_linux.o \
-	src/pvr/physmem_test.o \
 	src/pvr/pmr_os.o \
 	src/pvr/pvr_buffer_sync.o \
 	src/pvr/pvr_counting_timeline.o \
@@ -104,7 +101,6 @@ ccflags-y += -I$(OBJ_DIR)/inc \
 	-I$(OBJ_DIR)/inc/mtgpu/ion/ion \
 	-I$(OBJ_DIR)/inc/mtgpu/ion/ion/heaps \
 	-I$(OBJ_DIR)/inc/mtvpu \
-	-I$(OBJ_DIR)/inc/mtjpu \
 	-I$(OBJ_DIR)/inc/mtvpu/linux \
 	-I$(OBJ_DIR)/inc/mtvpu/linux/helper \
 	-I$(OBJ_DIR)/inc/mtsnd \

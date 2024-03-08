@@ -2121,6 +2121,8 @@ typedef struct
 #endif
 
 	IMG_DEV_PHYADDR	        RGXFW_ALIGN sDummyCpuPAddr; /*!< rgx_cr_slc_dummy_ld address */
+	IMG_DEV_PHYADDR         RGXFW_ALIGN sSlcSysAddrStart; /*!< rgx_cr_slc_system_addr_low address */
+	IMG_DEV_PHYADDR         RGXFW_ALIGN sSlcSysAddrEnd; /*!< rgx_cr_slc_system_addr_high address */
 } UNCACHED_ALIGN RGXFWIF_SYSINIT;
 
 static_assert(sizeof(RGXFWIF_SYSINIT) <= 968,
@@ -2426,6 +2428,8 @@ typedef struct
 	IMG_UINT64			RGXFW_ALIGN ui64DCEPimCounter[RGX_WGP_MAX_NUM_CORES];
 	IMG_DEV_PHYADDR			RGXFW_ALIGN aPCCatbaseMCG[3];
 
+	IMG_DEV_VIRTADDR		psPMVAFreeStackStateDevVaddr[RGX_WGP_MAX_NUM_CORES];
+	IMG_DEV_VIRTADDR		sVASpaceSegmentDevVAddr;
 } UNCACHED_ALIGN RGXFWIF_HWRTDATA;
 
 /* Sync_checkpoint firmware object.

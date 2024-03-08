@@ -12,6 +12,10 @@
 #define BIT(nr)		(1ul << (nr))
 #endif
 
+#ifndef BIT_ULL
+#define BIT_ULL(b) (1ULL << (b))
+#endif
+
 #ifndef ALIGN
 #define __ALIGN_MASK(x, mask)	(((x) + (mask)) & ~(mask))
 #define __ALIGN(x, a)		__ALIGN_MASK(x, (typeof(x))(a) - 1)
@@ -155,8 +159,11 @@
 	X(FOLL_WRITE)\
 	X(O_NONBLOCK)\
 	X(O_RDWR)\
+	X(O_RDONLY)\
+	X(O_WRONLY)\
 	X(O_TRUNC)\
 	X(O_CREAT)\
+	X(O_CLOEXEC)\
 	X(EPOLLIN)\
 	X(EPOLLHUP)\
 	X(GFP_DMA)\
@@ -198,6 +205,7 @@
 	X(ENOENT)\
 	X(ENOTTY)\
 	X(ERANGE)\
+	X(ESPIPE)\
 	X(IRQ_HANDLED)\
 	X(IRQ_NONE)\
 	X(IRQF_TRIGGER_NONE)\
@@ -222,7 +230,8 @@
 	X(SLAB_ACCOUNT)\
 	X(IOMMU_WRITE)\
 	X(IOMMU_READ)\
-	X(IOMMU_DOMAIN_UNMANAGED)
+	X(IOMMU_DOMAIN_UNMANAGED)\
+	X(HZ)
 
 enum {
 #define X(VALUE) OS_##VALUE,
@@ -336,6 +345,13 @@ struct page;
 struct iommu_group;
 struct iommu_domain;
 struct kmem_cache;
+struct dma_fence;
+struct dma_fence_array;
+struct dma_fence_ops;
+struct dma_fence_cb;
+typedef void (*dma_fence_func_t)(struct dma_fence *fence, struct dma_fence_cb *cb);
+struct sync_file;
+struct kmem_cache;
 
 #if defined(SUPPORT_ION)
 struct ion_heap;
@@ -366,6 +382,18 @@ struct mt_file_operations {
 	__poll_t (*poll)(struct file *, struct poll_table_struct *);
 	loff_t (*llseek)(struct file *, loff_t, int);
 	int (*release)(struct inode *, struct file *);
+	long (*compat_ioctl) (struct file *, unsigned int, unsigned long);
+};
+
+struct mt_dma_fence_ops {
+	const char * (*get_driver_name)(struct dma_fence *fence);
+	const char * (*get_timeline_name)(struct dma_fence *fence);
+	bool (*enable_signaling)(struct dma_fence *fence);
+	bool (*signaled)(struct dma_fence *fence);
+	signed long (*wait)(struct dma_fence *fence, bool intr, signed long timeout);
+	void (*release)(struct dma_fence *fence);
+	void (*fence_value_str)(struct dma_fence *fence, char *str, int size);
+	void (*timeline_value_str)(struct dma_fence *fence, char *str, int size);
 };
 
 struct mt_tm {
@@ -409,11 +437,6 @@ struct mt_tm {
 	for (slot = os_radix_tree_iter_init(iter, start) ;		\
 	     slot || (slot = os_radix_tree_next_chunk(root, iter, 0)) ;	\
 	     slot = os_radix_tree_next_slot(slot, iter, 0))
-
-#define os_kvm_for_each_memslot(memslot, slots)			\
-	for (memslot = os_list_first_kvm_memslot(slots);	\
-	     os_list_kvm_memslot_check(slots, memslot);		\
-	     os_kvm_memslot_inc(&memslot))
 
 /**
  * The macros are defined for os struct.
@@ -564,6 +587,7 @@ int os_device_attach(struct device *dev);
 int os_find_first_bit(const unsigned long *p, unsigned int size);
 int os_find_next_bit(const unsigned long *p, int size, int offset);
 void *os_kmalloc(size_t size);
+void *os_kmalloc_array(size_t n, size_t size);
 void *os_kmalloc_atomic(size_t size);
 void *os_kzalloc(size_t size);
 void os_kfree(const void *ptr);
@@ -581,7 +605,6 @@ int os_page_count(struct page *page);
 u64 os_page_to_phys(struct page *page);
 struct page *os_vmalloc_to_page(const void *vmalloc_addr);
 struct page *os_phys_to_page(phys_addr_t pa);
-struct apertures_struct *os_alloc_apertures(unsigned int max_num);
 int os_sg_table_create(struct sg_table **sgt);
 void os_sg_table_destroy(struct sg_table *sgt);
 struct scatterlist *os_sg_next(struct scatterlist *sg);
@@ -594,6 +617,7 @@ int os_sg_alloc_table_from_pages(struct sg_table *sgt, struct page **pages,
 				 unsigned long size);
 int os_sg_alloc_table(struct sg_table *sgt, unsigned int nents);
 void os_sg_free_table(struct sg_table *sgt);
+void os_get_task_comm(char *to, int size);
 void *os_vmap(struct page **pages, unsigned int count);
 void os_vunmap(const void *addr);
 int os_remap_pfn_range(struct vm_area_struct *vma, unsigned long addr,
@@ -609,8 +633,6 @@ dma_addr_t os_dma_map_resource(struct device *dev, phys_addr_t phys_addr,
 			       size_t size, u64 dir);
 void os_dma_unmap_resource(struct device *dev, dma_addr_t addr, size_t size, u64 dir);
 int os_dma_mapping_error(struct device *dev, dma_addr_t addr);
-int os_dma_direct_map_sg_dummy(struct device *dev, struct scatterlist *sgl,
-			       int nents, u64 dir);
 void os_dma_sync_sg_for_device(struct device *dev, struct scatterlist *sg,
 			       int nelems, u64 dir);
 void os_dma_sync_sg_for_cpu(struct device *dev, struct scatterlist *sg,
@@ -687,6 +709,8 @@ const char *os_get_miscdevice_name(struct miscdevice *misc);
 struct device *os_get_miscdevice_parent(struct miscdevice *misc);
 int os_get_miscdevice_minor(struct miscdevice *misc);
 
+void os_set_file_fpos(struct file *file, loff_t f_pos);
+loff_t os_get_file_fpos(struct file *file);
 void os_set_file_private_data(struct file *file, void *private_data);
 void *os_get_file_private_data(struct file *file);
 void *os_get_file_node_private_data(struct file *file);
@@ -703,7 +727,7 @@ void os_kref_get(mt_kref *kref);
 int os_ida_create(struct ida **ida);
 void os_ida_destroy(struct ida *ida);
 int os_ida_alloc(struct ida *ida);
-int os_ida_alloc_range(struct ida *ida, unsigned int min, unsigned int max);
+int os_ida_alloc_range(struct ida *ida, unsigned int min, unsigned int max, gfp_t gfp);
 void os_ida_free(struct ida *ida, unsigned long id);
 bool os_ida_is_empty(const struct ida *ida);
 
@@ -744,6 +768,7 @@ unsigned long os_msecs_to_jiffies(const unsigned int m);
 struct tasklet_struct *os_create_tasklet(void (*fun)(unsigned long), unsigned long data);
 void os_destroy_tasklet(struct tasklet_struct *tasklet);
 void os_tasklet_schedule(struct tasklet_struct *tasklet);
+unsigned long os_nsecs_to_jiffies64(u64 n);
 
 void *os_get_work_drvdata(struct work_struct *work);
 void os_set_work_drvdata(struct work_struct *work, void *data);
@@ -839,6 +864,13 @@ void os_sysfs_remove_file(struct kobject *kobj, const struct attribute *attr);
 	ret1;											\
 })
 
+struct file *os_anon_inode_getfile(const char *name, const struct mt_file_operations *fops, void *priv,
+				   int flags);
+void os_kfree_fops(struct file *filp);
+int os_stream_open(struct inode *inode, struct file *filp);
+void os_get_file(struct file *filp);
+void os_fput(struct file *filp);
+
 void os_init_work(struct work_struct *work, work_func_t func);
 bool os_schedule_work(struct work_struct *work);
 bool os_flush_work(struct work_struct *work);
@@ -852,6 +884,8 @@ int os_wake_up_process(struct task_struct *p);
 
 void os_wmb(void);
 void os_mb(void);
+int os_smp_load_acquire(int *p);
+void os_smp_store_release(int *p, int v);
 
 int os_arch_io_reserve_memtype_wc(resource_size_t base, resource_size_t size);
 void os_arch_io_free_memtype_wc(resource_size_t base, resource_size_t size);
@@ -859,6 +893,7 @@ int os_arch_phys_wc_add(unsigned long base, unsigned long size);
 void os_arch_phys_wc_del(int handle);
 
 void __iomem *os_ioremap(phys_addr_t phys_addr, size_t size);
+void __iomem *os_ioremap_wc(phys_addr_t phys_addr, size_t size);
 void __iomem *os_ioremap_cache(resource_size_t offset, unsigned long size);
 void os_iounmap(void __iomem *io_addr);
 
@@ -1001,6 +1036,9 @@ u64 os_roundup_pow_of_two(u64 size);
 u32 os_order_base_2(u64 size);
 int os_fls(unsigned int x);
 int os_fls64(unsigned long x);
+u64 os_cpu_to_le64(u64 data);
+u32 os_cpu_to_le32(u32 data);
+u64 os_div64_u64(u64 dividend, u64 divisor);
 
 resource_size_t os_get_system_available_ram_size(void);
 resource_size_t os_get_system_free_ram_size(void);
@@ -1100,14 +1138,17 @@ void os_printk_ratelimited(const char *fmt, ...);
 bool OS_IS_ERR(const void *ptr);
 bool OS_IS_ERR_OR_NULL(__force const void *ptr);
 long OS_PTR_ERR(__force const void *ptr);
+void *OS_ERR_CAST(__force const void *ptr);
 void *OS_ERR_PTR(long error);
 int OS_READ_ONCE(int *val);
-void OS_WARN_ON(bool condition);
+bool OS_WARN_ON(bool condition);
 bool OS_WARN_ON_ONCE(bool condition);
 void OS_BUG_ON(bool condition);
 
 int os_sscanf(const char *str, const char *fmt, ...);
 size_t os_strlen(const char *s);
+size_t os_strlcat(char *dest, const char *src, size_t count);
+size_t os_strlcpy(char *dest, const char *src, size_t size);
 char *os_strcat(char *dest, const char *src);
 int os_strcmp(const char *cs, const char *ct);
 int os_strncmp(const char *cs, const char *ct, size_t count);
@@ -1116,6 +1157,7 @@ char *os_strncpy(char *dest, const char *src, size_t count);
 char *os_strchr(const char *, int);
 char *os_strstr(const char *s1, const char *s2);
 int os_kstrtol(const char *s, unsigned int base, long *res);
+char *os_strsep(char **s, const char *delim);
 int os_sprintf(char *buf, const char *fmt, ...);
 char *os_strtrim(char *src);
 
@@ -1141,8 +1183,43 @@ void *os_get_device_driver_data(struct device *dev);
 char *os_get_current_comm(void);
 u64 os_get_current_pid(void);
 u64 os_get_current_tgid(void);
-
 char *os_get_utsname_version(void);
+
+void *os_get_dma_fence_drvdata(struct dma_fence *dma_fence);
+void os_set_dma_fence_drvdata(struct dma_fence *dma_fence, void *data);
+u64 os_get_dma_fence_seqno(struct dma_fence *dma_fence);
+u64 os_get_dma_fence_context(struct dma_fence *dma_fence);
+const struct dma_fence_ops *os_get_dma_fence_ops(struct dma_fence *dma_fence);
+void os_set_dma_fence_struct_seqno(struct dma_fence *dma_fence, u64 seqno);
+void *os_create_dma_fence(void);
+void os_destroy_dma_fence(struct dma_fence *dma_fence);
+void *os_create_dma_fence_cb(void);
+void os_destroy_dma_fence_cb(struct dma_fence_cb *dma_fence_cb);
+void os_dma_fence_init(struct dma_fence *fence,
+		       const struct dma_fence_ops *ops,
+		       spinlock_t *lock, u64 context, u64 seqno);
+int os_dma_fence_ops_init(struct dma_fence_ops **ops,
+			  const struct mt_dma_fence_ops *mt_ops);
+int os_dma_fence_get_status(struct dma_fence *fence);
+void os_dma_fence_put(struct dma_fence *fence);
+struct dma_fence *os_dma_fence_get(struct dma_fence *fence);
+void os_dma_fence_signal(struct dma_fence *fence);
+long os_dma_fence_wait_timeout(struct dma_fence *fence, bool intr, long timeout);
+long os_dma_fence_wait_any_timeout(struct dma_fence **fences, u32 count,
+				   bool intr, long timeout, u32 *idx);
+struct dma_fence *os_dma_fence_get_stub(void);
+bool os_dma_fence_is_array(struct dma_fence *fence);
+struct dma_fence_array *os_to_dma_fence_array(struct dma_fence *fence);
+struct dma_fence **os_dma_fence_array_get_fences(struct dma_fence_array *array);
+u32 os_dma_fence_array_get_fences_num(struct dma_fence_array *array);
+bool os_dma_fence_is_signaled(struct dma_fence *fence);
+u64 os_dma_fence_context_alloc(unsigned num);
+int os_dma_fence_add_callback(struct dma_fence *fence, struct dma_fence_cb *cb,
+			      dma_fence_func_t func);
+int os_get_unused_fd_flags(unsigned flag);
+void os_fd_install_sync_file(int fd, struct sync_file *sync_file);
+struct sync_file *os_sync_file_create(struct dma_fence *fence);
+struct dma_fence *os_sync_file_get_fence(int fd);
 
 struct bus_type *os_get_dev_bus_type(struct device *dev);
 
@@ -1175,12 +1252,17 @@ struct kmem_cache *os_kmem_cache_create(const char *name, unsigned int size,
 					unsigned int align, slab_flags_t flags,
 					void (*ctor)(void *));
 void os_kmem_cache_destroy(struct kmem_cache *s);
+void os_call_rcu(struct rcu_head *head, rcu_callback_t func);
+void os_rcu_barrier(void);
 
 int os_atomic_xchg(atomic_t *v, int val);
 void os_atomic_set(atomic_t *v, int val);
 void os_atomic_inc(atomic_t *v);
 bool os_atomic_dec_and_test(atomic_t *v);
 int os_atomic_read(atomic_t *v);
+void os_atomic64_set(atomic64_t *v, s64 i);
+s64 os_atomic64_inc_return(atomic64_t *v);
+s64 os_atomic64_read(const atomic64_t *v);
 
 struct file *os_filp_open(const char *filename, int flags, umode_t mode);
 int os_filp_close(struct file *filp);
@@ -1226,6 +1308,8 @@ DECLARE_OS_STRUCT_COMMON_FUNCS(timer_list);
 	os_printk(KERN_INFO os_pr_fmt(fmt), ##__VA_ARGS__)
 #define os_pr_cont(fmt, ...)							\
 	os_printk(KERN_CONT os_pr_fmt(fmt), ##__VA_ARGS__)
+#define os_pr_dbg(fmt, ...)							\
+	os_printk(KERN_DEBUG os_pr_fmt(fmt), ##__VA_ARGS__)
 
 #ifdef DEBUG
 #define os_pr_debug(fmt, ...)							\
@@ -1274,4 +1358,3 @@ DECLARE_OS_STRUCT_COMMON_FUNCS(timer_list);
 #endif
 
 #endif /* __OS_INTERFACE_H__ */
-

@@ -17,7 +17,7 @@ struct mtgpu_ipc_tty_data {
 	u8 data[];
 };
 
-#define TTY_IPC_MSG_MAX_DATA_SIZE (256 - offsetof(struct mtgpu_ipc_tty_data, data))
+#define TTY_IPC_MSG_MAX_DATA_SIZE 128
 
 int mtgpu_ipc_tty_create(struct device *dev, struct mtgpu_ipc_tty **ipc_tty_out);
 void mtgpu_ipc_tty_destroy(struct device *dev, struct mtgpu_ipc_tty *ipc_tty);
