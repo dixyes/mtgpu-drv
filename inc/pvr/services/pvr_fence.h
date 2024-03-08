@@ -98,6 +98,7 @@ struct pvr_fence_context {
 
 	struct kref kref;
 	struct work_struct destroy_work;
+	void *dev_cookie;
 };
 
 struct pvr_fence_prim_data {
@@ -200,7 +201,7 @@ static inline void pvr_fence_cleanup(void)
 	 * Ensure all PVR fence contexts have been destroyed, by flushing
 	 * the global workqueue.
 	 */
-	flush_scheduled_work();
+	flush_workqueue(NativeSyncGetFenceStatusWq());
 }
 
 #if defined(PVR_FENCE_DEBUG)

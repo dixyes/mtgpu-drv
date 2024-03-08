@@ -82,14 +82,8 @@ extern const struct file_operations pvr_drm_fops;
 extern struct drm_ioctl_desc pvr_drm_ioctls[128];
 extern struct platform_driver pvr_platform_driver;
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 18, 0))
 int pvr_drm_load(struct device *dev, struct drm_device *ddev, unsigned long flags);
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 11, 0))
-int pvr_drm_unload(struct drm_device *ddev);
-#else
 void pvr_drm_unload(struct drm_device *ddev);
-#endif
-#endif
 
 int pvr_drm_open(struct drm_device *ddev, struct drm_file *dfile);
 void pvr_drm_release(struct drm_device *ddev, struct drm_file *dfile);

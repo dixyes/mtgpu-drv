@@ -991,37 +991,37 @@ typedef struct
 	PVRSRV_ERROR pvr_error;
 } error_map_t;
 
+#define PVRSRV_ERROR_TO_OS_ERROR                        \
+    X(PVRSRV_OK, 0)                                 \
+    X(PVRSRV_ERROR_BRIDGE_EFAULT, EFAULT)           \
+    X(PVRSRV_ERROR_BRIDGE_EINVAL, EINVAL)           \
+    X(PVRSRV_ERROR_BRIDGE_ENOMEM, ENOMEM)           \
+    X(PVRSRV_ERROR_BRIDGE_ERANGE, ERANGE)           \
+    X(PVRSRV_ERROR_BRIDGE_EPERM, EPERM)             \
+    X(PVRSRV_ERROR_BRIDGE_ENOTTY, ENOTTY)           \
+    X(PVRSRV_ERROR_BRIDGE_CALL_FAILED, ENOTTY)      \
+    X(PVRSRV_ERROR_BRIDGE_BUFFER_TOO_SMALL, ERANGE) \
+    X(PVRSRV_ERROR_OUT_OF_MEMORY, ENOMEM)           \
+    X(PVRSRV_ERROR_PMR_NOT_PERMITTED, EACCES)       \
+    X(PVRSRV_ERROR_INVALID_PARAMS, EINVAL)          \
+    X(PVRSRV_ERROR_PMR_NO_KERNEL_MAPPING, EPERM)    \
+    X(PVRSRV_ERROR_NOT_IMPLEMENTED, ENOSYS)         \
+    X(PVRSRV_ERROR_BAD_MAPPING, EINVAL)
+
 /* return -ve versions of POSIX errors as they are used in this form */
-static const error_map_t asErrorMap[] =
-{
-	{-EFAULT, PVRSRV_ERROR_BRIDGE_EFAULT},
-	{-EINVAL, PVRSRV_ERROR_BRIDGE_EINVAL},
-	{-ENOMEM, PVRSRV_ERROR_BRIDGE_ENOMEM},
-	{-ERANGE, PVRSRV_ERROR_BRIDGE_ERANGE},
-	{-EPERM,  PVRSRV_ERROR_BRIDGE_EPERM},
-	{-ENOTTY, PVRSRV_ERROR_BRIDGE_ENOTTY},
-	{-ENOTTY, PVRSRV_ERROR_BRIDGE_CALL_FAILED},
-	{-ERANGE, PVRSRV_ERROR_BRIDGE_BUFFER_TOO_SMALL},
-	{-ENOMEM, PVRSRV_ERROR_OUT_OF_MEMORY},
-	{-EINVAL, PVRSRV_ERROR_INVALID_PARAMS},
+int PVRSRVToNativeError(PVRSRV_ERROR eError)
+{   
+    switch (eError) {
+#define X(_PVRSRV_ERROR, _OS_ERROR) \
+    case (_PVRSRV_ERROR):       \
+        return -(_OS_ERROR);
 
-	{0,       PVRSRV_OK}
-};
+        PVRSRV_ERROR_TO_OS_ERROR
 
-int PVRSRVToNativeError(PVRSRV_ERROR e)
-{
-	int os_error = -EFAULT;
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(asErrorMap); i++)
-	{
-		if (e == asErrorMap[i].pvr_error)
-		{
-			os_error = asErrorMap[i].os_error;
-			break;
-		}
-	}
-	return os_error;
+#undef X
+    default:
+        return -EFAULT;
+    }
 }
 
 typedef struct  _MISR_DATA_ {
@@ -1785,23 +1785,22 @@ PVRSRV_ERROR OSChangeSparseMemCPUAddrMap(void **psPageArray,
 
 	/*
 	 * Acquire the lock before manipulating the VMA
-	 * In this case only mmap_sem lock would suffice as the pages associated with this VMA
+	 * In this case only mmap_write_lock would suffice as the pages associated with this VMA
 	 * are never meant to be swapped out.
 	 *
 	 * In the future, in case the pages are marked as swapped, page_table_lock needs
 	 * to be acquired in conjunction with this to disable page swapping.
 	 */
+	/* Acquire the memory sem */
+	mmap_write_lock(psMM);
 
 	/* Find the Virtual Memory Area associated with the user base address */
 	psVMA = find_vma(psMM, (uintptr_t)sCpuVAddrBase);
 	if (NULL == psVMA)
 	{
 		eError = PVRSRV_ERROR_PMR_NO_CPU_MAP_FOUND;
-		return eError;
+		goto eFailed;
 	}
-
-	/* Acquire the memory sem */
-	mmap_write_lock(psMM);
 
 	psMapping = psVMA->vm_file->f_mapping;
 
@@ -2161,7 +2160,7 @@ static void dma_callback(void *pvOSCleanup)
 	spin_unlock_irqrestore(&psOSCleanup->spinlock, flags);
 }
 
-#if defined(SUPPORT_VALIDATION) && defined(PVRSRV_DEBUG_DMA)
+#if defined(PVRSRV_DEBUG_DMA)
 static void
 DMADumpPhysicalAddresses(struct page **ppsHostMemPages,
 						 IMG_UINT32 uiNumPages,
@@ -2395,25 +2394,26 @@ PVRSRV_ERROR OSDmaPrepareTransfer(PVRSRV_DEVICE_NODE *psDevNode,
 			(int)num_pages,
 			gup_flags,
 			psOSCleanupData->pages[psOSCleanupData->uiCount]);
+
+	psOSCleanupData->puiNumPages[psOSCleanupData->uiCount] =
+		num_pinned_pages;
 	if (num_pinned_pages != num_pages)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "get_user_pages_fast failed: (%d - %u)", num_pinned_pages, num_pages));
 		eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-		goto e2;
+		goto e2; /* Unpin what was pinned and return error */
 	}
 
-#if defined(SUPPORT_VALIDATION) && defined(PVRSRV_DEBUG_DMA)
+#if defined(PVRSRV_DEBUG_DMA)
 	DMADumpPhysicalAddresses(psOSCleanupData->pages[psOSCleanupData->uiCount],
 							 num_pages, psDmaAddr, offset);
 #endif
-
-	psOSCleanupData->puiNumPages[psOSCleanupData->uiCount] = num_pinned_pages;
 
 	if (sg_alloc_table_from_pages(psSg, psOSCleanupData->pages[psOSCleanupData->uiCount], num_pages, offset, uiSize, GFP_KERNEL) != 0)
 	{
 		eError = PVRSRV_ERROR_BAD_MAPPING;
 		PVR_DPF((PVR_DBG_ERROR, "sg_alloc_table_from_pages failed"));
-		goto e3;
+		goto e2;
 	}
 
 	if (bMemToDev)
@@ -2436,7 +2436,7 @@ PVRSRV_ERROR OSDmaPrepareTransfer(PVRSRV_DEVICE_NODE *psDevNode,
 	{
 		PVR_DPF((PVR_DBG_ERROR, "%s: Error mapping SG list", __func__));
 		eError = PVRSRV_ERROR_INVALID_PARAMS;
-		goto e4;
+		goto e3;
 	}
 
 	dma_sync_sg_for_device(psDevConfig->pvOSDevice, psSg->sgl, (unsigned int)iRet,
@@ -2447,7 +2447,7 @@ PVRSRV_ERROR OSDmaPrepareTransfer(PVRSRV_DEVICE_NODE *psDevNode,
 	{
 		PVR_DPF((PVR_DBG_ERROR, "%s: dmaengine_prep_slave_sg failed", __func__));
 		eError = PVRSRV_ERROR_INVALID_PARAMS;
-		goto e5;
+		goto e4;
 	}
 
 	psOSCleanupData->eDirection = sConfig.direction;
@@ -2469,12 +2469,12 @@ PVRSRV_ERROR OSDmaPrepareTransfer(PVRSRV_DEVICE_NODE *psDevNode,
 
 	return PVRSRV_OK;
 
-e5:
+e4:
 	dma_unmap_sg(psDevConfig->pvOSDevice, psSg->sgl, psSg->nents,
 		     (enum dma_data_direction)sConfig.direction);
-e4:
-	sg_free_table(psSg);
 e3:
+	sg_free_table(psSg);
+e2:
 	{
 		IMG_UINT32 i;
 		/* Unpin pages */
@@ -2483,7 +2483,6 @@ e3:
 			put_page(psOSCleanupData->pages[psOSCleanupData->uiCount][i]);
 		}
 	}
-e2:
 	OSFreeMem(psOSCleanupData->pages[psOSCleanupData->uiCount]);
 e1:
 	OSFreeMem(psSg);
@@ -2626,7 +2625,7 @@ PVRSRV_ERROR OSDmaPrepareTransferSparse(PVRSRV_DEVICE_NODE *psDevNode,
 			goto e2;
 		}
 
-#if defined(SUPPORT_VALIDATION) && defined(PVRSRV_DEBUG_DMA)
+#if defined(PVRSRV_DEBUG_DMA)
 		DMADumpPhysicalAddresses(next_pages, num_pages,
 								 &psDmaAddr[ui32Idx],
 								 (unsigned long)pvNextAddress & (ui32PageSize - 1));

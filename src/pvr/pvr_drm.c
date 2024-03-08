@@ -85,8 +85,14 @@
 #include "kernel_compatibility.h"
 
 #define PVR_DRM_DRIVER_NAME PVR_DRM_NAME
-#define PVR_DRM_DRIVER_DESC "Imagination Technologies DRM Driver"
+#define PVR_DRM_DRIVER_DESC "Imagination Technologies PVR DRM"
 #define	PVR_DRM_DRIVER_DATE "20170530"
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+#define PVR_DRM_DRIVER_PRIME 0
+#else
+#define PVR_DRM_DRIVER_PRIME DRIVER_PRIME
+#endif
 
 /*
  * Protects global PVRSRV_DATA on a multi device system. i.e. this is used to
@@ -142,7 +148,7 @@ static
 #endif
 int pvr_drm_load(struct device *dev, struct drm_device *ddev, unsigned long flags)
 {
-	struct pvr_drm_private *priv = ddev->dev_private;
+	struct pvr_drm_private *priv;
 	enum PVRSRV_ERROR_TAG srv_err;
 	int err, deviceId;
 
@@ -150,18 +156,17 @@ int pvr_drm_load(struct device *dev, struct drm_device *ddev, unsigned long flag
 
 	dev_set_drvdata(dev, ddev);
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 12, 0))
-	/*
-	 * Older kernels do not have render drm_minor member in drm_device,
-	 * so we fallback to primary node for device identification
-	 */
-	deviceId = ddev->primary->index;
-#else
 	if (ddev->render)
 		deviceId = ddev->render->index;
 	else /* when render node is NULL, fallback to primary node */
 		deviceId = ddev->primary->index;
-#endif
+
+	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
+	if (!priv) {
+		err = -ENOMEM;
+		goto err_exit;
+	}
+	ddev->dev_private = priv;
 
 	if (!ddev->dev->dma_parms)
 		ddev->dev->dma_parms = &priv->dma_parms;
@@ -187,6 +192,7 @@ int pvr_drm_load(struct device *dev, struct drm_device *ddev, unsigned long flag
 		goto err_device_destroy;
 	}
 
+	// drm_mode_config_init(ddev);
 
 #if (PVRSRV_DEVICE_INIT_MODE == PVRSRV_LINUX_DEV_INIT_ON_PROBE)
 	srv_err = PVRSRVCommonDeviceInitialise(priv->dev_node);
@@ -213,21 +219,18 @@ err_unset_dma_parms:
 	mutex_unlock(&g_device_mutex);
 	if (ddev->dev->dma_parms == &priv->dma_parms)
 		ddev->dev->dma_parms = NULL;
+	kfree(priv);
+err_exit:
 	return err;
 }
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 18, 0))
-static
-#endif
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 11, 0))
-int pvr_drm_unload(struct drm_device *ddev)
-#else
 void pvr_drm_unload(struct drm_device *ddev)
-#endif
 {
 	struct pvr_drm_private *priv = ddev->dev_private;
 
 	DRM_DEBUG_DRIVER("device %p\n", ddev->dev);
+
+	// drm_mode_config_cleanup(ddev);
 
 	PVRSRVDeviceDeinit(priv->dev_node);
 
@@ -250,8 +253,20 @@ int pvr_drm_open(struct drm_device *ddev, struct drm_file *dfile)
 {
 #if (PVRSRV_DEVICE_INIT_MODE != PVRSRV_LINUX_DEV_INIT_ON_CONNECT)
 	struct pvr_drm_private *priv = ddev->dev_private;
+	int err;
+#endif
 
-	return PVRSRVDeviceServicesOpen(priv->dev_node, dfile);
+	if (!try_module_get(THIS_MODULE)) {
+		DRM_ERROR("failed to get module reference\n");
+		return -ENOENT;
+	}
+
+#if (PVRSRV_DEVICE_INIT_MODE != PVRSRV_LINUX_DEV_INIT_ON_CONNECT)
+	err = PVRSRVDeviceServicesOpen(priv->dev_node, dfile);
+	if (err)
+		module_put(THIS_MODULE);
+
+	return err;
 #else
 	return 0;
 #endif
@@ -262,6 +277,8 @@ void pvr_drm_release(struct drm_device *ddev, struct drm_file *dfile)
 	struct pvr_drm_private *priv = ddev->dev_private;
 
 	PVRSRVDeviceRelease(priv->dev_node, dfile);
+
+	module_put(THIS_MODULE);
 }
 
 /*
@@ -362,17 +379,18 @@ const struct file_operations pvr_drm_fops = {
 };
 
 struct drm_driver pvr_drm_generic_driver = {
-	.driver_features	= DRIVER_RENDER,
+	.driver_features	= DRIVER_MODESET | DRIVER_RENDER | DRIVER_GEM |
+			   PVR_DRM_DRIVER_PRIME,
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 18, 0))
 	.load			= NULL,
 	.unload			= NULL,
-#else
-	.load			= pvr_drm_load,
-	.unload			= pvr_drm_unload,
-#endif
 	.open			= pvr_drm_open,
 	.postclose		= pvr_drm_release,
+
+	.prime_handle_to_fd = drm_gem_prime_handle_to_fd,
+
+	/* prime_fd_to_handle is not supported */
+	.prime_fd_to_handle = NULL,
 
 	.ioctls			= pvr_drm_ioctls,
 	.num_ioctls		= ARRAY_SIZE(pvr_drm_ioctls),
