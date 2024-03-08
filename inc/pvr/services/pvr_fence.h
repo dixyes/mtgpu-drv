@@ -92,6 +92,7 @@ struct pvr_fence_context {
 
 	struct kref kref;
 	struct work_struct destroy_work;
+	void *dev_cookie;
 };
 
 struct pvr_fence_prim_data {

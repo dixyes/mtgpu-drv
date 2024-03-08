@@ -116,8 +116,9 @@ static void OSClearVMAFlags(struct vm_area_struct *psVma, unsigned long ulFlags)
 static void MMapPMROpen(struct vm_area_struct *ps_vma)
 {
 	PMR *psPMR = ps_vma->vm_private_data;
+	PVRSRV_ERROR eError;
 
-	/* Our VM flags should ensure this function never gets called */
+	/* VM_DONTCOPY should ensure this function never gets called */
 	PVR_DPF((PVR_DBG_WARNING,
 			 "%s: Unexpected mmap open call, this is probably an application bug.",
 			 __func__));
@@ -133,11 +134,11 @@ static void MMapPMROpen(struct vm_area_struct *ps_vma)
 	 * locking down the physical addresses. */
 	PMRRefPMR(psPMR);
 
-	if (PMRLockSysPhysAddresses(psPMR) != PVRSRV_OK)
-	{
-		PVR_DPF((PVR_DBG_ERROR, "%s: Could not lock down physical addresses, aborting.", __func__));
+	eError = PMRLockSysPhysAddresses(psPMR);
+	if (unlikely(eError != PVRSRV_OK)) {
+		PVR_LOG_ERROR(eError, "PMRLockSysPhysAddresses");
 		PMRUnrefPMR(psPMR);
-	}
+	} /* else things is for tracing, here not ported */
 }
 
 static void MMapPMRClose(struct vm_area_struct *ps_vma)

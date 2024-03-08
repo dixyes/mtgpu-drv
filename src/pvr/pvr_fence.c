@@ -481,6 +481,8 @@ pvr_fence_context_create(void *dev_cookie,
 		goto err_out;
 	}
 
+	fctx->dev_cookie = dev_cookie;
+
 	eError = pvr_fence_context_register_dbg(&fctx->dbg_request_handle,
 					dev_cookie,
 					fctx);
@@ -884,25 +886,26 @@ pvr_fence_create_from_fence(struct pvr_fence_context *fctx,
 	unsigned long flags;
 	PVRSRV_ERROR srv_err;
 	int err;
+	bool mirror_other_dev_fence = false;
+	char tempString[40] = { 0 };
 
 	if (pvr_fence) {
-		if (WARN_ON(fence->ops == &pvr_fence_foreign_ops))
-			return NULL;
-
-		/*
-		 * Check whether the input pvr_fence is created from current gpu device node.
-		 * If not, the current gpu fw can not directly access this pvr_fence,
-		 * since its checkpoint has not been mapped to current gpu fw, and we
-		 * should create a foreign fence for it.
-		 * Otherwise, return the input pvr_fence immediately.
-		 */
-		if (pvr_fence->sync_checkpoint->psSyncCheckpointBlock->psDevNode ==
-		    sync_checkpoint_ctx->psDevNode) {
+		if ((fctx->dev_cookie == NULL) ||
+		    (fctx->dev_cookie == pvr_fence->fctx->dev_cookie)) {
+			if (WARN_ON(fence->ops == &pvr_fence_foreign_ops))
+				return NULL;
 			dma_fence_get(fence);
 
-			PVR_FENCE_TRACE(fence, "created fence from MTGPU fence (%s)\n", name);
-
+			PVR_FENCE_TRACE(fence,
+					"created fence from PVR fence (%s)\n",
+					name);
 			return pvr_fence;
+		} else {
+			snprintf(tempString, sizeof(tempString),
+				 "Mirror(FWAddr0x%x)",
+				 SyncCheckpointGetFirmwareAddr(
+					 pvr_fence->sync_checkpoint));
+			mirror_other_dev_fence = true;
 		}
 	}
 
@@ -914,15 +917,20 @@ pvr_fence_create_from_fence(struct pvr_fence_context *fctx,
 	 * here
 	 */
 	pvr_fence = kmem_cache_alloc(pvr_fence_cache, GFP_KERNEL);
-	if (!pvr_fence)
+	if (!pvr_fence) {
+		pr_err("%s: kmem_cache_alloc() failed", __func__);
 		goto err_module_put;
+	}
 
-	srv_err = SyncCheckpointAlloc(sync_checkpoint_ctx,
-					  SYNC_CHECKPOINT_FOREIGN_CHECKPOINT,
-					  fence_fd,
-					  name, &pvr_fence->sync_checkpoint);
-	if (srv_err != PVRSRV_OK)
+	srv_err = SyncCheckpointAlloc(
+		sync_checkpoint_ctx, SYNC_CHECKPOINT_FOREIGN_CHECKPOINT,
+		fence_fd, mirror_other_dev_fence ? tempString : name,
+		&pvr_fence->sync_checkpoint);
+	if (srv_err != PVRSRV_OK) {
+		pr_err("%s: SyncCheckpointAlloc() failed (srv_err=%d)",
+		       __func__, srv_err);
 		goto err_free_pvr_fence;
+	}
 
 	INIT_LIST_HEAD(&pvr_fence->fence_head);
 	INIT_LIST_HEAD(&pvr_fence->signal_head);
@@ -930,11 +938,11 @@ pvr_fence_create_from_fence(struct pvr_fence_context *fctx,
 	pvr_fence->fence = dma_fence_get(fence);
 	seqno = pvr_fence_context_seqno_next(fctx);
 	/* Add the seqno to the fence name for easier debugging */
-	pvr_fence_prepare_name(pvr_fence->name, sizeof(pvr_fence->name),
-			name, seqno);
+	pvr_fence_prepare_name(pvr_fence->name, sizeof(pvr_fence->name), name,
+			       seqno);
 
 	/*
-	 * We use the base fence to refcount the MTGPU fence and to do the
+	 * We use the base fence to refcount the PVR fence and to do the
 	 * necessary clean up once the refcount drops to 0.
 	 */
 	dma_fence_init(&pvr_fence->base, &pvr_fence_foreign_ops, &fctx->lock,
@@ -953,8 +961,8 @@ pvr_fence_create_from_fence(struct pvr_fence_context *fctx,
 
 	PVR_FENCE_TRACE(&pvr_fence->base,
 			"created fence from foreign fence %llu#%d (%s)\n",
-			(u64) pvr_fence->fence->context,
-			pvr_fence->fence->seqno, name);
+			(u64)pvr_fence->fence->context, pvr_fence->fence->seqno,
+			name);
 
 	err = dma_fence_add_callback(fence, &pvr_fence->cb,
 				     pvr_fence_foreign_signal_sync);
@@ -974,9 +982,8 @@ pvr_fence_create_from_fence(struct pvr_fence_context *fctx,
 		pvr_fence_sync_signal(pvr_fence, PVRSRV_FENCE_FLAG_NONE);
 		PVR_FENCE_TRACE(&pvr_fence->base,
 				"foreign fence %llu#%d already signaled (%s)\n",
-				(u64) pvr_fence->fence->context,
-				pvr_fence->fence->seqno,
-				name);
+				(u64)pvr_fence->fence->context,
+				pvr_fence->fence->seqno, name);
 		dma_fence_put(&pvr_fence->base);
 	}
 
