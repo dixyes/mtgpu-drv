@@ -1791,12 +1791,23 @@ int os_pci_alloc_irq_vectors(struct pci_dev *dev, unsigned int min_vecs,
 
 int os_pci_enable_pcie_error_reporting(struct pci_dev *pdev)
 {
+/* since linux@f26e58bf6f547031f91a1b0e39b9308d48a4ba8c (included in 6.0)
+ * this is always enable when AER is native
+ */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0)
+	return 0;
+#else
 	return pci_enable_pcie_error_reporting(pdev);
+#endif
 }
 
 int os_pci_disable_pcie_error_reporting(struct pci_dev *pdev)
 {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0)
+	return 0;
+#else
 	return pci_disable_pcie_error_reporting(pdev);
+#endif
 }
 
 int os_pci_dev_wait(struct pci_dev *dev, char *reset_type, int timeout)
