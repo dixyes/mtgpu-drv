@@ -453,7 +453,11 @@ _GetPoolListHead(IMG_UINT32 ui32CPUCacheFlags,
 	return IMG_TRUE;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)
+static struct shrinker *g_psShrinker;
+#else
 static struct shrinker g_sShrinker;
+#endif // LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)
 
 /* Returning the number of pages that still reside in the page pool. */
 static unsigned long
@@ -469,7 +473,11 @@ _CountObjectsInPagePool(struct shrinker *psShrinker, struct shrink_control *psSh
 {
 	int remain;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)
+	PVR_ASSERT(psShrinker == g_psShrinker);
+#else
 	PVR_ASSERT(psShrinker == &g_sShrinker);
+#endif // LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)
 	(void)psShrinker;
 	(void)psShrinkControl;
 
@@ -491,7 +499,11 @@ _ScanObjectsInPagePool(struct shrinker *psShrinker, struct shrink_control *psShr
 	LinuxUnpinEntry *psUnpinEntry, *psTempUnpinEntry;
 	IMG_UINT32 uiPagesFreed;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)
+	PVR_ASSERT(psShrinker == g_psShrinker);
+#else
 	PVR_ASSERT(psShrinker == &g_sShrinker);
+#endif // LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)
 	(void)psShrinker;
 
 	/* In order to avoid possible deadlock use mutex_trylock in place of mutex_lock */
@@ -576,26 +588,8 @@ e_exit:
 #endif
 }
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0))
-static int
-_ShrinkPagePool(struct shrinker *psShrinker, struct shrink_control *psShrinkControl)
-{
-	if (psShrinkControl->nr_to_scan != 0)
-	{
-		return _ScanObjectsInPagePool(psShrinker, psShrinkControl);
-	}
-	else
-	{
-		/* No pages are being reclaimed so just return the page count */
-		return _CountObjectsInPagePool(psShrinker, psShrinkControl);
-	}
-}
-
-static struct shrinker g_sShrinker =
-{
-	.shrink = _ShrinkPagePool,
-	.seeks = DEFAULT_SEEKS
-};
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)
+static struct shrinker *g_psShrinker = NULL;
 #else
 static struct shrinker g_sShrinker =
 {
@@ -613,12 +607,24 @@ void LinuxInitPhysmem(void)
 	g_psLinuxPagePoolCache = kmem_cache_create("mtgpu-pp", sizeof(LinuxPagePoolEntry), 0, 0, NULL);
 	if (g_psLinuxPagePoolCache)
 	{
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)
+		g_psShrinker = shrinker_alloc(0, "mtgpu-pagepool");
+		if (!g_psShrinker) {
+			PVR_DPF((PVR_DBG_ERROR, "Failed to allocate shrinker"));
+			return;
+		}
+		g_psShrinker->count_objects = _CountObjectsInPagePool;
+		g_psShrinker->scan_objects = _ScanObjectsInPagePool;
+		g_psShrinker->seeks = DEFAULT_SEEKS;
+		shrinker_register(g_psShrinker);
+#else
 		/* Only create the shrinker if we created the cache OK */
 #if defined(OS_REGISTER_SHRINKER_HAS_ONE_ARG)
 		register_shrinker(&g_sShrinker);
 #else
 		register_shrinker(&g_sShrinker, "mtgpu-pagepool");
 #endif
+#endif // LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)
 	}
 
 	OSAtomicWrite(&g_iPoolCleanTasks, 0);
@@ -648,7 +654,12 @@ void LinuxDeinitPhysmem(void)
 	/* Free the page cache */
 	kmem_cache_destroy(g_psLinuxPagePoolCache);
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)
+	shrinker_free(g_psShrinker);
+	g_psShrinker = NULL;
+#else
 	unregister_shrinker(&g_sShrinker);
+#endif // LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)
 	_PagePoolUnlock();
 
 	kmem_cache_destroy(g_psLinuxPageArray);
