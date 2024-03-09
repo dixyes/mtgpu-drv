@@ -43,11 +43,15 @@ static void ipc_tty_hangup(struct tty_struct *tty)
 	tty_port_hangup(&ipc_tty->port);
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+static ssize_t ipc_tty_write(struct tty_struct *tty, const u8 *buf, size_t count)
+#else
 static int ipc_tty_write(struct tty_struct *tty, const u8 *buf, int count)
+#endif
 {
 	struct mtgpu_ipc_tty *ipc_tty = tty->driver_data;
 
-	return mtgpu_fec_tty_do_write(ipc_tty->dev, buf, count, tty->index);
+	return mtgpu_fec_tty_do_write(ipc_tty->dev, buf, (int) count, tty->index);
 }
 
 #if defined(OS_TTY_OPERATIONS_USE_INT_WRITE_ROOM)
