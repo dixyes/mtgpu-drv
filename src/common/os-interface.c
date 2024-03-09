@@ -459,11 +459,6 @@ struct page *os_phys_to_page(phys_addr_t pa)
 #endif
 }
 
-struct apertures_struct *os_alloc_apertures(unsigned int max_num)
-{
-	return alloc_apertures(max_num);
-}
-
 int os_sg_table_create(struct sg_table **sgt)
 {
 	*sgt = kzalloc(sizeof(struct sg_table), GFP_KERNEL);
@@ -682,7 +677,7 @@ IMPLEMENT_GET_OS_MEMBER_FUNC(vm_area_struct, vm_file);
 
 void os_set_vm_area_struct_vm_flags(struct vm_area_struct *vma, unsigned long flag)
 {
-	vma->vm_flags = flag;
+	vm_flags_set(vma, (vm_flags_t)flag);
 }
 
 void *os_memcpy(void *dst, const void *src, size_t size)
@@ -2397,7 +2392,7 @@ void os_pci_disable_sriov(struct pci_dev *dev)
 int os_iommu_map(struct iommu_domain *domain, unsigned long iova,
 		 phys_addr_t paddr, size_t size, int prot)
 {
-	return iommu_map(domain, iova, paddr, size, prot);
+	return iommu_map(domain, iova, paddr, size, prot, GFP_KERNEL);
 }
 
 size_t os_iommu_unmap(struct iommu_domain *domain, unsigned long iova, size_t size)
@@ -2462,7 +2457,7 @@ phys_addr_t os_virt_to_phys(void *address)
 
 struct bus_type *os_get_dev_bus_type(struct device *dev)
 {
-	return dev->bus;
+	return (struct bus_type *)dev->bus;
 }
 
 void os_bitmap_set(unsigned long *map, unsigned int start, unsigned int nbits)

@@ -339,6 +339,11 @@ static INLINE int _OSMMapPMR(PVRSRV_DEVICE_NODE *psDevNode,
 	return iStatus;
 }
 
+static void OSClearVMAFlags(struct vm_area_struct *psVma, unsigned long ulFlags)
+{
+	vm_flags_clear(psVma, (vm_flags_t)ulFlags);
+}
+
 PVRSRV_ERROR
 OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 {
@@ -519,7 +524,7 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 	 */
 	if (PMR_IsSystem(psPMR))
 	{
-		ps_vma->vm_flags &= ~VM_PFNMAP;
+		OSClearVMAFlags(ps_vma, VM_PFNMAP);
 		ui32LoopCount = (1 << (uiLog2PageSize - PAGE_SHIFT));
 	}
 
