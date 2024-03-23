@@ -63,6 +63,13 @@
 )
 #endif
 
+// from linux 6.7.10 source
+#ifndef CONFIG_ARCH_FORCE_MAX_ORDER
+#define MAX_ORDER 10
+#else
+#define MAX_ORDER CONFIG_ARCH_FORCE_MAX_ORDER
+#endif
+
 #define OS_VAL(index)	(os_value[OS_##index])
 #define DECLEAR_OS_VALUE \
 	X(PCI_IRQ_LEGACY)\
