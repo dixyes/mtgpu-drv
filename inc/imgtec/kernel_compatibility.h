@@ -506,3 +506,7 @@ __pvr_access_ok_compat(int type, const void __user * addr, unsigned long size)
 #endif
 
 #endif /* __KERNEL_COMPATIBILITY_H__ */
+
+#ifndef DRM_UNLOCKED
+#define DRM_UNLOCKED BIT(4)
+#endif
