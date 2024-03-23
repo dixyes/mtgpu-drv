@@ -522,7 +522,11 @@ void *OSMemCopy(void *pvDest, const void *pvSrc, size_t uiLen)
 
 size_t OSStringLCpy(IMG_CHAR *pszDest, const IMG_CHAR *pszSrc, size_t uDstSize)
 {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
+	return strscpy(pszDest, pszSrc, uDstSize);
+#else
 	return strlcpy(pszDest, pszSrc, uDstSize);
+#endif
 }
 
 size_t OSStringLCat(IMG_CHAR *pszDest, const IMG_CHAR *pszSrc, size_t uDstSize)

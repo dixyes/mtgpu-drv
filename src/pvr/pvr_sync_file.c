@@ -185,7 +185,7 @@ int pvr_sync_api_init(void *file_handle, void **api_priv)
 	if (!timeline)
 		return -ENOMEM;
 
-	strlcpy(timeline->name, task_comm, sizeof(timeline->name));
+	strscpy(timeline->name, task_comm, sizeof(timeline->name));
 	timeline->file_handle = file_handle;
 	timeline->is_sw = false;
 
@@ -385,7 +385,7 @@ pvr_sync_create_fence(
 		err = PVRSRV_ERROR_OUT_OF_MEMORY;
 		goto err_destroy_fence;
 	}
-	strlcpy(sync_file_user_name(sync_file),
+	strscpy(sync_file_user_name(sync_file),
 		pvr_fence->name,
 		sizeof(sync_file_user_name(sync_file)));
 	dma_fence_put(&pvr_fence->base);
@@ -763,9 +763,9 @@ int pvr_sync_api_rename(void *api_priv, void *user_data)
 	struct pvr_sync_rename_ioctl_data *data = user_data;
 
 	data->szName[sizeof(data->szName) - 1] = '\0';
-	strlcpy(timeline->name, data->szName, sizeof(timeline->name));
+	strscpy(timeline->name, data->szName, sizeof(timeline->name));
 	if (timeline->hw_fence_context)
-		strlcpy(timeline->hw_fence_context->name, data->szName,
+		strscpy(timeline->hw_fence_context->name, data->szName,
 			sizeof(timeline->hw_fence_context->name));
 
 	return 0;
@@ -885,7 +885,7 @@ enum PVRSRV_ERROR_TAG pvr_sync_register_functions(void)
 		pvr_sync_free_checkpoint_list_mem;
 	pvr_sync_data.sync_checkpoint_ops.pfnDumpInfoOnStalledUFOs =
 		pvr_sync_dump_info_on_stalled_ufos;
-	strlcpy(pvr_sync_data.sync_checkpoint_ops.pszImplName, "pvr_sync_file",
+	strscpy(pvr_sync_data.sync_checkpoint_ops.pszImplName, "pvr_sync_file",
 		SYNC_CHECKPOINT_IMPL_MAX_STRLEN);
 #if defined(PDUMP)
 	pvr_sync_data.sync_checkpoint_ops.pfnSyncFenceGetCheckpoints =

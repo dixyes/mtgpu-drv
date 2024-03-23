@@ -363,7 +363,7 @@ pvr_fence_context_create_internal(struct workqueue_struct *fence_status_wq,
 	fctx->fence_wq = fence_status_wq;
 
 	fctx->fence_context = dma_fence_context_alloc(1);
-	strlcpy(fctx->name, name, sizeof(fctx->name));
+	strscpy(fctx->name, name, sizeof(fctx->name));
 
 	srv_err = PVRSRVRegisterCmdCompleteNotify(&fctx->cmd_complete_handle,
 				pvr_fence_context_signal_fences,

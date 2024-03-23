@@ -252,7 +252,7 @@ static int eld_parse(struct mtsnd_chip *chip, struct parsed_hdmi_eld *e,
 		dev_info(chip->card->dev, "HDMI: out of range MNL %d\n", mnl);
 		goto out_fail;
 	} else
-		strlcpy(e->monitor_name, buf + ELD_FIXED_BYTES, mnl + 1);
+		strscpy(e->monitor_name, buf + ELD_FIXED_BYTES, mnl + 1);
 
 	for (i = 0; i < e->sad_count; i++) {
 		if (ELD_FIXED_BYTES + mnl + 3 * (i + 1) > size) {
