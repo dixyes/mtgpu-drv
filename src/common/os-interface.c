@@ -2244,7 +2244,12 @@ void **os_radix_tree_next_slot(void **slot, struct radix_tree_iter *iter, unsign
 
 u64 os_eventfd_signal(struct eventfd_ctx *ctx, __u64 n)
 {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
+	eventfd_signal(ctx);
+	return n;
+#else
 	return eventfd_signal(ctx, n);
+#endif
 }
 
 void os_eventfd_ctx_put(struct eventfd_ctx *ctx)
