@@ -924,7 +924,9 @@ static int mtgpu_hdmi_ddc_register(struct mtgpu_hdmi *hdmi)
 		return -ENOMEM;
 
 	ddc->owner = THIS_MODULE;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 8, 0)
 	ddc->class = I2C_CLASS_DDC;
+#endif
 	ddc->dev.parent = hdmi->dev;
 	ddc->algo = &mtgpu_hdmi_algorithm;
 	snprintf(ddc->name, sizeof(ddc->name), "mtgpu hdmi i2c");
