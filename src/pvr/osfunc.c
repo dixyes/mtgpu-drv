@@ -3455,7 +3455,9 @@ IMG_INT OSGetUserPages(IMG_INT64 ui64Start, IMG_INT iPageCount, struct page **pp
 	IMG_UINT32 ui32GpuFlags = 0;
 	struct vm_area_struct *psVMA;
 
+	mmap_read_lock(current->mm);
 	psVMA = find_vma(current->mm, untagged_addr(ui64Start));
+	mmap_read_unlock(current->mm);
 	if (unlikely(!psVMA))
 		return 0;
 
