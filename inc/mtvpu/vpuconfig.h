@@ -74,7 +74,7 @@
 //  Application specific configuration
 #define VPU_ENC_TIMEOUT                 (6000000)
 #define VPU_DEC_TIMEOUT                 (60000*10)
-#define VPU_BUSY_CHECK_TIMEOUT          (10000*10)
+#define VPU_BUSY_CHECK_TIMEOUT          (1000*2)        // 2 sec
 #define ATOMIC_SYNC_TIMEOUT             (60000)         // 60 sec
 
 #define CBCR_INTERLEAVE			        1 //[default 1 for BW checking with CnMViedo Conformance] 0 (chroma separate mode), 1 (chroma interleave mode) // if the type of tiledmap uses the kind of MB_RASTER_MAP. must set to enable CBCR_INTERLEAVE

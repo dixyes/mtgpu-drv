@@ -137,7 +137,8 @@ X(HWPerfClientFilter_OpenGL,        UINT32,         ALWAYS,      PVRSRV_APPHINT_
 X(CacheOpConfig,                    UINT32,         ALWAYS,      PVRSRV_APPHINT_CACHEOPCONFIG,                    NO_PARAM_TABLE   ) \
 X(CacheOpUMKMThresholdSize,         UINT32,         ALWAYS,      PVRSRV_APPHINT_CACHEOPUMKMHRESHOLDSIZE,          NO_PARAM_TABLE   ) \
 X(EnableFallbackToSystemMemory,     BOOL,           ALWAYS,      PVRSRV_APPHINT_ENABLEFALLBACKTOSYSTEMMEMORY,     NO_PARAM_TABLE   ) \
-X(MemoryOptimization,              UINT32,         ALWAYS,       PVRSRV_APPHINT_MEMORYOPTIMIZATION,               NO_PARAM_TABLE   )
+X(MemoryOptimization,               UINT32,         ALWAYS,      PVRSRV_APPHINT_MEMORYOPTIMIZATION,               NO_PARAM_TABLE   ) \
+X(MISRWorkOnSpecifiedCPU,           STRING,         ALWAYS,      PVRSRV_APPHINT_MISRWORKONSPECIFIEDCPU,           NO_PARAM_TABLE   )
 
 /*
 *******************************************************************************

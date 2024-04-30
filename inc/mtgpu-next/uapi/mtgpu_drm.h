@@ -8,36 +8,44 @@
 
 #include "linux-types.h"
 
-#define MTGPU_IOCTL_VERSION		(13)
+#define MTGPU_IOCTL_VERSION			(18)
 
-#define DRM_MTGPU_DEVICE_INIT		0x10
-#define DRM_MTGPU_QUERY_INFO		0x11
-#define DRM_MTGPU_BO_CREATE		0x12
-#define DRM_MTGPU_BO_GET_MMAP_OFFSET	0x13
-#define DRM_MTGPU_BO_FROM_USERPTR	0x14
-#define DRM_MTGPU_VM_CONTEXT_CREATE	0x15
-#define DRM_MTGPU_VM_CONTEXT_DESTROY	0x16
-#define DRM_MTGPU_VM_MAP		0x17
-#define DRM_MTGPU_VM_UNMAP		0x18
-#define DRM_MTGPU_TIMELINE_CREATE	0x19
-#define DRM_MTGPU_TIMELINE_DESTROY	0x1A
-#define DRM_MTGPU_TIMELINE_READ		0x1B
-#define DRM_MTGPU_FENCE_WAIT		0x1C
-#define DRM_MTGPU_FENCE_TO_FD		0x1D
-#define DRM_MTGPU_SEMAPHORE_CREATE	0x1E
-#define DRM_MTGPU_SEMAPHORE_DESTROY	0x1F
-#define DRM_MTGPU_SEMAPHORE_SUBMIT	0x20
-#define DRM_MTGPU_CONTEXT_CREATE	0x21
-#define DRM_MTGPU_CONTEXT_DESTROY	0x22
-#define DRM_MTGPU_JOB_SUBMIT		0x23
-#define DRM_MTGPU_DMA_TRANSFER		0x24
-#define DRM_MTGPU_OBJECT_CREATE		0x25
-#define DRM_MTGPU_OBJECT_DESTROY	0x26
-#define DRM_MTGPU_TRANSPORT_LAYER	0x27
-#define DRM_MTGPU_HWPERF		0x28
-#define DRM_MTGPU_CACHE_OP		0x29
+#define DRM_MTGPU_DEVICE_INIT			0x10
+#define DRM_MTGPU_QUERY_INFO			0x11
+#define DRM_MTGPU_BO_CREATE			0x12
+#define DRM_MTGPU_BO_GET_MMAP_OFFSET		0x13
+#define DRM_MTGPU_BO_FROM_USERPTR		0x14
+#define DRM_MTGPU_BO_EXPORT_GLOBAL_HANDLE	0x15
+#define DRM_MTGPU_BO_IMPORT_GLOBAL_HANDLE	0x16
+#define DRM_MTGPU_VM_CONTEXT_CREATE		0x17
+#define DRM_MTGPU_VM_CONTEXT_DESTROY		0x18
+#define DRM_MTGPU_VM_MAP			0x19
+#define DRM_MTGPU_VM_UNMAP			0x1A
+#define DRM_MTGPU_TIMELINE_CREATE		0x1B
+#define DRM_MTGPU_TIMELINE_DESTROY		0x1C
+#define DRM_MTGPU_TIMELINE_READ			0x1D
+#define DRM_MTGPU_FENCE_WAIT			0x1E
+#define DRM_MTGPU_FENCE_TO_FD			0x1F
+#define DRM_MTGPU_SEMAPHORE_CREATE		0x20
+#define DRM_MTGPU_SEMAPHORE_DESTROY		0x21
+#define DRM_MTGPU_SEMAPHORE_SUBMIT		0x22
+#define DRM_MTGPU_SEMAPHORE_CPU_SIGNAL		0x23
+#define DRM_MTGPU_SEMAPHORE_TO_FD		0x24
+#define DRM_MTGPU_CONTEXT_CREATE		0x25
+#define DRM_MTGPU_CONTEXT_DESTROY		0x26
+#define DRM_MTGPU_JOB_SUBMIT			0x27
+#define DRM_MTGPU_DMA_TRANSFER			0x28
+#define DRM_MTGPU_OBJECT_CREATE			0x29
+#define DRM_MTGPU_OBJECT_DESTROY		0x2A
+#define DRM_MTGPU_TRANSPORT_LAYER		0x2B
+#define DRM_MTGPU_HWPERF			0x2C
+#define DRM_MTGPU_CACHE_OP			0x2D
+#define DRM_MTGPU_NOTIFY_QUEUE_UPDATE		0x2E
 
-#define DRM_MTGPU_JOB_SUBMIT2		0x30
+/* used by ddk2.0 temporarily */
+#define DRM_MTGPU_JOB_CONTEXT_CREATE		0x30
+#define DRM_MTGPU_JOB_SUBMIT_V3			0x31
+#define DRM_MTGPU_JOB_APPEND			0x32
 
 #define DRM_IOCTL_MTGPU_DEVICE_INIT \
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_DEVICE_INIT, \
@@ -54,6 +62,12 @@
 #define DRM_IOCTL_MTGPU_BO_FROM_USERPTR \
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_BO_FROM_USERPTR, \
 		 struct drm_mtgpu_bo_from_userptr)
+#define DRM_IOCTL_MTGPU_BO_EXPORT_GLOBAL_HANDLE \
+	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_BO_EXPORT_GLOBAL_HANDLE, \
+		 struct drm_mtgpu_bo_global_handle_export)
+#define DRM_IOCTL_MTGPU_BO_IMPORT_GLOBAL_HANDLE \
+	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_BO_IMPORT_GLOBAL_HANDLE, \
+		 struct drm_mtgpu_bo_global_handle_import)
 #define DRM_IOCTL_MTGPU_VM_CONTEXT_CREATE \
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_VM_CONTEXT_CREATE, \
 		 struct drm_mtgpu_vm_context_create)
@@ -90,6 +104,12 @@
 #define DRM_IOCTL_MTGPU_SEMAPHORE_SUBMIT \
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_SEMAPHORE_SUBMIT, \
 		 struct drm_mtgpu_semaphore_submit)
+#define DRM_IOCTL_MTGPU_SEMAPHORE_CPU_SIGNAL \
+	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_SEMAPHORE_CPU_SIGNAL, \
+		 struct drm_mtgpu_semaphore_cpu_signal)
+#define DRM_IOCTL_MTGPU_SEMAPHORE_TO_FD \
+	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_SEMAPHORE_TO_FD, \
+		 struct drm_mtgpu_semaphore_to_fd)
 #define DRM_IOCTL_MTGPU_CONTEXT_CREATE \
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_CONTEXT_CREATE, \
 		 struct drm_mtgpu_context_create)
@@ -117,10 +137,20 @@
 #define DRM_IOCTL_MTGPU_CACHE_OP \
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_CACHE_OP, \
 		 struct drm_mtgpu_cache_op)
+#define DRM_IOCTL_MTGPU_NOTIFY_QUEUE_UPDATE \
+	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_NOTIFY_QUEUE_UPDATE, \
+		 struct drm_mtgpu_notify_queue_update)
 
-#define DRM_IOCTL_MTGPU_JOB_SUBMIT2 \
-	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_JOB_SUBMIT2, \
-		 struct drm_mtgpu_job_submit_v2)
+/* used by ddk2.0 temporarily */
+#define DRM_IOCTL_MTGPU_JOB_CONTEXT_CREATE \
+	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_JOB_CONTEXT_CREATE, \
+		 struct drm_mtgpu_job_context_create)
+#define DRM_IOCTL_MTGPU_JOB_SUBMIT_V3 \
+	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_JOB_SUBMIT_V3, \
+		 struct drm_mtgpu_job_submit_v3)
+#define DRM_IOCTL_MTGPU_JOB_APPEND \
+	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_JOB_APPEND, \
+		 struct drm_mtgpu_job_append)
 
 /*
  *  **********************************************************
@@ -191,7 +221,8 @@ enum {
 	MTGPU_INFO_TYPE_BO,
 	MTGPU_INFO_TYPE_DEV,
 	MTGPU_INFO_TYPE_PCI,
-	MTGPU_INFO_TYPE_HEAP_INVALID,
+	MTGPU_INFO_TYPE_PLATFORM,
+	MTGPU_INFO_TYPE_INVALID,
 };
 
 #define MTGPU_HEAPNAME_MAXLENGTH (128)
@@ -259,6 +290,10 @@ struct mtgpu_bo_info_in {
 
 struct mtgpu_bo_info {
 	__u64 size;
+	__u64 align;
+	__u64 flags;
+	__u32 domain;
+	__u32 segment_id;
 };
 
 struct mtgpu_bo_info_out {
@@ -266,6 +301,8 @@ struct mtgpu_bo_info_out {
 };
 
 struct mtgpu_dev_info {
+	__u32 dev_id;
+	__u32 dev_status;
 	__u32 dev_clock_speed;
 	__u32 mem_clock_speed;
 	__u32 mem_max_clock_speed;
@@ -274,10 +311,65 @@ struct mtgpu_dev_info {
 };
 
 struct mtgpu_pci_info {
-	__u32 pci_domain_number;
-	__u32 pci_bus_number;
-	__u32 pci_device_number;
-	__u32 pci_function_number;
+	/**
+	 * @domain_number: [OUT] PCI domian number.
+	 */
+	__u32 domain_number;
+	/**
+	 * @bus_number: [OUT] PCI bus number.
+	 */
+	__u32 bus_number;
+	/**
+	 * @device_number: [OUT] PCI device number.
+	 */
+	__u32 device_number;
+	/**
+	 * @function_number: [OUT] PCI function number.
+	 */
+	__u32 function_number;
+	/**
+	 * @current_speed: [OUT] current PCI gen speed.
+	 * Gen1:2.5GT Gen2:5GT Gen3:8GT Gen4:16GT Gen5:32GT
+	 */
+	__u32 current_gen_speed;
+	/**
+	 * @current_width: [OUT] current PCI width.
+	 */
+	__u32 current_width;
+	/**
+	 * @numa_node_id: [OUT] numa node for PCI device.
+	 * disable: -1 enable : > 0
+	 */
+	__s32 numa_node_id;
+	/**
+	 * @total_pci_device_memory_accessible: [OUT] pci device memory access capability
+	 * can not dirctly access all pci device memory: 0
+	 * can dirctly access all device memory: 1
+	 */
+	__u32 total_pci_device_memory_accessible;
+	/**
+	 * @total_system_memory_accessible: [OUT] system memory access capability
+	 * can not dirctly access all system memory: 0
+	 * can dirctly access all system memory: 1
+	 */
+	__u32 total_system_memory_accessible;
+	/**
+	 * @pad: [IN] for padding
+	 */
+	__u32 pad;
+};
+
+struct mtgpu_platform_info {
+	/**
+	 * @mtlink_enable: [OUT] Status of mtlink.
+	 * disable: 0 enable: 1
+	 */
+	__u32 mtlink_enable;
+	/**
+	 * @mtlink_enable: [OUT] Status of iommu.
+	 * disable: 0 enable: 1
+	 */
+	__u32 iommu_enable;
 };
 
 struct drm_mtgpu_query_info {
@@ -294,10 +386,11 @@ struct drm_mtgpu_query_info {
 
 struct drm_mtgpu_bo_create {
 	struct {
-		__u32 size;
-		__u32 align;
+		__u64 size;
+		__u64 align;
+		__u64 flags;
 		__u32 domains;
-		__u32 flags;
+		__u32 group_id;
 	} in;
 
 	struct {
@@ -328,6 +421,50 @@ struct drm_mtgpu_bo_get_mmap_offset {
 
 	struct {
 		__u64 offset;
+	} out;
+};
+
+struct drm_mtgpu_bo_global_handle_export {
+	struct {
+		/**
+		 * @bo_handle: [IN] Handle for exported buffer object.
+		 */
+		__u32 bo_handle;
+		/**
+		 * @pad: [IN] for padding
+		 */
+		__u32 pad;
+	} in;
+
+	struct {
+		/**
+		 * @global_handle: [OUT] Global handle for exported buffer object.
+		 */
+		__u64 global_handle;
+	} out;
+};
+
+struct drm_mtgpu_bo_global_handle_import {
+	struct {
+		/**
+		 * @global_handle: [IN] Global handle for exported buffer object.
+		 */
+		__u64 global_handle;
+	} in;
+
+	struct {
+		/**
+		 * @size: [OUT] size of imported buffer object.
+		 */
+		__u64 size;
+		/**
+		 * @bo_handle: [OUT] Handle for imported buffer object.
+		 */
+		__u32 bo_handle;
+		/**
+		 * @pad: [OUT] for padding
+		 */
+		__u32 pad;
 	} out;
 };
 
@@ -483,7 +620,7 @@ struct drm_mtgpu_context_create {
 		__u32 ccbsize;
 
 		/**
-		 * @pad: [IN] Priority of new context.
+		 * @priority: [IN] Priority of new context.
 		 */
 		__u32 priority;
 
@@ -523,6 +660,35 @@ struct drm_mtgpu_context_destroy {
 	__u64 ctx_handle;
 };
 
+/* definition of drm_mtgpu_context_create for ddk2.0 */
+struct drm_mtgpu_job_context_create {
+	struct {
+		/**
+		 * @type: [IN] Type of the context to be created
+		 *
+		 * This must be one of the values defined by &enum drm_mtgpu_job_type.
+		 */
+		__u32 type;
+
+		/**
+		 * @priority: [IN] Priority of new context.
+		 */
+		__u32 priority;
+
+		/**
+		 * @vm_ctx_handle: [IN] handle of vm context.
+		 */
+		__u64 vm_ctx_handle;
+	} in;
+
+	struct {
+		/**
+		 * @ctx_handle: [OUT] handle of job context.
+		 */
+		__u64 ctx_handle;
+	} out;
+};
+
 struct drm_mtgpu_tq_context_data {
 	/** @robustness_addr: [IN] GPU VA which describe context reset reason. */
 	__u64 robustness_addr;
@@ -546,10 +712,6 @@ struct drm_mtgpu_render_context_data {
 };
 
 struct drm_mtgpu_compute_context_data {
-	/** @static_context_state: [IN] Context static register controls for context switch. */
-	__u64 static_context_state;
-	/** @static_context_state: [IN] Length of context static register controls. */
-	__u32 static_context_state_len;
 	/** @robustness_address: [IN] GPU VA which describe context reset reason. */
 	__u64 robustness_addr;
 	/** @robustness_address: [IN] Max deadline limit in MS. */
@@ -574,22 +736,22 @@ enum drm_mtgpu_job_type {
 	MTGPU_JOB_INVALID,
 };
 
-struct drm_mtgpu_compute_job_data_v2 {
+struct drm_mtgpu_compute_job_data {
 	__u32 num_of_workgroups;
 	__u32 num_of_workitems;
 };
 
-struct drm_mtgpu_tq_job_data_v2 {
+struct drm_mtgpu_tq_job_data {
 	__u32 characteristic1;
 	__u32 characteristic2;
 };
 
-struct drm_mtgpu_ce_job_data_v2 {
+struct drm_mtgpu_ce_job_data {
 	__u32 characteristic1;
 	__u32 characteristic2;
 };
 
-struct drm_mtgpu_render_job_data_v2 {
+struct drm_mtgpu_render_job_data {
 	/**
 	 * @frag_check_semaphores: [IN] check semaphore array for 3D
 	 */
@@ -626,15 +788,6 @@ struct drm_mtgpu_render_job_data_v2 {
 	__u32 pad3;
 
 	/**
-	 * @frag_update_fence: [IN] update fence
-	 */
-	__u64 frag_update_fence;
-	/**
-	 * @frag_update_fence_name: [IN] update fence name
-	 */
-	char *frag_update_fence_name;
-
-	/**
 	 * @frag_cmd_array: [IN] 3D dm command buffer array
 	 */
 	__u8 *frag_cmd_array;
@@ -643,25 +796,59 @@ struct drm_mtgpu_render_job_data_v2 {
 	 */
 	__u32 frag_cmd_size;
 	/**
-	 * @frag_cmd_count: [IN] the count of 3D dm command buffer
+	 * @frag_cmd_count: [IN] the count of 3D dm command
 	 */
 	__u32 frag_cmd_count;
 
+	/**
+	 * @frag_pr_cmd_array: [IN] 3D PR dm command buffer array
+	 */
+	__u8 *frag_pr_cmd_array;
+	/**
+	 * @frag_pr_cmd_size: [IN] 3D PR dm command size
+	 */
+	__u32 frag_pr_cmd_size;
+	/**
+	 * @pad: [IN] just for padding
+	 */
+	__u32 pad4;
+
+	/**
+	 * @hwrt_dataset_handle: [IN] the handle of hardware render target
+	 */
 	__u64 hwrt_dataset_handle;
+	/**
+	 * @msaa_scratch_buffer_handle: [IN] the handle of msaa scratch buffer
+	 */
 	__u64 msaa_scratch_buffer_handle;
+	/**
+	 * @zs_buffer_handle: [IN] the handle of zs buffer
+	 */
 	__u64 zs_buffer_handle;
+	/**
+	 * @draw_calls_number: [IN] the count of draw call
+	 */
 	__u32 draw_calls_number;
+	/**
+	 * @indices_number: [IN] the count of index
+	 */
 	__u32 indices_number;
+	/**
+	 * @mrts_number: [IN] the count of mrts
+	 */
 	__u32 mrts_number;
+	/**
+	 * @render_target_size: [IN] the size of hardware render target
+	 */
 	__u32 render_target_size;
 
-	__u32 abort;
-	__u32 kick_frag;
-	__u32 kick_pr;
 	__u32 kick_geom;
+	__u32 kick_pr;
+	__u32 kick_frag;
+	__u32 abort;
 };
 
-struct drm_mtgpu_job_submit_v2 {
+struct drm_mtgpu_job_submit {
 	struct {
 		/**
 		 * @type: [IN] Type of the job
@@ -674,7 +861,7 @@ struct drm_mtgpu_job_submit_v2 {
 		__u32 pad1;
 
 		/**
-		 * @vm_ctx_handle: [IN] handle of job context.
+		 * @ctx_handle: [IN] handle of job context.
 		 */
 		__u64 ctx_handle;
 
@@ -692,11 +879,11 @@ struct drm_mtgpu_job_submit_v2 {
 		__u32 pad2;
 
 		/**
-		 * @update_semaphores: [IN] check semaphore array
+		 * @update_semaphores: [IN] update semaphore array
 		 */
 		__u64 update_semaphores;
 		/**
-		 * @update_semaphore_count: [IN] check semaphore count
+		 * @update_semaphore_count: [IN] update semaphore count
 		 */
 		__u32 update_semaphore_count;
 		/**
@@ -722,7 +909,7 @@ struct drm_mtgpu_job_submit_v2 {
 		 */
 		__s32 *sync_buf_fds;
 		/**
-		 * @sync_buf_flags: [IN] array of sync buf flag
+		 * @sync_buf_flags: [IN] array of sync buf flag. 0x1 is wirting.
 		 */
 		__u32 *sync_buf_flags;
 		/**
@@ -776,161 +963,116 @@ struct drm_mtgpu_job_submit_v2 {
 	} in;
 };
 
-struct drm_mtgpu_compute_job_data {
-	__u64 deadline_us;
-	__u32 *client_update_offset;
-	__u32 *client_update_value;
-	__u64 *client_update_ufo_sync_prim_block_handles;
-	__u32 client_update_count;
-	__u32 *sync_bo_flags;
-	__u64 *sync_bo_handles;
-	__u32 sync_bo_count;
-	__s32 check_fence;
-	char *update_fence_name;
-	__u8 *dm_cmd;
-	__u32 command_size;
-	__u32 external_job_reference;
-	__u32 num_of_workgroups;
-	__u32 num_of_workitems;
+enum drm_mtgpu_job_submission_type {
+	MTGPU_SUBMISSION_NOP = 0,
+	MTGPU_SUBMISSION_GPU_NOP,
+	MTGPU_SUBMISSION_GPU_TQ,
+	MTGPU_SUBMISSION_GPU_CE,
+	MTGPU_SUBMISSION_GPU_GFX,
+	MTGPU_SUBMISSION_GPU_COMPUTE,
+	MTGPU_SUBMISSION_GPU_COMPUTE_STREAM,
+	MTGPU_SUBMISSION_GPU_UNIVERSAL,
+	MTGPU_SUBMISSION_DMA,
+	MTGPU_SUBMISSION_INVALID,
 };
 
-struct drm_mtgpu_tq_job_data {
-	__u64 deadline_us;
-	__u32 *client_update_offset;
-	__u32 *client_update_value;
-	__u64 *client_update_ufo_sync_prim_block_handles;
-	__u32 client_update_count;
-	__u32 *sync_bo_flags;
-	__u64 *sync_bo_handles;
-	__u32 sync_bo_count;
-	__u8 *dm_cmd;
-	__u32 command_size;
-	char *update_fence_name;
-	__s32 check_fence;
-	__s32 update_timeline;
-	__u32 characteristic1;
-	__u32 characteristic2;
-	__u32 external_job_reference;
-	__u32 pdump_flags;
+enum drm_mtgpu_job_append_type {
+	MTGPU_APPEND_TQ,
+	MTGPU_APPEND_CE,
+	MTGPU_APPEND_COMPUTE,
+	MTGPU_APPEND_INVALID,
 };
 
-struct drm_mtgpu_ce_job_data {
-	__u64 deadline_us;
-	__u32 *client_update_offset;
-	__u32 *client_update_value;
-	__u64 *client_update_ufo_sync_prim_block_handles;
-	__u32 client_update_count;
-	__u32 *sync_bo_flags;
-	__u64 *sync_bo_handles;
-	__u32 sync_bo_count;
-	__u8 *dm_cmd;
-	__u32 command_size;
-	char *update_fence_name;
-	__s32 check_fence;
-	__s32 update_timeline;
-	__u32 characteristic1;
-	__u32 characteristic2;
-	__u32 external_job_reference;
-	__u32 pdump_flags;
+struct drm_mtgpu_job_append {
+	/**
+	 * @ctx_handle: [IN] handle of job context.
+	 */
+	__u64 job_ctx_handle;
+
+	/**
+	 * @submission_uid: [IN] uniqueu id of stream submission
+	 */
+	__u64 submission_uid;
+
+	/**
+	 * @type: [IN] Type of the append job
+	 * This must be one of the values defined by &enum drm_mtgpu_job_append_type
+	 */
+	__u32 type;
+
+	/**
+	 * @submission_queue_id: [IN] id of submission queue
+	 */
+	__u32 submission_queue_id;
 };
 
-struct drm_mtgpu_render_job_data {
-	__u64 deadline_us;
-	__u64 hwrt_dataset_handle;
-	__u64 msaa_scratch_buffer_handle;
-	__u64 pr_fence_ufo_sync_prim_block_handle;
-	__u64 zs_buffer_handle;
-	__u64 frag_update_sync_offset_array;
-	__u64 frag_update_value_array;
-	__u64 geom_fence_sync_offset_array;
-	__u64 geom_fence_value_array;
-	__u64 geom_update_sync_offset_array;
-	__u64 geom_update_value_array;
-	__u64 sync_bo_flag_array;
-	__u8 *frag_cmd;
-	__u8 *frag_pr_cmd;
-	__u8 *geom_cmd;
-	char *geom_update_fence_name;
-	char *frag_update_fence_name;
-	__u64 frag_update_sync_prim_block_handles;
-	__u64 geom_fence_sync_prim_block_handles;
-	__u64 geom_update_sync_prim_block_handles;
-	__u64 sync_bo_handles;
-	__u32 abort;
-	__u32 kick_frag;
-	__u32 kick_pr;
-	__u32 kick_geom;
-	__u32 geom_check_fence;
-	__u32 frag_check_fence;
-	__u32 geom_update_timeline;
-	__u32 frag_update_timeline;
-	__u32 frag_cmd_size;
-	__u32 frag_pr_cmd_size;
-	__u32 frag_update_count;
-	__u64 frag_update_fence_out;
-	__u32 geom_fence_count;
-	__u32 geom_update_count;
-	__u64 geom_update_fence_out;
-	__u32 ext_job_ref;
-	__u32 draw_calls_number;
-	__u32 indices_number;
-	__u32 mrts_number;
-	__u32 pdump_flags;
-	__u32 pr_fence_ufo_sync_offset;
-	__u32 pr_fence_value;
-	__u32 render_target_size;
-	__u32 sync_bo_count;
-	__u32 geom_cmd_size;
-};
-
-struct drm_mtgpu_job_submit {
+/* definition of drm_mtgpu_job_submit for ddk2.0 */
+struct drm_mtgpu_job_submit_v3 {
 	struct {
 		/**
-		 * @type: [IN] Type of the job
-		 *
-		 * This must be one of the values defined by &enum drm_mtgpu_job_type.
+		 * @type: [IN] Type of the job submission
+		 * This must be one of the values defined by &enum drm_mtgpu_job_submission_type
 		 */
 		__u32 type;
-
 		/**
 		 * @pad: [IN] just for padding
 		 */
-		__u32 pad;
+		__u32 pad1;
 
 		/**
-		 * @vm_ctx_handle: [IN] handle of job context.
+		 * @ctx_handle: [IN] handle of job context.
 		 */
-		__u64 ctx_handle;
+		__u64 job_ctx_handle;
 
 		/**
-		 * @update_fence: [IN] update fence
+		 * @check_semaphores: [IN] handle array of check semaphores
 		 */
-		__u64 update_fence;
+		__u64 check_semaphores;
+		/**
+		 * @check_semaphore_count: [IN] check semaphore count
+		 */
+		__u32 check_semaphore_count;
+		/**
+		 * @pad: [IN] just for padding
+		 */
+		__u32 pad2;
 
 		/**
-		 * @check_fences: [IN] check fence array
+		 * @update_semaphores: [IN] handle array of update semaphores
 		 */
-		__u64 check_fences;
+		__u64 update_semaphores;
+		/**
+		 * @update_semaphore_count: [IN] update semaphore count
+		 */
+		__u32 update_semaphore_count;
+		/**
+		 * @pad: [IN] just for padding
+		 */
+		__u32 pad3;
 
 		/**
-		 * @check_fence_count: [IN] check fence count
+		 * @submissions: [IN] va of this submission
+		 * gpu_va for gpu job; cpu_va for dma job
 		 */
-		__u32 check_fence_count;
-
+		__u64 submission_va;
 		/**
-		 * @foreign_fence_fd: [IN] the fd of foreign fences
+		 * @submission_size: [IN] size of this submission
 		 */
-		__s32 foreign_fence_fd;
-
+		__u32 submission_size;
 		/**
-		 * @data: [IN] Private data of the specific job type
+		 * @submission_queue_id: [IN] id of submission queue
 		 */
-		__u64 data;
+		__u32 submission_queue_id;
 	} in;
+
+	struct {
+		/**
+		 * @submission_uid: [OUT] unique id for this submission.
+		 */
+		__u64 submission_uid;
+	} out;
 };
 
-#define MTGPU_DMA_TRANSFER_DEVICE_TO_HOST 0x0
-#define MTGPU_DMA_TRANSFER_HOST_TO_DEVICE 0x1
 #define MTGPU_DMA_TRANSFER_DIR BIT(0)
 
 struct drm_mtgpu_dma_transfer {
@@ -953,9 +1095,14 @@ struct drm_mtgpu_dma_transfer {
 		__u64 ext_handle;
 
 		/**
-		 * @offset: [IN] the starting position of the transfer.
+		 * @offset: [IN] the bo_handle starting position of the transfer.
 		 */
 		__u64 offset;
+
+		/**
+		 * @ext_offset: [IN] the ext_handle starting position of the transfer.
+		 */
+		__u64 ext_offset;
 
 		/**
 		 * @size: [IN] transfer size.
@@ -993,13 +1140,16 @@ struct drm_mtgpu_object_destroy {
  * %DRM_MTGPU_OBJECT_TYPE_HWRT_DATASET
  */
 struct drm_mtgpu_hwrt_dataset_create_args {
-	__u64 pm_data_va_array;
-	__u64 tail_ptr_va_array;
+	__u64 pm_data_va_array_mcg;
+	__u64 tail_ptr_va_array_mcg;
 	__u64 vheap_table_va;
 	__u64 ppp_multi_sample_ctl;
+	__u64 pm_data_va_array;
 	__u64 pm_secure_data_va_array;
+	__u64 tail_ptr_va_array;
 	__u64 free_list_handles;
-	__u64 hwrt_dataset_handles_out;
+	__u32 free_lists_count;
+	__u32 mcg_core_num;
 	__u32 isp_merge_lower_x;
 	__u32 isp_merge_lower_y;
 	__u32 isp_merge_scale_x;
@@ -1097,6 +1247,25 @@ struct drm_mtgpu_free_list_create_args {
 	__u32 max_num_pages;
 };
 
+struct drm_mtgpu_render_resource_create_args {
+	/**
+	 * @mcg_core_num: [IN] Mcg core num.
+	 */
+	__u32 mcg_core_num;
+
+	/**
+	 * @free_list_count: [IN] How many free lists we are going to create,
+	 * 			  in mcg, we can create more free lists, and
+	 * 			  use part of them.
+	 */
+	__u32 free_list_count;
+
+	/**
+	 * @free_list_create_args: [IN] array of drm_mtgpu_free_list_create_args.
+	 */
+	__u64 free_list_create_args;
+};
+
 /**
  * enum drm_mtgpu_object_type - Arguments for
  * &drm_mtgpu_ioctl_create_object_args.type
@@ -1106,12 +1275,19 @@ enum drm_mtgpu_object_type {
 	 * @DRM_MTGPU_OBJECT_TYPE_FREE_LIST: Free list object. Use &struct
 	 * drm_mtgpu_free_list_create_args for object creation arguments.
 	 */
+
 	DRM_MTGPU_OBJECT_TYPE_FREE_LIST = 0,
 	/**
 	 * @DRM_MTGPU_OBJECT_TYPE_HWRT_DATASET: HWRT data set. Use &struct
 	 * drm_mtgpu_ioctl_create_hwrt_dataset_args for object creation arguments.
 	 */
 	DRM_MTGPU_OBJECT_TYPE_HWRT_DATASET,
+
+	/**
+	 * @DRM_MTGPU_OBJECT_TYPE_RENDER_RESOURCE: Render resource object. Use &struct
+	 * drm_mtgpu_free_list_create_args for object creation arguments.
+	 */
+	DRM_MTGPU_OBJECT_TYPE_RENDER_RESOURCE,
 
 	/**
 	 * @DRM_MTGPU_OBJECT_TYPE_INVALID: Mark flag for validation.
@@ -1145,7 +1321,7 @@ struct drm_mtgpu_object_create {
 		/**
 		 * @handle: [OUT] Handle for created object.
 		 */
-		__u64 handle;
+		__u64 *handles;
 	} out;
 };
 
@@ -1245,6 +1421,34 @@ struct drm_mtgpu_semaphore_submit {
 	 * @semaphore: [IN] drm mtgpu semaphore.
 	 */
 	struct drm_mtgpu_semaphore semaphore;
+};
+
+struct drm_mtgpu_semaphore_cpu_signal {
+	/**
+	 * @semaphore: [IN] drm mtgpu semaphore.
+	 */
+	struct drm_mtgpu_semaphore semaphore;
+};
+
+struct drm_mtgpu_semaphore_to_fd {
+	struct {
+		/**
+		 * @semaphore: [IN] drm mtgpu semaphore.
+		 */
+		struct drm_mtgpu_semaphore semaphore;
+	} in;
+
+	struct {
+		/**
+		 * @fd: [IN] fd for drm_mtgpu_semaphore
+		 */
+		__s32 fd;
+
+		/**
+		 * @pad: [IN] just for padding
+		 */
+		__u32 pad;
+	} out;
 };
 
 enum drm_mtgpu_cache_op_type {
@@ -1350,6 +1554,7 @@ struct drm_mtgpu_stream_open_data_in {
 struct drm_mtgpu_stream_open_data_out {
 	__u64 sd_handle;
 	__u64 bo_handle;
+	__u64 bo_size;
 	__u32 multi_readers_allowed;
 	__u32 read_offset;
 };
@@ -1384,6 +1589,7 @@ struct drm_mtgpu_stream_close_data_in {
 
 enum drm_mtgpu_hwperf_event_type {
 	MTGPU_HWPERF_CTRL = 0,
+	MTGPU_HWPERF_GET_TIMESTAMPS,
 	MTGPU_HWPERF_INVALID,
 };
 
@@ -1399,6 +1605,26 @@ struct drm_mtgpu_hwperf {
 	struct {
 		__u64 data;
 	} out;
+};
+
+struct mtgpu_hwperf_timestamps {
+	__u64 soc_timestamp;
+	__u64 os_timestamp;
+};
+
+struct drm_mtgpu_notify_queue_update {
+	/**
+	 * @type: [IN] Type of the job
+	 */
+	__u32 type;
+	/**
+	 * @pad: [IN] just for padding
+	 */
+	__u32 pad;
+	/**
+	 * @ctx_handle: [IN] handle of job context.
+	 */
+	__u64 ctx_handle;
 };
 
 #endif /* __MTGPU_DRM_H__ */

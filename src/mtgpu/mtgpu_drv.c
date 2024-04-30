@@ -21,6 +21,7 @@
 #include <linux/pci.h>
 #include <linux/module.h>
 #include <linux/debugfs.h>
+#include <linux/platform_device.h>
 
 #ifndef CONFIG_LOONGARCH
 #include <asm/dmi.h>
@@ -48,6 +49,7 @@
 #include "mtgpu_ob_res.h"
 #include "mtlink_procfs.h"
 #include "mtgpu_ipc.h"
+#include "mtgpu_event_report.h"
 
 MODULE_DESCRIPTION("MooreThreads mtgpu drm driver");
 MODULE_AUTHOR("MooreThreads Corporation");
@@ -129,6 +131,22 @@ const struct proc_ops mtlink_irqcounter_counter_proc_ops = {
 	.proc_release = os_single_release,
 };
 
+const struct proc_ops mtlink_monitor_start_proc_ops = {
+	.proc_open = mtlink_monitor_start_proc_open,
+	.proc_read = os_seq_read,
+	.proc_write = mtlink_monitor_start_proc_write,
+	.proc_lseek = os_seq_lseek,
+	.proc_release = os_single_release,
+};
+
+const struct proc_ops mtlink_monitor_counter_proc_ops = {
+	.proc_open = mtlink_monitor_counter_proc_open,
+	.proc_read = os_seq_read,
+	.proc_write = mtlink_monitor_counter_proc_write,
+	.proc_lseek = os_seq_lseek,
+	.proc_release = os_single_release,
+};
+
 const struct proc_ops process_util_proc_ops = {
 	.proc_open = mtgpu_proc_util_open,
 	.proc_read = os_seq_read,
@@ -136,6 +154,15 @@ const struct proc_ops process_util_proc_ops = {
 	.proc_lseek = os_seq_lseek,
 	.proc_release = os_single_release,
 };
+
+const struct proc_ops event_message_proc_ops = {
+	.proc_open = mtgpu_proc_event_msg_open,
+	.proc_read = os_seq_read,
+	.proc_lseek = os_seq_lseek,
+	.proc_release = os_single_release,
+	.proc_poll = mtgpu_proc_event_msg_poll,
+};
+
 #else
 const struct file_operations config_proc_ops = {
 	.open = mtgpu_proc_config_open,
@@ -209,12 +236,36 @@ const struct file_operations mtlink_irqcounter_counter_proc_ops = {
 	.release = os_single_release,
 };
 
+const struct file_operations mtlink_monitor_start_proc_ops = {
+	.open = mtlink_monitor_start_proc_open,
+	.read = os_seq_read,
+	.write = mtlink_monitor_start_proc_write,
+	.llseek = os_seq_lseek,
+	.release = os_single_release,
+};
+
+const struct file_operations mtlink_monitor_counter_proc_ops = {
+	.open = mtlink_monitor_counter_proc_open,
+	.read = os_seq_read,
+	.write = mtlink_monitor_counter_proc_write,
+	.llseek = os_seq_lseek,
+	.release = os_single_release,
+};
+
 const struct file_operations process_util_proc_ops = {
 	.open = mtgpu_proc_util_open,
 	.read = os_seq_read,
 	.write = mtgpu_proc_util_write,
 	.llseek = os_seq_lseek,
 	.release = os_single_release,
+};
+
+const struct file_operations event_message_proc_ops = {
+	.open = mtgpu_proc_event_msg_open,
+	.read = mtgpu_proc_event_msg_read,
+	.llseek = os_seq_lseek,
+	.release = os_single_release,
+	.poll = mtgpu_proc_event_msg_poll,
 };
 #endif
 
@@ -390,7 +441,9 @@ static struct pci_device_id mtgpu_pci_tbl[] = {
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S2000, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&sudi_drvdata},
 #endif
-	{ },
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_PINGHU1, PCI_ANY_ID, PCI_ANY_ID,
+	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&pinghu1_drvdata},
+	{ /* end: all entry */ }
 };
 
 static const struct dev_pm_ops mtgpu_pm_ops = {
@@ -409,12 +462,33 @@ static struct pci_driver mtgpu_pci_driver = {
 	.id_table = mtgpu_pci_tbl,
 	.probe = mtgpu_probe,
 	.remove = mtgpu_remove,
+	.shutdown = mtgpu_shutdown,
 	.err_handler = &err_handler,
 	.driver.pm = &mtgpu_pm_ops,
 };
 
 MODULE_DEVICE_TABLE(pci, mtgpu_pci_tbl);
 MODULE_INFO(build_version, MT_BUILD_TAG);
+
+static struct of_device_id mtgpu_of_tbl[] = {
+	{.compatible = "mthreads,i-gpu", .data = NULL},
+	{ }, /* end of all entries */
+};
+
+static const struct acpi_device_id mtgpu_acpi_table[] = {
+	{.id = "MGPU0001", .driver_data = 0},
+	{ }, /* end of all entries */
+};
+
+static struct platform_driver mtgpu_platform_driver = {
+	.probe = mtgpu_platform_probe,
+	.remove = mtgpu_platform_remove,
+	.driver = {
+		.name = "mt-igpu",
+		.of_match_table = mtgpu_of_tbl,
+		.acpi_match_table = mtgpu_acpi_table,
+	},
+};
 
 static int __init mtgpu_driver_init(void)
 {
@@ -439,6 +513,10 @@ static int __init mtgpu_driver_init(void)
 	if (unlikely(ret))
 		goto mtgpu_misc_init_err;
 
+	ret = mtgpu_event_report_global_init();
+	if (unlikely(ret))
+		goto mtgpu_event_report_global_init_err;
+
 	if (mtgpu_get_driver_mode() != MTGPU_DRIVER_MODE_GUEST) {
 		ret = mtgpu_ipc_init();
 		if (unlikely(ret))
@@ -459,6 +537,10 @@ static int __init mtgpu_driver_init(void)
 	if (unlikely(ret))
 		goto pci_register_driver_err;
 
+	ret = platform_driver_register(&mtgpu_platform_driver);
+	if (unlikely(ret))
+		goto platform_register_driver_err;
+
 	ret = mtgpu_drm_init();
 	if (unlikely(ret))
 		goto mtgpu_drm_init_err;
@@ -470,6 +552,8 @@ static int __init mtgpu_driver_init(void)
 	return 0;
 
 mtgpu_drm_init_err:
+	platform_driver_unregister(&mtgpu_platform_driver);
+platform_register_driver_err:
 	pci_unregister_driver(&mtgpu_pci_driver);
 pci_register_driver_err:
 	mtgpu_ob_res_deinit();
@@ -480,6 +564,8 @@ mtlink_driver_init_err:
 	if (mtgpu_get_driver_mode() != MTGPU_DRIVER_MODE_GUEST)
 		mtgpu_ipc_exit();
 mtgpu_ipc_init_err:
+	mtgpu_event_report_global_deinit();
+mtgpu_event_report_global_init_err:
 	mtgpu_misc_deinit();
 mtgpu_misc_init_err:
 	mtgpu_proc_musa_dir_remove();
@@ -496,6 +582,7 @@ static void __exit mtgpu_driver_exit(void)
 	mtsnd_deinit();
 	mtgpu_drm_fini();
 	pci_unregister_driver(&mtgpu_pci_driver);
+	platform_driver_unregister(&mtgpu_platform_driver);
 	mtgpu_ob_res_deinit();
 
 	if (mtgpu_get_driver_mode() == MTGPU_DRIVER_MODE_NATIVE)
@@ -504,6 +591,7 @@ static void __exit mtgpu_driver_exit(void)
 	if (mtgpu_get_driver_mode() != MTGPU_DRIVER_MODE_GUEST)
 		mtgpu_ipc_exit();
 
+	mtgpu_event_report_global_deinit();
 	mtgpu_misc_deinit();
 	mtgpu_proc_musa_dir_remove();
 	debugfs_remove_recursive(mtgpu_dentry);
@@ -521,4 +609,6 @@ MODULE_FIRMWARE(FIRMWARE_LOAD_PATH("mtvpu-02-1.0.bin"));
 #if (RGX_NUM_OS_SUPPORTED > 1)
 MODULE_FIRMWARE(FIRMWARE_LOAD_PATH("musa.fw.1.0.0.0.vz.linux"));
 MODULE_FIRMWARE(FIRMWARE_LOAD_PATH("musa.fw.1.0.0.0.vz.win"));
+MODULE_FIRMWARE(FIRMWARE_LOAD_PATH("mt.fw.1.0.0.0.vz.win"));
+MODULE_FIRMWARE(FIRMWARE_LOAD_PATH("mt.fwlog.1.0.0.0.vz.win.dict"));
 #endif

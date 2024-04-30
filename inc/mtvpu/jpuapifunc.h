@@ -238,9 +238,9 @@ typedef struct {
 
     Uint32  huffCode[8][256];
     Uint32  huffSize[8][256];
-    BYTE*   pHuffVal[8];
-    BYTE*   pHuffBits[8];
-    short*  pQMatTab[4];
+    BYTE    HuffVal[8][256];
+    BYTE    HuffBits[8][256];
+    short   QMatTab[4][64];
     int     jpg12bit;
     int     q_prec0;
     int     q_prec1;

@@ -42,5 +42,11 @@ ssize_t mtlink_irqcounter_eanble_proc_write(struct file *file, const char __user
 int mtlink_irqcounter_counter_proc_open(struct inode *inode, struct file *file);
 ssize_t mtlink_irqcounter_counter_proc_write(struct file *file, const char __user *user_buf,
 					     size_t nbytes, loff_t *ppos);
+int mtlink_monitor_start_proc_open(struct inode *inode, struct file *file);
+ssize_t mtlink_monitor_start_proc_write(struct file *file, const char __user *user_buf,
+					size_t nbytes, loff_t *ppos);
+int mtlink_monitor_counter_proc_open(struct inode *inode, struct file *file);
+ssize_t mtlink_monitor_counter_proc_write(struct file *file, const char __user *user_buf,
+					  size_t nbytes, loff_t *ppos);
 
 #endif /*__MT_LINK_PROC_FS__*/

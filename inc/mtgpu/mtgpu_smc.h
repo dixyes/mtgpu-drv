@@ -77,6 +77,7 @@ int mtgpu_smc_reset_subsystem(struct device *dev, enum mtgpu_subsys_id ss_id,
  * @PSTATE_LVL_P12: short idle(static screen)
  */
 enum pstate_lvl {
+	PSTATE_LVL_NULL     = -1,
 	PSTATE_LVL_P0       = 0,
 	PSTATE_LVL_P1       = 1,
 	PSTATE_LVL_P2       = 2,

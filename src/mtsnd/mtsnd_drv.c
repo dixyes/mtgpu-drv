@@ -53,23 +53,9 @@ static int mtsnd_dev_free(struct snd_device *device)
 	int i = 0;
 	struct mtsnd_chip *chip = (struct mtsnd_chip *)device->device_data;
 
-#ifdef INTERRUPT_DEBUG
-	free_irq(chip->irq, chip);
-#else
-	mtgpu_disable_interrupt(chip->mt_dev, chip->irq);
-	if (mtgpu_set_interrupt_handler(chip->mt_dev, chip->irq, NULL, NULL))
-		dev_warn(chip->card->dev, "free step irq func clean error\n");
-#endif
-
 	mtsnd_free_pcm(chip);
 	mtsnd_free_compr(chip);
 	mtsnd_free_codec(chip);
-
-	iounmap(chip->bar[0].vaddr);
-	iounmap(chip->bar[1].vaddr);
-
-	pci_release_regions(chip->pci);
-	pci_disable_device(chip->pci);
 
 	if (chip->debug)
 		debugfs_remove_recursive(chip->debug);
@@ -79,13 +65,32 @@ static int mtsnd_dev_free(struct snd_device *device)
 			kfree(chip->pcm[i].ipc_msg_buffer);
 			chip->pcm[i].ipc_msg_buffer = NULL;
 		}
+
+#ifdef INTERRUPT_DEBUG
+		/* the pf1 irq needs to be refactored */
+		free_irq(chip->irq, chip);
+#else
+		if (chip->irq[i]) {
+			(void)mtgpu_disable_interrupt(chip->mt_dev, chip->irq[i]);
+			if (mtgpu_set_interrupt_handler(chip->mt_dev, chip->irq[i], NULL, NULL))
+				dev_warn(chip->card->dev, "free step irq func clean error\n");
+		}
+#endif
 	}
+
+	iounmap(chip->bar[0].vaddr);
+	iounmap(chip->bar[1].vaddr);
+
+	pci_release_regions(chip->pci);
+	pci_disable_device(chip->pci);
+
 	kfree(chip);
 
 	return 0;
 }
 
 #ifdef INTERRUPT_DEBUG
+/* the pf1 irq needs to be refactored */
 static irqreturn_t mtsnd_irq_handle(int irq, void *dev_id)
 {
 	int i;
@@ -177,6 +182,7 @@ static int mtsnd_create(struct snd_card *card, struct pci_dev *pci,
 	mtsnd_reset_compr(chip);
 
 #ifdef INTERRUPT_DEBUG
+	/* the pf1 irq needs to be refactored */
 	chip->irq = pci->irq;
 	err = request_irq(chip->irq, mtsnd_irq_handle, IRQF_SHARED, KBUILD_MODNAME, chip);
 	if (err < 0) {
@@ -212,6 +218,7 @@ static int mtsnd_create(struct snd_card *card, struct pci_dev *pci,
 			dev_err(chip->card->dev, "Error mtgpu_enable_interrupt\n");
 			goto errirq;
 		}
+		chip->irq[i] = res[i]->start;
 	}
 	chip->mt_dev = pdev->dev.parent;
 

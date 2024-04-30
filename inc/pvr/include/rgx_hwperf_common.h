@@ -143,7 +143,10 @@ typedef IMG_UINT32 RGX_HWPERF_EVENT_TYPE;
 #define RGX_HWPERF_HW_TDMFINISHED		0x29U /*!< TDM task finished */
 #define RGX_HWPERF_HW_NULLKICK			0x2AU /*!< NULL event */
 
-#define RGX_HWPERF_HW_EVENT_RANGE1_LAST_TYPE 0x2AU
+#define RGX_HWPERF_HW_CEKICK			0x2BU /*!< CE task started */
+#define RGX_HWPERF_HW_CEFINISHED		0x2CU /*!< CE task finished */
+
+#define RGX_HWPERF_HW_EVENT_RANGE1_LAST_TYPE 0x2CU
 
 /*! context switch types 0x30..0x31 */
 #define RGX_HWPERF_CSW_START			0x30U /*!< HW context store started */

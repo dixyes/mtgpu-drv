@@ -56,28 +56,6 @@ typedef struct jpu_instance_pool {
 	void *instPendingInst;
 } jpu_instance_pool_t;
 
-#if 0
-typedef struct jpu_buffer_t {
-    unsigned int  size;
-    unsigned long long phys_addr;
-    unsigned long long base;
-    unsigned long long virt_addr;
-} jpu_buffer_t;
-
-typedef struct jpudrv_buffer_pool_t {
-	struct jpu_buffer jdb;
-	BOOL inuse;
-} jpudrv_buffer_pool_t;
-
-typedef struct {
-	jpu_instance_pool_t *pjip;
-	int task_num;
-	jpudrv_buffer_pool_t jpu_buffer_pool[MAX_JPU_BUFFER_POOL];
-	int jpu_buffer_pool_count;
-	void *jpu_mutex;
-} jdi_info_t;
-#endif
-
 #ifdef CNM_SIM_PLATFORM
 typedef struct jpu_sim_context_t {
 	Uint32           frameIdx;
@@ -124,9 +102,6 @@ int jdi_get_instance_num(int coreIdx);
 
 int jdi_write_memory(int coreIdx, Uint32 addr, Uint8 *data, int len, int endian);
 int jdi_read_memory(int coreIdx, Uint32 addr, Uint8 *data, int len, int endian);
-
-int jdi_register_buffer_pool(int coreIdx, struct jpu_buffer *vb);
-void jdi_unregister_buffer_pool(int coreIdx, struct jpu_buffer *vb);
 
 int jdi_lock(int coreIdx);
 void jdi_unlock(int coreIdx);

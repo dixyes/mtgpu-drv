@@ -29,6 +29,7 @@ mtgpu-objs += src/common/os-interface.o \
 	src/mtgpu/mtgpu_drm_dsc.o \
 	src/mtgpu/mtgpu_drm_dp.o \
 	src/mtgpu/mtgpu_drm_dispc.o \
+	src/mtgpu/mtgpu_drm_atomic.o \
 	src/mtgpu/mtgpu_drm_drv.o \
 	src/mtgpu/mtgpu_drm_dummy_connector.o \
 	src/mtgpu/mtgpu_drm_dummy_crtc.o \
@@ -38,6 +39,7 @@ mtgpu-objs += src/common/os-interface.o \
 	src/mtgpu/phy-mthreads-dp.o \
 	src/mtgpu/p2pdma.o \
 	src/mtgpu/mtgpu_ipc_tty.o \
+	src/mtgpu/mtgpu_fec_dbg.o \
 	src/mtvpu/mtvpu_api.o \
 	src/mtvpu/mtvpu_drv.o \
 	src/mtvpu/mtvpu_gem.o \

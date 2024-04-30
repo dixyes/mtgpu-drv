@@ -423,6 +423,8 @@ static int mtgpu_crtc_gamma_set(struct drm_crtc *crtc, u16 *red, u16 *green,
 	return 0;
 }
 
+#if defined(OS_SWAP_FB_IN_LEAGACY_CURSOR)
+
 #if defined(OS_FUNC_DRM_GEM_OBJECT_PUT_UNLOCKED_EXIST)
 #define drm_gem_object_put(obj) drm_gem_object_put_unlocked(obj)
 #endif
@@ -523,6 +525,7 @@ static int mtgpu_legacy_cursor_move(struct drm_crtc *crtc, int x, int y)
 
 	return 0;
 }
+#endif
 
 static const struct drm_crtc_funcs mtgpu_crtc_funcs = {
 	.set_config             = drm_atomic_helper_set_config,
@@ -534,8 +537,10 @@ static const struct drm_crtc_funcs mtgpu_crtc_funcs = {
 	.enable_vblank		= mtgpu_crtc_enable_vblank,
 	.disable_vblank		= mtgpu_crtc_disable_vblank,
 	.gamma_set		= mtgpu_crtc_gamma_set,
+#if defined(OS_SWAP_FB_IN_LEAGACY_CURSOR)
 	.cursor_set		= mtgpu_legacy_cursor_set,
 	.cursor_move		= mtgpu_legacy_cursor_move,
+#endif
 };
 
 static void mtgpu_plane_create_properties(struct drm_plane *plane,
@@ -650,7 +655,8 @@ static int mtgpu_dispc_component_bind(struct device *dev,
 		goto err_free_dispc;
 	}
 
-	ret = mtgpu_set_interrupt_handler(dev->parent->parent, res->start, mtgpu_dispc_isr, dispc);
+	ret = mtgpu_register_interrupt(dev->parent->parent, res->start,
+				       mtgpu_dispc_isr, dispc, "dispc");
 	if (ret) {
 		DRM_DEV_ERROR(dev, "failed to register dispc irq handler\n");
 		ret = -EINVAL;
@@ -738,7 +744,7 @@ static int mtgpu_dispc_component_bind(struct device *dev,
 	 * async update cursor maybe check fail,so we need add legacy
 	 * cursor interfaces instead of update plane.
 	 */
-#if (KERNEL_VERSION(5, 1, 9) >= LINUX_VERSION_CODE)
+#if defined(OS_SWAP_FB_IN_LEAGACY_CURSOR)
 		if (layer_caps[i].type == DRM_PLANE_TYPE_CURSOR)
 			continue;
 #endif
@@ -817,7 +823,7 @@ static void mtgpu_dispc_component_unbind(struct device *dev,
 	if (ret)
 		DRM_DEV_ERROR(dev, "failed to disable dispc irq %d\n", dispc->ctx.irq);
 
-	ret = mtgpu_set_interrupt_handler(dev->parent->parent, dispc->ctx.irq, NULL, NULL);
+	ret = mtgpu_unregister_interrupt(dev->parent->parent, dispc->ctx.irq);
 	if (ret)
 		DRM_DEV_ERROR(dev, "failed to deregister dispc irq %d handler\n", dispc->ctx.irq);
 

@@ -77,7 +77,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /* Bridge in structure for AllocSyncPrimitiveBlock */
 typedef struct PVRSRV_BRIDGE_IN_ALLOCSYNCPRIMITIVEBLOCK_TAG
 {
-	IMG_UINT32 ui32EmptyStructPlaceholder;
+	IMG_UINT64 ui64MemType;
 } __packed PVRSRV_BRIDGE_IN_ALLOCSYNCPRIMITIVEBLOCK;
 
 /* Bridge out structure for AllocSyncPrimitiveBlock */

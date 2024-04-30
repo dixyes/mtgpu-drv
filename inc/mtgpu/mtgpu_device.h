@@ -14,6 +14,7 @@ struct mtgpu_device;
 struct mtgpu_platform_data;
 struct crypto_shash;
 struct mtgpu_mdev_vpu_info;
+struct mtgpu_softirq_ctrl;
 
 enum hw_module_type {
 	MTGPU_HW_MODULE_GPU = 0,
@@ -84,6 +85,12 @@ struct mtgpu_chip_info {
 	u32 llc_reg_offset;
 	u32 llc_reg_size;
 
+	u32 gpu_daa_reg_offset;
+	u32 gpu_daa_reg_size;
+
+	u32 gpu_misc_reg_offset;
+	u32 gpu_misc_reg_size;
+
 	u32 cursor_reserved_size;
 
 	u32 vps_debug_bar;
@@ -92,6 +99,23 @@ struct mtgpu_chip_info {
 	u32 gpu_core_num;
 
 	u64 ob_addr_flag;
+	u64 ob_addr_size;
+
+	u32 intd_cd_reg_offset;
+	u32 intd_cd_reg_size;
+	u32 pcie_mhi_reg_offset;
+	u32 pcie_mhi_reg_size;
+
+	u32 pfm_mmu_reg_offset;
+	u32 pfm_mmu_reg_size;
+	u32 pfm_ddrc_reg_offset;
+	u32 pfm_ddrc_reg_size;
+	u32 pfm_d2d_1_reg_offset;
+	u32 pfm_d2d_1_reg_size;
+	u32 pfm_d2d_0_reg_offset;
+	u32 pfm_d2d_0_reg_size;
+	u32 pfm_llc_reg_offset;
+	u32 pfm_llc_reg_size;
 };
 
 struct mtlink_private_data {
@@ -103,8 +127,7 @@ struct mtlink_private_data {
 struct mtgpu_driver_data {
 	struct mtgpu_chip_info *chip_info;
 	struct mtgpu_dma_ops *dma_ops;
-	struct mtgpu_intc_ops *intc_ops;
-	struct mtgpu_intd_ops *intd_ops;
+	struct mtgpu_int_ops *int_ops;
 	struct mtgpu_display_ops *disp_ops;
 	struct mtgpu_pcie_local_mgmt_ops *pcie_local_mgmt_ops;
 	struct mtgpu_sriov_ops *sriov_ops;
@@ -115,15 +138,16 @@ struct mtgpu_driver_data {
 	struct mtlink_ops *link_ops;
 	struct mtgpu_ob_ops *ob_ops;
 	struct mtgpu_gpu_ss_ops *gpu_ss_ops;
+	struct mtgpu_pfm_ops *pfm_ops;
 	int (*get_platform_device_info)(struct mtgpu_device *mtdev, u32 hw_module, u32 hw_id,
 					struct mtgpu_resource **mtgpu_res, u32 *num_res,
 					void **data, size_t *size_data);
 	int (*register_access_check)(struct mtgpu_device *mtdev);
+	int (*get_softirq_ctrls)(struct mtgpu_softirq_ctrl **softirq_ctrls, int *ctrls_cnt);
 };
 
 #define MT_OPS_DECLARE(name) \
-extern struct mtgpu_intc_ops name##_intc_ops; \
-extern struct mtgpu_intd_ops name##_intd_ops; \
+extern struct mtgpu_int_ops name##_int_ops; \
 extern struct mtgpu_llc_ops name##_llc_ops; \
 extern struct mtgpu_dma_ops name##_dma_ops; \
 extern struct mtgpu_sriov_ops name##_sriov_ops; \
@@ -134,6 +158,7 @@ extern struct mtgpu_smc_ops name##_smc_ops; \
 extern struct mtgpu_fec_ops name##_fec_ops; \
 extern struct mtlink_ops name##_mtlink_ops; \
 extern struct mtgpu_ob_ops name##_ob_ops; \
+extern struct mtgpu_pfm_ops name##_pfm_ops; \
 extern struct mtgpu_gpu_ss_ops name##_gpu_ss_ops;
 
 int mtgpu_resource_init_mem(struct mtgpu_resource *res, resource_size_t start,

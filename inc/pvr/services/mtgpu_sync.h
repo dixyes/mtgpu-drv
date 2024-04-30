@@ -42,6 +42,7 @@ mtgpu_sync_create_fence(PPVRSRV_DEVICE_NODE dev_node,
 			const char *fence_name,
 			u64 *fence_uid,
 			PSYNC_CHECKPOINT *sync_checkpoint_out);
+
 PVRSRV_ERROR
 mtgpu_sync_resolve_fence(PSYNC_CHECKPOINT_CONTEXT sync_checkpoint_ctx,
 			 struct _CONNECTION_DATA_ *conn,
@@ -49,7 +50,7 @@ mtgpu_sync_resolve_fence(PSYNC_CHECKPOINT_CONTEXT sync_checkpoint_ctx,
 			 struct drm_mtgpu_fence *check_fences,
 			 u32 check_fence_count,
 			 s32 foreign_fence_fd,
-			 u32 *checkpoint_count,
+			 u32 *checkpoint_count_out,
 			 PSYNC_CHECKPOINT **checkpoints_out,
 			 u64 **seqnos_out,
 			 u64 *fence_uid);
@@ -69,5 +70,10 @@ int mtgpu_sync_create_bo_for_checkpoint(struct drm_device *drm,
 					PSYNC_CHECKPOINT sync_checkpoint,
 					u32 *handle_out,
 					u64 *value_offset);
+
+int mtgpu_sync_get_checkpoint_from_fence(PPVRSRV_DEVICE_NODE dev_node,
+				         struct _CONNECTION_DATA_ *conn,
+				         struct drm_mtgpu_fence *fence,
+				         PSYNC_CHECKPOINT *sync_checkpoint_out);
 
 #endif /* __MTGPU_SYNC_H__ */

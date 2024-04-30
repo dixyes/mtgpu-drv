@@ -10,6 +10,9 @@
 
 struct drm_device;
 struct drm_file;
+struct _CONNECTION_DATA_;
+struct drm_mtgpu_fence;
+struct _HASH_TABLE_;
 
 //#define MTGPU_FENCE_DEBUG
 
@@ -48,6 +51,7 @@ struct mtgpu_fence {
 	struct SYNC_CHECKPOINT_TAG **dep_checkpoints;
 
 	struct list_head fence_head;
+	struct list_head signal_head;
 	struct dma_fence_cb *cb;
 	struct rcu_head rcu;
 };
@@ -68,9 +72,15 @@ struct mtgpu_fence_context {
 	spinlock_t *list_lock;
 	/* TODO: in debug request */
 	struct list_head fence_list;
+	struct list_head signal_list;
 	struct list_head deferred_free_list;
 
-	struct mtgpu_fence **fence_array;
+	/*
+	 * Pointer to handle hash table.
+	 *  The hash table is used to do reverse lookups, converting data
+	 *  pointers to handles.
+	 */
+	struct _HASH_TABLE_ *hash_table;
 	struct SYNC_CHECKPOINT_TAG *shared_checkpoint;
 	atomic64_t latest_seqno;
 
@@ -92,12 +102,14 @@ struct mtgpu_fence *mtgpu_fence_create(struct mtgpu_fence_context *fctx,
 				       int timeline_fd, const char *name);
 void mtgpu_fence_destroy(struct mtgpu_fence *mtgpu_fence);
 bool is_mtgpu_local_fence(struct dma_fence *fence);
-struct mtgpu_fence *mtgpu_fence_get(CONNECTION_DATA *conn, struct drm_mtgpu_fence *fence);
+struct mtgpu_fence *mtgpu_fence_get(struct _CONNECTION_DATA_ *conn, struct drm_mtgpu_fence *fence);
 int mtgpu_fence_free(struct _CONNECTION_DATA_ *conn, struct drm_mtgpu_fence *fence);
-
+int mtgpu_fence_get_checkpoints(struct mtgpu_fence **mtgpu_fences, u32 nr_fences,
+				struct SYNC_CHECKPOINT_TAG **fence_checkpoints);
 struct mtgpu_fence *
-mtgpu_foreign_fence_create(struct SYNC_CHECKPOINT_CONTEXT_TAG *sync_checkpoint_ctx,
-			   struct dma_fence *fence, PVRSRV_FENCE fence_fd, const char *name);
+mtgpu_create_fence_from_fence(struct mtgpu_fence_context *fctx,
+			      struct SYNC_CHECKPOINT_CONTEXT_TAG *sync_checkpoint_ctx,
+			      struct dma_fence *fence, PVRSRV_FENCE fence_fd, const char *name);
 
 int mtgpu_fence_wait_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
 int mtgpu_fence_to_fd_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);

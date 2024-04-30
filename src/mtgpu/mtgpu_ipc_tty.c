@@ -13,8 +13,6 @@
 
 #include "mtgpu_ipc_tty.h"
 
-#define IPC_TTY_COUNT	4
-
 struct mtgpu_ipc_tty {
 	struct tty_port port;
 	struct tty_driver *tty;
@@ -43,7 +41,11 @@ static void ipc_tty_hangup(struct tty_struct *tty)
 	tty_port_hangup(&ipc_tty->port);
 }
 
+#ifdef OS_TTY_OPERATIONS_USE_INT_WRITE
 static int ipc_tty_write(struct tty_struct *tty, const u8 *buf, int count)
+#else
+static ssize_t ipc_tty_write(struct tty_struct *tty, const u8 *buf, size_t count)
+#endif
 {
 	struct mtgpu_ipc_tty *ipc_tty = tty->driver_data;
 
@@ -96,11 +98,6 @@ void mtgpu_ipc_tty_handler(struct mtgpu_ipc_tty *ipctty, void *data)
 	if (!ipc_tty)
 		return;
 
-	if (d->dsize <= 0 || d->dsize > TTY_IPC_MSG_MAX_DATA_SIZE) {
-		dev_err(ipctty->dev, "%s err size 0x%x\n", __func__, d->dsize);
-		return;
-	}
-
 	/* find my ipc tty port */
 	ipc_tty += d->tty_idx;
 
@@ -111,7 +108,7 @@ void mtgpu_ipc_tty_handler(struct mtgpu_ipc_tty *ipctty, void *data)
 	tty_flip_buffer_push(&ipc_tty->port);
 
 	/* Filter extra tty format info and output. */
-	if (d->tty_idx < 2)
+	if (d->is_console)
 		dev_info(ipctty->dev, "[FEC] %.*s", d->dsize, d->data);
 }
 

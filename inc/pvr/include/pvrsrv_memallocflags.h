@@ -101,8 +101,8 @@ typedef IMG_UINT64 PVRSRV_MEMALLOCFLAGS_T;
  * | Shared-buffer  |
  *
  * --- Memory Alloc FLAGS ---
- * | 36             | 37                |
- * | Vram Only      | No MT-Link Access |
+ * | 36             | 37                | 38                |
+ * | Vram Only      | No MT-Link Access | Append Dummy Page |
  *
  * --- SEGMENT HINTS ---
  * |  53 54 55  |
@@ -658,6 +658,14 @@ typedef IMG_UINT64 PVRSRV_MEMALLOCFLAGS_T;
 #define PVRSRV_MEMALLOCFLAG_IS_VALID(uiFlags)		\
 	(PVRSRV_IS_NORMAL_MEM_FLAG(uiFlags) + PVRSRV_IS_SYSTEM_MEM_FLAG(uiFlags) + PVRSRV_IS_USER_MEM_FLAG(uiFlags) <= 1)
 
+/*!
+  @Description Flag to append dummy page when creating PMR.
+ */
+#define PVRSRV_MEMALLOCFLAG_APPEND_DUMMY_PAGE (1ULL << 38)
+
+#define PVRSRV_CHECK_APPEND_DUMMY_PAGE_REQUIRED(uiFlags) \
+	(((uiFlags) & PVRSRV_MEMALLOCFLAG_APPEND_DUMMY_PAGE) != 0U)
+
 /*
  *
  *  **********************************************************
@@ -962,6 +970,7 @@ typedef IMG_UINT64 PVRSRV_MEMALLOCFLAGS_T;
 					    PVRSRV_MEMALLOCFLAG_NO_OSPAGES_ON_ALLOC | \
 					    PVRSRV_MEMALLOCFLAG_SPARSE_NO_DUMMY_BACKING | \
 					    PVRSRV_MEMALLOCFLAG_SPARSE_ZERO_BACKING | \
+					    PVRSRV_MEMALLOCFLAG_APPEND_DUMMY_PAGE | \
 					    PVRSRV_MEMALLOCFLAG_VAL_SHARED_BUFFER | \
 					    PVRSRV_MEMALLOCFLAG_NORMAL_MEM | \
 					    PVRSRV_MEMALLOCFLAG_USER_MEM | \
@@ -980,6 +989,7 @@ typedef IMG_UINT64 PVRSRV_MEMALLOCFLAGS_T;
 					    PVRSRV_MEMALLOCFLAG_NO_OSPAGES_ON_ALLOC | \
 					    PVRSRV_MEMALLOCFLAG_SPARSE_NO_DUMMY_BACKING | \
 					    PVRSRV_MEMALLOCFLAG_SPARSE_ZERO_BACKING | \
+					    PVRSRV_MEMALLOCFLAG_APPEND_DUMMY_PAGE | \
 					    PVRSRV_MEMALLOCFLAG_VAL_SHARED_BUFFER | \
 					    PVRSRV_MEMALLOCFLAG_NORMAL_MEM | \
 					    PVRSRV_MEMALLOCFLAG_SYSTEM_MEM | \

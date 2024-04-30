@@ -51,14 +51,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 extern "C" {
 #endif
 
+typedef struct _HASH_TABLE_ HASH_TABLE;
+
 /*
  * Keys passed to the comparison function are only guaranteed to be aligned on
  * an uintptr_t boundary.
  */
 typedef IMG_UINT32 HASH_FUNC(size_t uKeySize, void *pKey, IMG_UINT32 uHashTabLen);
 typedef IMG_BOOL HASH_KEY_COMP(size_t uKeySize, void *pKey1, void *pKey2);
-
-typedef struct _HASH_TABLE_ HASH_TABLE;
+typedef IMG_BOOL HASH_RESIZE(HASH_TABLE *pHash, IMG_UINT32 uNewSize);
 
 typedef PVRSRV_ERROR (*HASH_pfnCallback) (
 	uintptr_t k,
@@ -83,6 +84,17 @@ typedef PVRSRV_ERROR (*HASH_pfnCallback) (
 IMG_UINT32 HASH_Func_Default(size_t uKeySize, void *pKey, IMG_UINT32 uHashTabLen);
 
 /*************************************************************************/ /*!
+@Function       HASH_Func_Seqno
+@Description    Hash function intended for hashing keys composed of uintptr_t
+                arrays.
+@Input          uKeySize     The size of the hash key, in bytes.
+@Input          pKey         A pointer to the key to hash.
+@Input          uHashTabLen  The length of the hash table.
+@Return         The hash value.
+*/ /**************************************************************************/
+IMG_UINT32 HASH_Func_Seqno(size_t uKeySize, void *pKey, IMG_UINT32 uHashTabLen);
+
+/*************************************************************************/ /*!
 @Function       HASH_Key_Comp_Default
 @Description    Compares keys composed of uintptr_t arrays.
 @Input          uKeySize     The size of the hash key, in bytes.
@@ -94,6 +106,19 @@ IMG_UINT32 HASH_Func_Default(size_t uKeySize, void *pKey, IMG_UINT32 uHashTabLen
 IMG_BOOL HASH_Key_Comp_Default(size_t uKeySize, void *pKey1, void *pKey2);
 
 /*************************************************************************/ /*!
+@Function       HASH_Resize_Default
+@Description    Attempt to resize a hash table, failure to allocate a new
+                larger hash table is not considered a hard failure. We simply
+                continue and allow the table to fill up, the effect is to
+                allow hash chains to become longer.
+@Input          pHash        Hash table to resize.
+@Input          uNewSize     Required table size.
+@Return         IMG_TRUE Success
+                IMG_FALSE Failed
+*/ /**************************************************************************/
+IMG_BOOL HASH_Resize_Default(HASH_TABLE *pHash, IMG_UINT32 uNewSize);
+
+/*************************************************************************/ /*!
 @Function       HASH_Create_Extended
 @Description    Create a self scaling hash table, using the supplied key size,
                 and the supplied hash and key comparison functions.
@@ -103,15 +128,17 @@ IMG_BOOL HASH_Key_Comp_Default(size_t uKeySize, void *pKey1, void *pKey2);
 @Input          uKeySize     The size of the key, in bytes.
 @Input          pfnHashFunc  Pointer to hash function.
 @Input          pfnKeyComp   Pointer to key comparison function.
+@Input          pfnResize    Pointer to Resize function.
 @Return         NULL or hash table handle.
 */ /**************************************************************************/
-HASH_TABLE * HASH_Create_Extended_Int(IMG_UINT32 uInitialLen, size_t uKeySize, HASH_FUNC *pfnHashFunc, HASH_KEY_COMP *pfnKeyComp);
+HASH_TABLE * HASH_Create_Extended_Int(IMG_UINT32 uInitialLen, size_t uKeySize, HASH_FUNC *pfnHashFunc,
+				      HASH_KEY_COMP *pfnKeyComp, HASH_RESIZE *pfnResize);
 #if defined(DEBUG)
 #define HASH_Create_Extended(LEN, KS, FUN, CMP)		HASH_Create_Extended_Debug(LEN, KS, FUN, CMP, __FILE__, __LINE__)
 HASH_TABLE * HASH_Create_Extended_Debug (IMG_UINT32 uInitialLen, size_t uKeySize, HASH_FUNC *pfnHashFunc, HASH_KEY_COMP *pfnKeyComp,
 										 const char *file, const unsigned int line);
 #else
-#define HASH_Create_Extended	HASH_Create_Extended_Int
+#define HASH_Create_Extended(LEN, KS, FUN, CMP) HASH_Create_Extended_Int(LEN, KS, FUN, CMP, &HASH_Resize_Default)
 #endif
 
 /*************************************************************************/ /*!

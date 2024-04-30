@@ -58,6 +58,9 @@ struct drm_gem_object;
 struct mtgpu_gem_object;
 struct vm_area_struct;
 struct dma_buf;
+struct iommu_group;
+struct iommu_domain;
+struct iova_domain;
 
 struct mt_chip;
 
@@ -101,6 +104,7 @@ struct mt_node {
 	struct drm_gem_object *obj;
 	struct list_head list;
 	u64 dev_addr;
+	u64 size;
 	void *vir_addr;
 	void *bak_addr;
 	void *handle;
@@ -108,6 +112,7 @@ struct mt_node {
 	struct dma_buf *ion_buf;
 #endif
 	u32 pool_id;
+	dma_addr_t iova_addr;
 };
 
 struct mt_core {
@@ -223,6 +228,9 @@ struct mt_chip {
 
 	struct drm_device *drm_host; /* for host use */
 
+	u32 inst_cnt;
+	struct mutex *inst_cnt_lock;
+
 #ifdef SOC_MODE
 	struct drm_mm *mm;
 #endif
@@ -272,6 +280,10 @@ struct mt_chip {
 	struct timer_list *timer;
 
 	struct semaphore *jpu_core_sema;
+
+	struct iommu_group *io_group;
+	struct iommu_domain *io_domain;
+	struct iova_domain *iova_domain;
 };
 
 struct mt_open {
@@ -297,6 +309,7 @@ int vpu_init_irq(struct mt_chip *chip, struct platform_device *pdev);
 int vpu_init_mpc(struct mt_chip *chip);
 void vpu_free_irq(struct mt_chip *chip);
 int vpu_load_firmware(struct mt_chip *chip, int idx, struct mt_virm *vm);
+void vpu_report_power_state(struct mt_chip *chip, int inst_cnt_change);
 int vpu_check_fw_version(struct mt_chip *chip, int idx);
 int vpu_host_thread_group1(void *arg);
 int vpu_host_thread_group2(void *arg);

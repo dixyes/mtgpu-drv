@@ -139,7 +139,8 @@ int vdi_get_debug_log_addr(Uint32 coreIdx, vpu_buffer_t* vb);
 
 int vdi_hw_reset(Uint32 coreIdx);
 int vdi_set_clock_gate(Uint32 coreIdx, int enable);
-int vdi_get_high_addr(Uint32 coreIdx);
+int vdi_get_vcpu_high_addr(Uint32 coreIdx);
+int vdi_get_vcore_high_addr(Uint32 coreIdx, Uint32 instid);
 int vdi_set_bit_firmware_to_pm(Uint32 coreIdx, const Uint16 *code);
 
 int vdi_wait_interrupt(Uint32 coreIdx, Uint32 instIdx, int timeout);

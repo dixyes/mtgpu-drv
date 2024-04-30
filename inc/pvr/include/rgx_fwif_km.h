@@ -561,7 +561,7 @@ typedef struct
 #define RGXFWIF_INICFG_HWPERF_EN							(IMG_UINT32_C(0x1) << 2)
 #define RGXFWIF_INICFG_DM_KILL_MODE_RAND_EN					(IMG_UINT32_C(0x1) << 3)	/*!< Randomise DM-killing requests */
 #define RGXFWIF_INICFG_POW_RASCALDUST						(IMG_UINT32_C(0x1) << 4)
-/* 5 unused */
+#define RGXFWIF_INICFG_DISABLE_CE						(IMG_UINT32_C(0x1) << 5)
 #define RGXFWIF_INICFG_FBCDC_V3_1_EN						(IMG_UINT32_C(0x1) << 6)
 #define RGXFWIF_INICFG_CHECK_MLIST_EN						(IMG_UINT32_C(0x1) << 7)
 #define RGXFWIF_INICFG_DISABLE_CLKGATING_EN					(IMG_UINT32_C(0x1) << 8)
@@ -1379,58 +1379,155 @@ typedef enum
 /*
  * Performance monitor (PFM) data structures
  */
-typedef enum _PFM_REQUEST_TYPE_
+typedef enum
 {
-	PFM_REQUEST_SET_MEM_CTX,
-	PFM_REQUEST_POLL_IDLE,
-	PFM_REQUEST_GLOBAL_CONFIG,	// Performs setting memory context and polling idle at the beginning
-	PFM_REQUEST_INSTANCE_CONFIG,	// Performs polling idle at the beginning
-	PFM_REQUEST_WRAPPER_CONFIG,	// Performs polling idle at the beginning
-	PFM_REQUEST_SWITCH_PFM,
-	PFM_REQUEST_RESET_ALL,		// Restores PFM registers to default
-} PFM_REQUEST_TYPE;
+	RGXFWIF_PFM_REQUEST_INIT_CONFIG,
+	RGXFWIF_PFM_REQUEST_GLOBAL_CONFIG,
+	RGXFWIF_PFM_REQUEST_INSTANCE_CONFIG,
+	RGXFWIF_PFM_REQUEST_WRAPPER_CONFIG,
+	RGXFWIF_PFM_REQUEST_SWITCH,
+	RGXFWIF_PFM_REQUEST_RESET_ALL, // Disable All PFM
+} RGXFWIF_PFM_REQUEST_TYPE;
 
-typedef struct _RGXFWIF_PFM_GLOBAL_CONFIG_
+typedef struct
 {
-	IMG_BOOL bEnablePFM;       	// Enable perf_event counting
-	IMG_UINT64 ui64PcBaseAddr;      	// Page table physical address
-	IMG_UINT32 ui32TimeInterval;    	// Cycle unit of interval mode dump
-	IMG_UINT32 ui32NumPages;        	// Number of 4KB pages
+	IMG_BOOL bEnablePFM;
+	IMG_UINT32 ui32BufferCtrl;
+	IMG_UINT32 ui32MssCtl;
+	IMG_UINT32 ui32ContextID;
+} RGXFWIF_PFM_GLOBAL_CONFIG_PH1;
+
+typedef struct
+{
+	IMG_BOOL bEnablePFM; // Enable perf_event counting
+	IMG_UINT32 ui32TimeInterval; // Cycle unit of interval mode dump
+	IMG_UINT32 ui32NumPages; // Number of 4KB pages
 	IMG_UINT32 ui32PointerUpdateFreq; // Frequency of counter pointer dump
+	IMG_UINT32 ui32ContextID;
+} RGXFWIF_PFM_GLOBAL_CONFIG_QY2;
+
+typedef struct
+{
+	union
+	{
+		RGXFWIF_PFM_GLOBAL_CONFIG_QY2 sPFMGlobalCfgQY2;
+		RGXFWIF_PFM_GLOBAL_CONFIG_PH1 sPFMGlobalCfgPH1;
+	} uConfig;
 } RGXFWIF_PFM_GLOBAL_CONFIG;
 
-typedef struct _RGXFWIF_PFM_INSTANCE_CONFIG_
+typedef struct
+{
+	IMG_UINT32 ui32Instance;
+	IMG_UINT32 ui32MemLayoutCtrl;
+	IMG_UINT64 ui64CountBaseAddr;
+	IMG_UINT64 ui64PointerAddr;
+	IMG_UINT64 ui64Config;
+	IMG_UINT64 ui64TrigCtrl;
+	IMG_UINT32 aui32Group;
+} RGXFWIF_PFM_INSTANCE_CONFIG_PH1;
+
+typedef struct
 {
 	IMG_UINT32 ui32CoreId;
-	IMG_UINT64 ui64GroupSelc;			// 0 for group 0
-	IMG_UINT32 ui32WrapperSelc;		// Mind the validity of the combination of wrapper and instance
-	IMG_UINT32 ui32InstanceSelc;		// One-hot encoding, takes effect for all the wrappers selected
-	IMG_UINT64 ui64CounterBufferAddr;		// Unique for each instance
-	IMG_UINT64 ui64PointerBufferAddr;		// Unique for each instance
+	IMG_UINT32 ui32WrapperSelc; // Mind the validity of the combination of wrapper and instance
+	IMG_UINT32 ui32InstanceSelc; // One-hot encoding, takes effect for all the wrappers selected
+	IMG_UINT64 ui64CounterBufferAddr; // Unique for each instance
+	IMG_UINT64 ui64PointerBufferAddr; // Unique for each instance
+} RGXFWIF_PFM_INSTANCE_CONFIG_QY2;
+
+typedef struct
+{
+	union
+	{
+		RGXFWIF_PFM_INSTANCE_CONFIG_QY2 sPFMInstCfgQY2;
+		RGXFWIF_PFM_INSTANCE_CONFIG_PH1 sPFMInstCfgPH1;
+	} uConfig;
 } RGXFWIF_PFM_INSTANCE_CONFIG;
 
-/*
- * The values of the enumerators are the exact signals of the trigger register in HW design
- * Do NOT alter
- */
-typedef enum _RGXFWIF_PFM_DUMP_TRIG_
+typedef struct
 {
-	PFM_DUMP_IDLE       = 0x0, // No operation
-	PFM_NORM_DUMP_START = 0x1, // SET_NORM and DUMP_START
-	PFM_NORM_DUMP_ONCE  = 0x2, // Only works for normal mode
-	PFM_NORM_DUMP_END   = 0x3, // SET_NORM and DUMP_END
-	PFM_INTV_DUMP_START = 0x5, // SET_INTV and DUMP_START
-	PFM_INTV_DUMP_END   = 0x7, // SET_INTV and DUMP_END
-} RGXFWIF_PFM_DUMP_TRIG;
+	IMG_UINT32 ui32CoreId;
+	IMG_UINT32 ui32Wrapper;
+	IMG_UINT32 ui32Count;
+	RGXFWIF_DEV_VIRTADDR sFWWrapCfgs;
+} RGXFWIF_PFM_WRAPPER_CONFIG_PH1;
+
+typedef struct
+{
+	IMG_UINT32 ui32CoreId;
+	IMG_UINT32 ui32WrapperSelc;
+	IMG_UINT32 ui32InstanceSelc;
+	IMG_UINT64 ui64GroupSelc;
+} RGXFWIF_PFM_WRAPPER_CONFIG_QY2;
+
+typedef struct
+{
+	union
+	{
+		RGXFWIF_PFM_WRAPPER_CONFIG_QY2 sPFMWrapCfgQY2;
+		RGXFWIF_PFM_WRAPPER_CONFIG_PH1 sPFMWrapCfgPH1;
+	} uConfig;
+} RGXFWIF_PFM_WRAPPER_CONFIG;
+
+typedef enum
+{
+	RGXFWIF_PFM_NORM_DUMP_START,
+	RGXFWIF_PFM_NORM_DUMP_ONCE,
+	RGXFWIF_PFM_NORM_DUMP_END,
+	RGXFWIF_PFM_INTV_DUMP_START,
+	RGXFWIF_PFM_INTV_DUMP_END,
+} RGXFWIF_PFM_DUMP_CONTROL;
+
+typedef enum
+{
+	RGXFWIF_PFM_DUMP_GPU,
+	RGXFWIF_PFM_DUMP_CMSS,
+} RGXFWIF_PFM_DUMP_TYPE;
+
+typedef struct
+{
+	RGXFWIF_PFM_DUMP_TYPE eDumpType;
+	RGXFWIF_PFM_DUMP_CONTROL eDumpCtrl;
+} RGXFWIF_PFM_DUMP_TRIG_CONFIG;
+
+typedef enum
+{
+	RGXFWIF_PFM_ARCH_TYPE_QY2,
+	RGXFWIF_PFM_ARCH_TYPE_PH1,
+} RGXFWIF_PFM_ARCH_TYPE;
+
+typedef struct
+{
+	IMG_UINT64 ui64PcBaseAddr;
+	RGXFWIF_DEV_VIRTADDR sFwPFMContextID;
+	IMG_UINT32 ui32PfmCMSSCtrl;
+} RGXFWIF_PFM_INIT_CONFIG_PH1;
+
+typedef struct
+{
+	IMG_UINT64 ui64PcBaseAddr;
+	RGXFWIF_DEV_VIRTADDR sFwPFMContextID;
+} RGXFWIF_PFM_INIT_CONFIG_QY2;
+
+typedef struct
+{
+	union
+	{
+		RGXFWIF_PFM_INIT_CONFIG_QY2 sPFMInitCfgQY2;
+		RGXFWIF_PFM_INIT_CONFIG_PH1 sPFMInitCfgPH1;
+	} uConfig;
+} RGXFWIF_PFM_INIT_CONFIG;
 
 typedef struct _RGXFWIF_HWPERF_PFM_DATA_
 {
-	PFM_REQUEST_TYPE eType;
+	RGXFWIF_PFM_REQUEST_TYPE eType;
 	union
 	{
-		RGXFWIF_PFM_GLOBAL_CONFIG	sPFMGlobalCfg;
-		RGXFWIF_PFM_INSTANCE_CONFIG	sPFMInstanceCfg;
-		RGXFWIF_PFM_DUMP_TRIG		ePFMDumpTrig;
+		RGXFWIF_PFM_INIT_CONFIG sPFMInitCfg;
+		RGXFWIF_PFM_GLOBAL_CONFIG sPFMGlobalCfg;
+		RGXFWIF_PFM_INSTANCE_CONFIG sPFMInstCfg;
+		RGXFWIF_PFM_WRAPPER_CONFIG sPFMWrapCfg;
+		RGXFWIF_PFM_DUMP_TRIG_CONFIG sPFMDumpTrig;
 	} uCmdData;
 } RGXFWIF_HWPERF_PFM_CTRL;
 

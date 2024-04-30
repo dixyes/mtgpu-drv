@@ -453,7 +453,7 @@ typedef struct _MMU_DEVICEATTRIBS_
 			     const MMU_DEVVADDR_CONFIG  *psDevVAddrConfig,
 			     MMU_Levelx_INFO           **ppsLevel,
 			     IMG_UINT32                 *pui32PTEIndex);
-	IMG_UINT32 (*pfnCalPTContinous)(IMG_DEV_VIRTADDR *psDevVAddr, IMG_UINT32 uiPageSize,
+	IMG_UINT32 (*pfnCalPTContinous)(IMG_DEV_VIRTADDR *psDevVAddr, IMG_UINT64 uiPageSize,
                                         IMG_UINT32 uiLeftLength, IMG_UINT64 *ui64Port);
 	IMG_UINT64 (*pfnGetConfigRangeValue)(IMG_UINT32 ui32DataPageSize, IMG_UINT64 ui64BaseAddress, IMG_UINT64 ui64RangeSize);
 	/* Private data handle */
@@ -623,8 +623,7 @@ MMU_MapPages(MMU_CONTEXT *psMMUContext,
 	     IMG_UINT32 ui32PhysPgOffset,
 	     IMG_UINT32 ui32MapPageCount,
 	     IMG_UINT32 *paui32MapIndices,
-	     IMG_UINT32 uiLog2PageSize
-	     );
+	     IMG_UINT32 uiLog2PageSize);
 
 /*************************************************************************/ /*!
 @Function       MMU_UnmapPages
@@ -686,7 +685,8 @@ MMU_MapPMRFast(MMU_CONTEXT *psMMUContext,
 	       const PMR *psPMR,
 	       IMG_UINT32 uiPageNums,
 	       PVRSRV_MEMALLOCFLAGS_T uiMappingFlags,
-	       IMG_UINT32 uiLog2PageSize);
+	       IMG_UINT32 uiLog2PageSize,
+	       DEVMEM_INTERLEAVE_RATIO *psInterleaveRatio);
 
 /*************************************************************************/ /*!
 @Function       MMU_UnmapPMRFast

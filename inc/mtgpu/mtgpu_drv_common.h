@@ -24,7 +24,9 @@ int mtgpu_pm_resume_early(struct device *dev);
 int mtgpu_pm_suspend(struct device *dev);
 int mtgpu_pm_suspend_late(struct device *dev);
 int mtgpu_probe(struct pci_dev *pdev, const struct pci_device_id *id);
-
 void mtgpu_remove(struct pci_dev *pdev);
+void mtgpu_shutdown(struct pci_dev *pdev);
+int mtgpu_platform_probe(struct platform_device *pdev);
+int mtgpu_platform_remove(struct platform_device *pdev);
 
 #endif /*__MTGPU_DRV_COMMON_H__*/

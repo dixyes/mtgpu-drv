@@ -2246,6 +2246,7 @@ PVRIC FBC Mode
 */
     int              pvricFbcMode;
     Uint32           pri40bitBase; /**< 8bit BASE for PRI_AXI when 40bit addressing is enabled. (CODA/WAVE5 only) */
+    Uint32           vcore40bitBase; /**< 8bit BASE for VCORE when 40bit addressing is enabled. (WAVE5 only) */
 /**
 @verbatim
 
@@ -5242,9 +5243,12 @@ VPU core index number
     Uint32          extAddrVcpu;   /**< AXI address extension of vCPU DMA. (WAVE6 only) */
     Uint32          extAddrFbcFbd; /**< AXI address extension of Compressed frame buffer DMA. (WAVE6 only) */
     Uint32          extAddrSrcBwb; /**< AXI address extension of Uncompressed frame buffer. (WAVE6 only) */
-    Uint32          extAddrGdma0;  /**< AXI address extension of Gerneral DMA0. (WAVE6 only) */
-    Uint32          extAddrGdma1;  /**< AXI address extension of Gerneral DMA1. (WAVE6 only) */
-    Uint32          extAddrSmda;   /**< AXI address extension of SDMA. (WAVE6 only) */
+    Uint32          extAddrGdma0;  /**< AXI address extension of Gerneral DMA0(CME). (WAVE6 only) */
+    Uint32          extAddrGdma1;  /**< AXI address extension of Gerneral DMA1(LF_TILE). (WAVE6 only) */
+    Uint32          extAddrSdma;   /**< AXI address extension of SDMA. (WAVE6 only) */
+    Uint32          extAddrRDOCol; /**< AXI address extension of RDO COL(MV COL). (WAVE6 only) */
+    Uint32          extAddrRDONB;  /**< AXI address extension of RDO NB(temp buffer). (WAVE6 only) */
+    Uint32          extAddrLFNB;   /**< AXI address extension of LF NB(temp buffer). (WAVE6 only) */
     BOOL            vaEnable; /**< It enables VA-API interface. */
 #ifdef SUPPORT_ENC_SCALER
     EncScalerInfo   scalerInfo; /**< <<vpuapi_h_EncScalerInfo>> */
@@ -6363,6 +6367,11 @@ RetCode VPU_DecUpdateFrameBuffer(
     Int32         mvColIndex, /**< [Input] The new co-located motion vector buffer index  */
     Int32         picWidth,   /**< [Input] The new frame width */
     Int32         picHeight   /**< [Input] The new frame height */
+    );
+
+RetCode VPU_DecUpdateLinearBuffer(
+    DecHandle     handle,          /**< [Input] A decoder handle obtained from VPU_DecOpen() */
+    Int32         renderNumUpdate  /**< [Input] how many render target need to update */
     );
 
 /**

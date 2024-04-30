@@ -32,6 +32,8 @@
 #define SUPPORT_INTERRUPT
 #endif
 
+//#define SUPPORT_SMMU
+
 /* CODA980 */
 #define CODA980
 

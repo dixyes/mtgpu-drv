@@ -83,6 +83,12 @@
 	X(PCI_MSI_ADDRESS_HI)\
 	X(PCI_MSI_DATA_64)\
 	X(PCI_EXT_CAP_ID_REBAR)\
+	X(PCI_EXT_CAP_ID_SECPCI)\
+	X(PCI_ERR_ROOT_STATUS)\
+	X(PCI_ERR_COR_STATUS)\
+	X(PCI_ERR_UNCOR_STATUS)\
+	X(PCI_ERR_COR_REP_ROLL)\
+	X(PCI_ERR_COR_REP_TIMER)\
 	X(PCI_REBAR_CTRL)\
 	X(PCI_REBAR_CTRL_NBAR_MASK)\
 	X(PCI_REBAR_CTRL_NBAR_SHIFT)\
@@ -114,12 +120,19 @@
 	X(PCI_STATUS_66MHZ)\
 	X(PCI_STATUS_FAST_BACK)\
 	X(PCI_STATUS_CAP_LIST)\
+	X(PCI_STATUS_PARITY)\
+	X(PCI_STATUS_SIG_TARGET_ABORT)\
+	X(PCI_STATUS_REC_TARGET_ABORT)\
+	X(PCI_STATUS_REC_MASTER_ABORT)\
+	X(PCI_STATUS_SIG_SYSTEM_ERROR)\
+	X(PCI_STATUS_DETECTED_PARITY)\
 	X(PCI_CLASS_DEVICE)\
 	X(PCI_CLASS_DISPLAY_VGA)\
 	X(PCI_CLASS_DISPLAY_3D)\
 	X(PCI_CLASS_REVISION)\
 	X(PCI_CAP_ID_MSI)\
 	X(PCI_CAP_ID_EXP)\
+	X(PCI_EXT_CAP_ID_VNDR)\
 	X(PCI_CAP_EXP_ENDPOINT_SIZEOF_V1)\
 	X(PCI_CAP_LIST_ID)\
 	X(PCI_CAP_LIST_NEXT)\
@@ -140,11 +153,15 @@
 	X(PCI_EXP_FLAGS)\
 	X(PCI_EXP_FLAGS_VERS)\
 	X(PCI_EXP_FLAGS_TYPE)\
+	X(PCI_EXP_DEVSTA)\
 	X(PCI_EXP_DEVCAP)\
 	X(PCI_EXP_DEVCAP_FLR)\
 	X(PCI_EXP_DEVCTL)\
 	X(PCI_EXP_DEVCTL_BCR_FLR)\
 	X(PCI_EXP_TYPE_ENDPOINT)\
+	X(PCI_EXP_TYPE_ROOT_PORT)\
+	X(PCI_EXP_TYPE_RC_EC)\
+	X(PCIE_SPEED_2_5GT)\
 	X(PCI_STD_HEADER_SIZEOF)\
 	X(IRQF_SHARED)\
 	X(MODE_OK)\
@@ -164,11 +181,15 @@
 	X(O_TRUNC)\
 	X(O_CREAT)\
 	X(O_CLOEXEC)\
+	X(O_NOFOLLOW)\
+	X(O_LARGEFILE)\
+	X(O_EXCL)\
 	X(EPOLLIN)\
 	X(EPOLLHUP)\
 	X(GFP_DMA)\
 	X(GFP_KERNEL)\
 	X(GFP_ATOMIC)\
+	X(GFP_NOWAIT)\
 	X(PIDTYPE_PID)\
 	X(VM_EXEC)\
 	X(VM_LOCKED)\
@@ -206,6 +227,8 @@
 	X(ENOTTY)\
 	X(ERANGE)\
 	X(ESPIPE)\
+	X(EDEADLK)\
+	X(EINTR)\
 	X(IRQ_HANDLED)\
 	X(IRQ_NONE)\
 	X(IRQF_TRIGGER_NONE)\
@@ -221,6 +244,7 @@
 	X(SIGINT)\
 	X(SZ_4K)\
 	X(SZ_1M)\
+	X(SZ_1G)\
 	X(NOTIFY_OK)\
 	X(MAX_ORDER)\
 	X(__GFP_COMP)\
@@ -280,6 +304,7 @@ enum {
 
 struct mutex;
 struct semaphore;
+struct completion;
 typedef struct spinlock spinlock_t;
 struct kfifo;
 struct wait_queue_head;
@@ -349,6 +374,9 @@ struct dma_fence;
 struct dma_fence_array;
 struct dma_fence_ops;
 struct dma_fence_cb;
+struct dma_resv;
+struct ww_acquire_ctx;
+struct ww_mutex;
 typedef void (*dma_fence_func_t)(struct dma_fence *fence, struct dma_fence_cb *cb);
 struct sync_file;
 struct kmem_cache;
@@ -573,6 +601,7 @@ struct device *os_get_dma_buf_attachment_device(struct dma_buf_attachment *attac
 struct device *os_get_device_parent(struct device *dev);
 
 bool os_dev_is_pci(struct device *dev);
+int os_dev_to_node(struct device *dev);
 struct pci_dev *os_to_pci_dev(struct device *dev);
 struct kobject *os_get_device_kobj(struct device *dev);
 void os_device_lock(struct device *dev);
@@ -654,7 +683,9 @@ unsigned long os_get_vm_area_struct_vm_flags(struct vm_area_struct *vma);
 unsigned long os_get_vm_area_struct_vm_page_prot(struct vm_area_struct *vma);
 unsigned long os_get_vm_area_struct_vm_pgoff(struct vm_area_struct *vma);
 struct file *os_get_vm_area_struct_vm_file(struct vm_area_struct *vma);
+void os_set_vm_area_struct_vm_pgoff(struct vm_area_struct *vma, unsigned long vm_pgoff);
 void os_set_vm_area_struct_vm_flags(struct vm_area_struct *vma, unsigned long flag);
+void os_set_vm_area_struct_vm_page_prot_writecombine(struct vm_area_struct *vma);
 
 void *os_memset(void *s, int c, size_t count);
 void *os_memcpy(void *dst, const void *src, size_t size);
@@ -761,6 +792,12 @@ int os_sema_create(struct semaphore **sem, int val);
 void os_up(struct semaphore *sem);
 int os_down_timeout(struct semaphore *sem, long timeout);
 void os_sema_destroy(struct semaphore *sem);
+
+int os_completion_create(struct completion **x);
+void os_completion_destroy(struct completion *x);
+void os_wait_for_completion(struct completion *x);
+unsigned long os_wait_for_completion_timeout(struct completion *x, unsigned long timeout);
+void os_complete(struct completion *x);
 
 unsigned long os_get_jiffies(void);
 unsigned long os_msecs_to_jiffies(const unsigned int m);
@@ -872,7 +909,6 @@ void os_get_file(struct file *filp);
 void os_fput(struct file *filp);
 
 void os_init_work(struct work_struct *work, work_func_t func);
-bool os_schedule_work(struct work_struct *work);
 bool os_flush_work(struct work_struct *work);
 bool os_cancel_work_sync(struct work_struct *work);
 bool os_schedule_delayed_work(struct delayed_work *dwork, unsigned long delay);
@@ -881,6 +917,7 @@ struct task_struct *os_kthread_create(int (*threadfn)(void *data),
 int os_kthread_stop(struct task_struct *k);
 bool os_kthread_should_stop(void);
 int os_wake_up_process(struct task_struct *p);
+void os_cond_resched(void);
 
 void os_wmb(void);
 void os_mb(void);
@@ -965,6 +1002,8 @@ int os_pci_write_config_dword(const struct pci_dev *dev, int where, u32 val);
 void os_pci_release_resource(struct pci_dev *dev, int resno);
 int os_pci_resize_resource(struct pci_dev *dev, int resno, int size);
 void os_pci_assign_unassigned_bus_resources(struct pci_bus *bus);
+u64 os_pci_get_pcie_replay_rollover(struct pci_dev *pdev);
+u64 os_pci_get_pcie_replay_timeout(struct pci_dev *pdev);
 int os_pci_enable_pcie_error_reporting(struct pci_dev *pdev);
 int os_pci_disable_pcie_error_reporting(struct pci_dev *pdev);
 struct resource *os_pci_bus_resource_n(const struct pci_bus *bus, int n);
@@ -992,8 +1031,18 @@ bool os_pci_has_same_root_port(struct pci_dev *pdev1, struct pci_dev *pdev2);
 bool os_pci_is_under_same_switch(struct pci_dev *pdev1,
 				 struct pci_dev *pdev2);
 
+int os_pcie_capability_read_word(struct pci_dev *pdev, int where, u16 *val);
 int os_pcie_capability_read_dword(struct pci_dev *dev, int where, u32 *val);
+int os_pcie_capability_write_word(struct pci_dev *pdev, int where, u16 val);
 int os_pcie_capability_set_word(struct pci_dev *dev, int where, u16 set);
+u32 os_pcie_bandwidth_available(struct pci_dev *dev, struct pci_dev **limiting_dev,
+				void *speed, void *width);
+
+u16 os_pci_get_aer_cap(struct pci_dev *pdev);
+
+int os_pci_pcie_type(const struct pci_dev *pdev);
+bool os_pci_is_pcie(struct pci_dev *pdev);
+int os_pci_status_get_and_clear_errors(struct pci_dev *pdev);
 
 struct resource *os_request_region(resource_size_t start,
 				   resource_size_t n,
@@ -1063,6 +1112,7 @@ int os_unregister_pm_notifier(struct notifier_block *nb);
 
 void os_dma_buf_put(struct dma_buf *dmabuf);
 struct dma_buf *os_dma_buf_get(int fd);
+struct dma_resv *os_get_dma_buf_resv(struct dma_buf *dmabuf);
 void *os_get_dmabuf_from_attachment(struct dma_buf_attachment *attach);
 int os_dma_set_mask_and_coherent(struct device *dev, u64 mask);
 void *os_dma_alloc_coherent(struct device *dev, size_t size, dma_addr_t *dma_handle, gfp_t gfp);
@@ -1088,6 +1138,7 @@ void os_destroy_timer(struct timer_list *timer);
 
 u64 os_kclock_ns64(void);
 u64 os_ktime_get_ns(void);
+u64 os_ktime_get_sec(void);
 
 void os_ktime_get_real_tm(struct mt_tm *mt_time, int offset);
 
@@ -1144,6 +1195,7 @@ int OS_READ_ONCE(int *val);
 bool OS_WARN_ON(bool condition);
 bool OS_WARN_ON_ONCE(bool condition);
 void OS_BUG_ON(bool condition);
+void os_dump_stack(void);
 
 int os_sscanf(const char *str, const char *fmt, ...);
 size_t os_strlen(const char *s);
@@ -1164,6 +1216,7 @@ char *os_strtrim(char *src);
 int os_iommu_map(struct iommu_domain *domain, unsigned long iova,
 		 phys_addr_t paddr, size_t size, int prot);
 size_t os_iommu_unmap(struct iommu_domain *domain, unsigned long iova, size_t size);
+u64 os_iommu_iova_to_phys(struct iommu_domain *domain, u64 iova);
 void os_iommu_group_put(struct iommu_group *group);
 int os_iommu_group_id(struct iommu_group *group);
 struct iommu_group *os_iommu_group_get(struct device *dev);
@@ -1174,6 +1227,7 @@ void os_iommu_domain_free(struct iommu_domain *domain);
 struct iommu_domain *os_iommu_get_domain_for_dev(struct device *dev);
 unsigned int os_get_iommu_domain_type(struct iommu_domain *domain);
 bool os_iommu_present(struct bus_type *bus);
+bool os_virt_addr_valid(void *address);
 phys_addr_t os_virt_to_phys(void *address);
 
 struct device *os_get_dev_parent_parent(struct device *dev);
@@ -1216,6 +1270,29 @@ bool os_dma_fence_is_signaled(struct dma_fence *fence);
 u64 os_dma_fence_context_alloc(unsigned num);
 int os_dma_fence_add_callback(struct dma_fence *fence, struct dma_fence_cb *cb,
 			      dma_fence_func_t func);
+signed long os_dma_fence_wait(struct dma_fence *fence, bool intr);
+void os_dma_fence_enable_sw_signaling(struct dma_fence *fence);
+int os_dma_resv_reserve_shared(struct dma_resv *obj, unsigned int num_fences);
+struct ww_mutex *os_dma_resv_get_ww_mutex(struct dma_resv *resv);
+void os_dma_resv_add_excl_fence(struct dma_resv *obj, struct dma_fence *fence);
+void os_dma_resv_add_shared_fence(struct dma_resv *obj, struct dma_fence *fence);
+int os_dma_resv_get_fences(struct dma_resv *obj,
+			   struct dma_fence **pfence_excl,
+			   unsigned int *num_fences,
+			   struct dma_fence ***pfences,
+			   bool usage_write,
+			   bool *fence_overall);
+struct ww_class *os_get_reservation_ww_class(void);
+struct ww_acquire_ctx *os_ww_acquire_ctx_create(void);
+void os_ww_acquire_ctx_destroy(struct ww_acquire_ctx *acquire_ctx);
+void os_ww_acquire_init(struct ww_acquire_ctx *ctx, struct ww_class *ww_class);
+int os_ww_mutex_lock_interruptible(struct ww_mutex *lock, struct ww_acquire_ctx *ctx);
+void os_ww_acquire_done(struct ww_acquire_ctx *ctx);
+void os_ww_mutex_unlock(struct ww_mutex *lock);
+void os_ww_acquire_fini(struct ww_acquire_ctx *ctx);
+int os_ww_mutex_lock_slow_interruptible(struct ww_mutex *lock,
+					struct ww_acquire_ctx *ctx);
+
 int os_get_unused_fd_flags(unsigned flag);
 void os_fd_install_sync_file(int fd, struct sync_file *sync_file);
 struct sync_file *os_sync_file_create(struct dma_fence *fence);
@@ -1245,8 +1322,10 @@ unsigned long os_bitmap_find_next_zero_area(unsigned long *map,
 					    unsigned long start,
 					    unsigned int nr,
 					    unsigned long align_mask);
+int os_test_bit(int nr, const volatile unsigned long *addr);
 
 void *os_kmem_cache_alloc(struct kmem_cache *cachep, gfp_t flags);
+void *os_kmem_cache_zalloc(struct kmem_cache *cachep, gfp_t flags);
 void os_kmem_cache_free(struct kmem_cache *cachep, void *objp);
 struct kmem_cache *os_kmem_cache_create(const char *name, unsigned int size,
 					unsigned int align, slab_flags_t flags,
@@ -1258,15 +1337,28 @@ void os_rcu_barrier(void);
 int os_atomic_xchg(atomic_t *v, int val);
 void os_atomic_set(atomic_t *v, int val);
 void os_atomic_inc(atomic_t *v);
+int os_atomic_inc_return(atomic_t *v);
 bool os_atomic_dec_and_test(atomic_t *v);
 int os_atomic_read(atomic_t *v);
+int os_atomic_fetch_add(int i, atomic_t *v);
 void os_atomic64_set(atomic64_t *v, s64 i);
 s64 os_atomic64_inc_return(atomic64_t *v);
 s64 os_atomic64_read(const atomic64_t *v);
 
 struct file *os_filp_open(const char *filename, int flags, umode_t mode);
 int os_filp_close(struct file *filp);
-ssize_t os_kernel_write(void *filp, const char __user *buf, size_t count, loff_t *pos);
+ssize_t os_kernel_write(struct file *filp, const void *buf, size_t count, loff_t *pos);
+ssize_t os_kernel_read(struct file *filp, void *buf, size_t count, loff_t *pos);
+
+struct idr;
+extern struct idr mtgpu_global_bo_handle_idr;
+extern spinlock_t mtgpu_global_bo_handle_idr_spinlock;
+void os_idr_destroy(struct idr *idr);
+int os_idr_alloc(struct idr *idr, void *ptr, int start, int end, gfp_t gfp_flags);
+void *os_idr_find(const struct idr *idr, unsigned long id);
+void *os_idr_remove(struct idr *idr, unsigned long id);
+void os_idr_preload(void);
+void os_idr_preload_end(void);
 
 DECLARE_OS_STRUCT_COMMON_FUNCS(notifier_block);
 DECLARE_OS_STRUCT_COMMON_FUNCS(poll_table_struct);

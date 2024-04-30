@@ -50,6 +50,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "rgx_fwif_km.h"
 #include "servicesext.h"
 #include "cache_ops.h"
+#include "mtgpu_pstate.h"
 
 #if defined(SUPPORT_LINUX_DVFS) || defined(SUPPORT_PDVFS)
 #include "pvr_dvfs.h"
@@ -135,6 +136,9 @@ typedef PVRSRV_ERROR
 */ /**************************************************************************/
 typedef PVRSRV_SYS_POWER_STATE
 (*PFN_SYS_GET_POWER)(struct _PVRSRV_DEVICE_NODE_ *psDevNode);
+
+typedef void
+(*PFN_SYS_SET_PSTATE)(struct mtgpu_device *mtdev, enum mtgpu_pstate_event event);
 
 typedef void
 (*PFN_SYS_DEV_INTERRUPT_HANDLED)(PVRSRV_DEVICE_CONFIG *psDevConfig);
@@ -240,7 +244,8 @@ typedef struct _PVRSRV_ROBUSTNESS_NOTIFY_DATA_
 
 typedef void
 (*PFN_SYS_DEV_ERROR_NOTIFY)(IMG_HANDLE hSysData,
-						    PVRSRV_ROBUSTNESS_NOTIFY_DATA *psRobustnessErrorData);
+			    PVRSRV_ROBUSTNESS_NOTIFY_DATA *psRobustnessErrorData,
+			    struct _PVRSRV_DEVICE_NODE_ *psDeviceNode);
 struct ion_device;
 
 struct _PVRSRV_DEVICE_CONFIG_
@@ -337,6 +342,7 @@ struct _PVRSRV_DEVICE_CONFIG_
 	PFN_SYS_PRE_POWER pfnPrePowerState;
 	PFN_SYS_POST_POWER pfnPostPowerState;
 	PFN_SYS_GET_POWER  pfnGpuDomainPower;
+	PFN_SYS_SET_PSTATE pfnSetPerformanceState;
 
 	/*! Callback to obtain the clock frequency from the device (optional). */
 	PFN_SYS_DEV_CLK_FREQ_GET pfnClockFreqGet;

@@ -33,6 +33,10 @@ struct mtgpu_pcie_perf_bw;
 struct mtgpu_pcie_link_monitor;
 struct vgpu_info;
 struct vgpu_share_mem;
+struct mtgpu_softirq_info;
+struct mtgpu_softirq_ctrl;
+struct mtgpu_vdma_buffer;
+struct wait_queue_head;
 
 #if defined(CONFIG_VPS)
 struct vps_dma;
@@ -45,20 +49,36 @@ enum mtgpu_type_t {
 	MTGPU_TYPE_INVALID = -1,
 };
 
-struct mtgpu_interrupt_desc {
-	u32 interrupt_src;
-	u32 group_id_4;
-	u32 group_id_8;
-	char *interrupt_name;
+struct mtgpu_irq_desc {
+	/* logic interrupt id */
+	u32 int_id;
+	const char *name;
 	bool enabled;
 	bool suspended;
-	void (*handler_function)(void *data);
+	void (*handler)(void *data);
 	void *handler_data;
 };
 
-struct mtgpu_interrupt_table {
-	enum mtgpu_interrupt_id interrupt_id;
-	struct mtgpu_interrupt_desc desc;
+struct mtgpu_irq_data {
+	/* The interrupt vector sequence number applied by msi-x, which represents the number
+	 * of interrupts applied.
+	 */
+	int target;
+	int host_irq;
+	int claim_int_times;
+	int complete_int_times;
+	int last_claim_int_id;
+	struct mtgpu_device *mtdev;
+};
+
+struct mtgpu_irq_info {
+	u32 irq_type;
+	u32 irq_cnt;
+	u32 desc_cnt;
+	struct mtgpu_irq_desc **desc_table;
+	struct mtgpu_irq_data *irq_data;
+	spinlock_t *irq_handler_lock;
+	spinlock_t *irq_enable_lock;
 };
 
 struct mtgpu_region {
@@ -114,29 +134,17 @@ struct mtgpu_module_param {
 	unsigned long cursor_size;
 };
 
-struct mtgpu_intc_ops {
+struct mtgpu_int_ops {
 	int (*init)(struct mtgpu_device *mtgpu);
-	int (*claim)(struct mtgpu_device *mtgpu, int irq_vector);
-	void (*clear)(struct mtgpu_device *mtgpu, int irq_vector, int intc_id);
-	void (*set_state)(struct mtgpu_device *mtgpu, int interrupt_src,
-			  int interrupt_target, int enable);
+	int (*enable)(struct mtgpu_device *mtgpu, u32 int_vec, bool enable);
+	int (*claim)(struct mtgpu_device *mtgpu, int target);
+	int (*complete)(struct mtgpu_device *mtgpu, int int_vec, int target);
 	void (*exit)(struct mtgpu_device *mtgpu);
-	void (*suspend)(struct mtgpu_device *mtgpu);
-	int (*resume)(struct mtgpu_device *mtgpu);
-	int (*get_desc_table)(const struct mtgpu_interrupt_table **desc_table);
-	void (*msi_config)(struct mtgpu_device *mtgpu);
 };
 
 struct mtgpu_pcie_local_mgmt_ops {
 	int (*init)(struct mtgpu_device *mtgpu);
 	void (*exit)(struct mtgpu_device *mtgpu);
-};
-
-struct mtgpu_intd_ops {
-	void (*sgi_set_state)(struct mtgpu_device *mtgpu, int interrupt_src,
-				int target_plic, int event, int enable);
-	void (*spi_set_state)(struct mtgpu_device *mtgpu, int interrupt_src,
-				int target_plic, int enable);
 };
 
 struct mtgpu_display_ops {
@@ -196,19 +204,17 @@ struct mtgpu_gpu_ss_ops {
 	void (*usc_timer_disable)(struct mtgpu_device *mtdev);
 };
 
+struct mtgpu_pfm_ops {
+	int (*mss_set)(struct mtgpu_device *mtdev, void *mss_cfg, void *pfm_mss_mmu);
+	void (*mss_clear)(struct mtgpu_device *mtdev);
+	void (*mss_dump)(struct mtgpu_device *mtdev, void *mss_dump_trig, void *pfm_mss_mmu);
+};
+
 struct pci_dev_config {
 	u8 pci_config_data[256];
 };
 
 struct mtgpu_device;
-
-struct mtgpu_irq_data {
-	/* The interrupt vector sequence number applied by msi-x, which represents the number
-	 * of interrupts applied.
-	 */
-	int index;
-	struct mtgpu_device *mtdev;
-};
 
 struct mtgpu_device {
 	struct device *dev;
@@ -233,6 +239,13 @@ struct mtgpu_device {
 	struct mtgpu_io_region distributor_reg;
 	struct mtgpu_io_region sram_shared_region;
 	struct mtgpu_io_region gpu_ss_reg;
+	struct mtgpu_io_region intd_cd_reg;
+	struct mtgpu_io_region pcie_mhi_reg;
+	struct mtgpu_io_region pfm_mmu_reg;
+	struct mtgpu_io_region pfm_ddrc_reg;
+	struct mtgpu_io_region pfm_d2d_1_reg;
+	struct mtgpu_io_region pfm_d2d_0_reg;
+	struct mtgpu_io_region pfm_llc_reg;
 	int disp_cnt;
 	struct platform_device *disp_dev[MTGPU_DISP_DEV_NUM];
 	struct platform_device *drm_dev[MTGPU_CORE_COUNT_MAX];
@@ -246,12 +259,12 @@ struct mtgpu_device {
 	/*cursor widht/height in pixel*/
 	u32 cursor_size;
 	int gpu_cnt;
+	int mtrr;
 	struct platform_device *gpu_dev[MTGPU_CORE_COUNT_MAX];
 
 	struct mtgpu_chip_info *chip_info;
-	struct mtgpu_intc_ops *intc_ops;
+	struct mtgpu_int_ops *int_ops;
 	struct mtgpu_pcie_local_mgmt_ops *pcie_local_mgmt_ops;
-	struct mtgpu_intd_ops *intd_ops;
 	struct mtgpu_dma_ops *dma_ops;
 	struct mtgpu_sriov_ops *sriov_ops;
 	struct mtgpu_pcie_perf_ops *pcie_perf_ops;
@@ -259,28 +272,27 @@ struct mtgpu_device {
 	const struct mtgpu_smc_ops *smc_ops;
 	const struct mtgpu_fec_ops *fec_ops;
 	struct mtgpu_llc_ops *llc_ops;
+	struct mtgpu_pfm_ops *pfm_ops;
 	struct mtlink_ops *link_ops;
 	struct mtgpu_ob_ops *ob_ops;
 	struct mtgpu_gpu_ss_ops *gpu_ss_ops;
 
-	int mtrr;
-	spinlock_t *interrupt_handler_lock;
-	spinlock_t *interrupt_enable_lock;
-	struct mtgpu_interrupt_desc interrupt_desc[MTGPU_INTERRUPT_COUNT];
-	u32 irq_type;
-	int irq_count;
-	struct mtgpu_irq_data irq_data[MTGPU_PCIE_IRQ_NUM];
-
+	struct mtgpu_softirq_info *softirq_info;
+	struct mtgpu_irq_info *irq_info;
 	void *dma_private;
 	void *ipc_private;
 	void *pstate_private;
 	void *fec_private;
 	void *smc_private;
+	void *event_report_private;
 	struct mtgpu_ob_conf *ob_conf;
 	struct mtlink_private_data *link_private_data;
 	struct mtgpu_board_configs *board_configs;
 	struct mtgpu_local_mgmt_info *local_mgmt;
 	struct mtgpu_misc_info *miscinfo[MTGPU_CORE_COUNT_MAX];
+	struct mtgpu_vdma_buffer *vdma_buffer;
+	struct wait_queue_head *vdma_wqh;
+	struct mutex *vdma_lock;
 
 #if defined(CONFIG_VPS)
 	struct vps_dma *vps_dma;
@@ -291,14 +303,7 @@ struct mtgpu_device {
 
 	/* virtualization related members */
 
-	/* mmu_heap_card_base store the card address of MMU table of VM */
-	resource_size_t mmu_heap_card_base;
-
-	/* gpu_mem_card_base store the card address of GPU memory base */
-	resource_size_t gpu_mem_card_base;
-
-	/* mmu_heap store the region of BAR4 in VM */
-	struct mtgpu_region mmu_heap;
+	struct mtgpu_region fw_heap;
 
 	/* virtual custom register store the region of BAR1 in VM */
 	struct mtgpu_io_region vgpu_custom_reg;
@@ -365,6 +370,7 @@ struct mtgpu_device {
 	struct proc_dir_entry *proc_gpu_dir;
 	struct proc_dir_entry *proc_vram_info;
 	struct proc_dir_entry *proc_ctrl_devname;
+	struct proc_dir_entry *proc_event_report;
 	struct proc_dir_entry *proc_memory;
 	struct proc_dir_entry *proc_status;
 	struct proc_dir_entry *proc_mpc_enable;
@@ -380,14 +386,21 @@ struct mtgpu_device {
 	/* query if the driver can access registers */
 	int (*register_access_check)(struct mtgpu_device *mtdev);
 
+	int (*get_softirq_ctrls)(struct mtgpu_softirq_ctrl **softirq_ctrls, int *ctrls_cnt);
+
 	struct pci_dev_config *pci_dev_config_data;
 
 	bool pstate_supported;
 
 	struct mtgpu_pcie_perf_bw *pcie_perf_data;
 
+	int pcie_des_pos;
+
 	struct mtgpu_pcie_link_monitor *pcie_link_monitor;
 
+#if defined(SUPPORT_VGPU_HWPERF)
+	void *vgpu_perf_data;
+#endif
 };
 
 extern struct device_ops sudi_ops;

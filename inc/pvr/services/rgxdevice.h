@@ -401,6 +401,9 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 	/* lock to protect guest gpa to hpa processing in virtualization */
 	POS_LOCK			hGpaToHpaLock;
 
+	void *pvGpaToHpaTree;
+	void *pvHpaCache;
+
 #if defined(SUPPORT_SW_OSID_EXTENSION)
 	/* 
 	 * TODO:
@@ -634,7 +637,7 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 	/* Poll data for detecting firmware fatal errors */
 	IMG_UINT32				aui32CrLastPollCount[RGXFW_THREAD_NUM];
 	IMG_UINT32				ui32KCCBCmdsExecutedLastTime;
-	IMG_BOOL				bKCCBCmdsWaitingLastTime;
+	IMG_UINT32				ui32KCCBCmdConsecutiveWaitTimes;
 	IMG_UINT32				ui32GEOTimeoutsLastTime;
 	IMG_UINT32				ui32InterruptCountLastTime;
 	IMG_UINT32				ui32MissingInterruptsLastTime;

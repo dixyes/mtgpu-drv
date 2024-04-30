@@ -291,10 +291,11 @@ DevmemIntHeapDestroy(DEVMEMINT_HEAP *psDevmemHeap);
  */
 PVRSRV_ERROR
 DevmemIntMapPMR(DEVMEMINT_HEAP *psDevmemHeap,
-                DEVMEMINT_RESERVATION *psReservation,
-                PMR *psPMR,
-                PVRSRV_MEMALLOCFLAGS_T uiMapFlags,
-                DEVMEMINT_MAPPING **ppsMappingPtr);
+		DEVMEMINT_RESERVATION *psReservation,
+		PMR *psPMR,
+		PVRSRV_MEMALLOCFLAGS_T uiMapFlags,
+		DEVMEMINT_MAPPING **ppsMappingPtr,
+		DEVMEM_INTERLEAVE_RATIO *psInterleaveRatio);
 /*
  * DevmemIntUnmapPMR()
  *

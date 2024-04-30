@@ -76,6 +76,11 @@
 #include <linux/file.h>
 #include <linux/anon_inodes.h>
 #include <linux/sync_file.h>
+#if defined(OS_LINUX_DMA_RESV_H_EXIST)
+#include <linux/dma-resv.h>
+#else
+#include <linux/reservation.h>
+#endif
 
 #include "mtgpu_device.h"
 #include "os-interface.h"
@@ -84,6 +89,16 @@
 #include "ion_lma_heap.h"
 #endif
 #include "ion/ion_uapi.h"
+
+#ifndef OS_FUNC_PCI_STATUS_GET_AND_CLEAR_ERRORS_EXIST
+
+#define PCI_STATUS_ERROR_BITS ((PCI_STATUS_DETECTED_PARITY)  | \
+			       (PCI_STATUS_SIG_SYSTEM_ERROR) | \
+			       (PCI_STATUS_REC_MASTER_ABORT) | \
+			       (PCI_STATUS_REC_TARGET_ABORT) | \
+			       (PCI_STATUS_SIG_TARGET_ABORT) | \
+			       (PCI_STATUS_PARITY))
+#endif
 
 struct mt_work_struct {
 	struct work_struct work;
@@ -408,6 +423,11 @@ bool os_dev_is_pci(struct device *dev)
 	return dev_is_pci(dev);
 }
 
+int os_dev_to_node(struct device *dev)
+{
+	return dev_to_node(dev);
+}
+
 struct pci_dev *os_to_pci_dev(struct device *dev)
 {
 	return container_of(dev, struct pci_dev, dev);
@@ -730,6 +750,11 @@ IMPLEMENT_GET_OS_MEMBER_FUNC(vm_area_struct, vm_flags);
 IMPLEMENT_GET_OS_MEMBER_FUNC(vm_area_struct, vm_pgoff);
 IMPLEMENT_GET_OS_MEMBER_FUNC(vm_area_struct, vm_file);
 
+void os_set_vm_area_struct_vm_pgoff(struct vm_area_struct *vma, unsigned long vm_pgoff)
+{
+	vma->vm_pgoff = vm_pgoff;
+}
+
 void os_set_vm_area_struct_vm_flags(struct vm_area_struct *vma, unsigned long flag)
 {
 #if defined(OS_VM_FLAGS_IS_NOT_CONST)
@@ -737,6 +762,11 @@ void os_set_vm_area_struct_vm_flags(struct vm_area_struct *vma, unsigned long fl
 #else
 	vm_flags_set(vma, (vm_flags_t)flag);
 #endif
+}
+
+void os_set_vm_area_struct_vm_page_prot_writecombine(struct vm_area_struct *vma)
+{
+	vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
 }
 
 void *os_memcpy(void *dst, const void *src, size_t size)
@@ -848,6 +878,37 @@ int os_down_timeout(struct semaphore *sem, long timeout)
 void os_sema_destroy(struct semaphore *sem)
 {
 	kfree(sem);
+}
+
+int os_completion_create(struct completion **x)
+{
+	*x = kzalloc(sizeof(*(*x)), GFP_KERNEL);
+	if (!(*x))
+		return -ENOMEM;
+
+	init_completion(*x);
+
+	return 0;
+}
+
+void os_completion_destroy(struct completion *x)
+{
+	kfree(x);
+}
+
+void os_wait_for_completion(struct completion *x)
+{
+	wait_for_completion(x);
+}
+
+unsigned long os_wait_for_completion_timeout(struct completion *x, unsigned long timeout)
+{
+	return wait_for_completion_timeout(x, timeout);
+}
+
+void os_complete(struct completion *x)
+{
+	complete(x);
 }
 
 int os_mutex_create(struct mutex **lock)
@@ -1519,11 +1580,6 @@ void os_init_work(struct work_struct *work, work_func_t func)
 	INIT_WORK(work, func);
 }
 
-bool os_schedule_work(struct work_struct *work)
-{
-	return schedule_work(work);
-}
-
 bool os_flush_work(struct work_struct *work)
 {
 	return flush_work(work);
@@ -1875,14 +1931,54 @@ int os_pci_alloc_irq_vectors(struct pci_dev *dev, unsigned int min_vecs,
 	return pci_alloc_irq_vectors(dev, min_vecs, max_vecs, flags);
 }
 
+u64 os_pci_get_pcie_replay_rollover(struct pci_dev *pdev)
+{
+#ifdef OS_STRUCT_PCI_DEV_HAS_AER_STATS
+	u64 *replay_num = 0;
+	u64 *ptr;
+
+	if (!pdev->aer_stats)
+		return 0;
+
+	ptr = (u64 *)pdev->aer_stats;
+	replay_num = ptr + ilog2(PCI_ERR_COR_REP_ROLL);
+
+	return *replay_num;
+#endif
+	return 0;
+}
+
+u64 os_pci_get_pcie_replay_timeout(struct pci_dev *pdev)
+{
+#ifdef OS_STRUCT_PCI_DEV_HAS_AER_STATS
+	u64 *replay_timeout = 0;
+	u64 *ptr;
+
+	if (!pdev->aer_stats)
+		return 0;
+
+	ptr = (u64 *)pdev->aer_stats;
+	replay_timeout = ptr + ilog2(PCI_ERR_COR_REP_TIMER);
+
+	return *replay_timeout;
+#endif
+	return 0;
+}
+
 int os_pci_enable_pcie_error_reporting(struct pci_dev *pdev)
 {
+#ifdef OS_FUNC_PCI_ENABLE_PCIE_ERROR_REPORTING_EXIST
 	return pci_enable_pcie_error_reporting(pdev);
+#endif
+	return 0;
 }
 
 int os_pci_disable_pcie_error_reporting(struct pci_dev *pdev)
 {
+#ifdef OS_FUNC_PCI_DISABLE_PCIE_ERROR_REPORTING_EXIST
 	return pci_disable_pcie_error_reporting(pdev);
+#endif
+	return 0;
 }
 
 int os_pci_dev_wait(struct pci_dev *dev, char *reset_type, int timeout)
@@ -2009,6 +2105,11 @@ IMPLEMENT_GET_OS_MEMBER_FUNC(dma_buf, size);
 IMPLEMENT_GET_OS_MEMBER_FUNC(dma_buf, ops);
 IMPLEMENT_GET_OS_MEMBER_FUNC(dma_buf, priv);
 
+struct dma_resv *os_get_dma_buf_resv(struct dma_buf *dmabuf)
+{
+	return (struct dma_resv *)dmabuf->resv;
+}
+
 void *os_get_dmabuf_from_attachment(struct dma_buf_attachment *attach)
 {
 	return attach->dmabuf;
@@ -2100,6 +2201,11 @@ int os_wake_up_process(struct task_struct *p)
 	return wake_up_process(p);
 }
 
+void os_cond_resched(void)
+{
+	cond_resched();
+}
+
 const u8 *os_get_firmware_data(const struct firmware *fw)
 {
 	return fw->data;
@@ -2159,6 +2265,14 @@ u64 os_kclock_ns64(void)
 u64 os_ktime_get_ns(void)
 {
 	return ktime_get_ns();
+}
+
+u64 os_ktime_get_sec(void)
+{
+	struct timespec64 ts;
+
+	ktime_get_real_ts64(&ts);
+	return ts.tv_sec;
 }
 
 void os_ktime_get_real_tm(struct mt_tm *mt_time, int offset)
@@ -2484,6 +2598,11 @@ size_t os_iommu_unmap(struct iommu_domain *domain, unsigned long iova, size_t si
 	return iommu_unmap(domain, iova, size);
 }
 
+u64 os_iommu_iova_to_phys(struct iommu_domain *domain, u64 iova)
+{
+	return iommu_iova_to_phys(domain, iova);
+}
+
 void os_iommu_group_put(struct iommu_group *group)
 {
 	iommu_group_put(group);
@@ -2532,6 +2651,11 @@ unsigned int os_get_iommu_domain_type(struct iommu_domain *domain)
 bool os_iommu_present(struct bus_type *bus)
 {
 	return iommu_present(bus);
+}
+
+bool os_virt_addr_valid(void *address)
+{
+	return virt_addr_valid(address);
 }
 
 phys_addr_t os_virt_to_phys(void *address)
@@ -2587,9 +2711,19 @@ unsigned long os_bitmap_find_next_zero_area(unsigned long *map,
 	return bitmap_find_next_zero_area(map, size, start, nr, align_mask);
 }
 
+int os_test_bit(int nr, const volatile unsigned long *addr)
+{
+	return test_bit(nr, addr);
+}
+
 void *os_kmem_cache_alloc(struct kmem_cache *cachep, gfp_t flags)
 {
 	return kmem_cache_alloc(cachep, flags);
+}
+
+void *os_kmem_cache_zalloc(struct kmem_cache *cachep, gfp_t flags)
+{
+	return kmem_cache_zalloc(cachep, flags);
 }
 
 void os_kmem_cache_free(struct kmem_cache *cachep, void *objp)
@@ -2634,6 +2768,11 @@ void os_atomic_inc(atomic_t *v)
 	atomic_inc(v);
 }
 
+int os_atomic_inc_return(atomic_t *v)
+{
+	return atomic_inc_return(v);
+}
+
 bool os_atomic_dec_and_test(atomic_t *v)
 {
 	return atomic_dec_and_test(v);
@@ -2642,6 +2781,11 @@ bool os_atomic_dec_and_test(atomic_t *v)
 int os_atomic_read(atomic_t *v)
 {
 	return atomic_read(v);
+}
+
+int os_atomic_fetch_add(int i, atomic_t *v)
+{
+	return atomic_fetch_add(i, v);
 }
 
 void os_atomic64_set(atomic64_t *v, s64 i)
@@ -2669,9 +2813,14 @@ int os_filp_close(struct file *filp)
 	return filp_close(filp, 0);
 }
 
-ssize_t os_kernel_write(void *filp, const char __user *buf, size_t count, loff_t *pos)
+ssize_t os_kernel_write(struct file *filp, const void *buf, size_t count, loff_t *pos)
 {
 	return kernel_write(filp, buf, count, pos);
+}
+
+ssize_t os_kernel_read(struct file *filp, void *buf, size_t count, loff_t *pos)
+{
+	return kernel_read(filp, buf, count, pos);
 }
 
 static bool os_pci_is_downstream_port(const struct pci_dev *pdev)
@@ -2705,14 +2854,30 @@ static bool pci_is_sibling_downstream_port(struct pci_dev *pdev1, struct pci_dev
 	return false;
 }
 
+int os_pcie_capability_read_word(struct pci_dev *pdev, int where, u16 *val)
+{
+	return pcie_capability_read_word(pdev, where, val);
+}
+
 int os_pcie_capability_read_dword(struct pci_dev *dev, int where, u32 *val)
 {
 	return pcie_capability_read_dword(dev, where, val);
 }
 
+int os_pcie_capability_write_word(struct pci_dev *pdev, int where, u16 val)
+{
+	return pcie_capability_write_word(pdev, where, val);
+}
+
 int os_pcie_capability_set_word(struct pci_dev *dev, int where, u16 set)
 {
 	return pcie_capability_set_word(dev, where, set);
+}
+
+u32 os_pcie_bandwidth_available(struct pci_dev *dev, struct pci_dev **limiting_dev,
+				void *speed, void *width)
+{
+	return pcie_bandwidth_available(dev, limiting_dev, speed, width);
 }
 
 static struct pci_dev *os_pci_find_root_port(struct pci_dev *pdev)
@@ -2737,6 +2902,44 @@ bool os_pci_has_same_root_port(struct pci_dev *pdev1, struct pci_dev *pdev2)
 	rp2 = os_pci_find_root_port(pdev2);
 
 	return rp1 && rp2 && rp1 == rp2;
+}
+
+u16 os_pci_get_aer_cap(struct pci_dev *pdev)
+{
+#ifdef OS_STRUCT_PCI_DEV_HAS_AER_CAP
+	return pdev->aer_cap;
+#endif
+	return 0;
+}
+
+int os_pci_pcie_type(const struct pci_dev *pdev)
+{
+	return pci_pcie_type(pdev);
+}
+
+bool os_pci_is_pcie(struct pci_dev *pdev)
+{
+	return pci_is_pcie(pdev);
+}
+
+int os_pci_status_get_and_clear_errors(struct pci_dev *pdev)
+{
+#ifdef OS_FUNC_PCI_STATUS_GET_AND_CLEAR_ERRORS_EXIST
+	return pci_status_get_and_clear_errors(pdev);
+#else
+	u16 status;
+	int ret;
+
+	ret = pci_read_config_word(pdev, PCI_STATUS, &status);
+	if (ret != 0)
+		return -EIO;
+
+	status &= PCI_STATUS_ERROR_BITS;
+	if (status)
+		pci_write_config_word(pdev, PCI_STATUS, status);
+
+	return status;
+#endif
 }
 
 bool os_pci_is_under_same_switch(struct pci_dev *pdev1,
@@ -2856,7 +3059,7 @@ u64 os_roundup_pow_of_two(u64 size)
 
 u32 os_order_base_2(u64 size)
 {
-	return roundup_pow_of_two(size);
+	return order_base_2(size);
 }
 
 int os_fls(unsigned int x)
@@ -3245,6 +3448,140 @@ int os_dma_fence_add_callback(struct dma_fence *fence, struct dma_fence_cb *cb,
 	return dma_fence_add_callback(fence, cb, func);
 }
 
+signed long os_dma_fence_wait(struct dma_fence *fence, bool intr)
+{
+	return dma_fence_wait(fence, intr);
+}
+
+void os_dma_fence_enable_sw_signaling(struct dma_fence *fence)
+{
+	dma_fence_enable_sw_signaling(fence);
+}
+
+int os_dma_resv_reserve_shared(struct dma_resv *obj, unsigned int num_fences)
+{
+#if defined(OS_FUNC_DMA_RESV_RESERVE_FENCES_EXIST)
+	return dma_resv_reserve_fences(obj, num_fences);
+#elif defined(OS_LINUX_DMA_RESV_H_EXIST)
+	return dma_resv_reserve_shared(obj, num_fences);
+#elif defined(OS_RESERVATION_OBJECT_RESERVE_SHARED_HAS_NUM_FENCES_ARG)
+	return reservation_object_reserve_shared((struct reservation_object *)obj, num_fences);
+#else
+	unsigned int i;
+	int err;
+
+	for (i = 0; i < num_fences; i++) {
+		err = reservation_object_reserve_shared((struct reservation_object *)obj);
+		if (err)
+			return err;
+	}
+	return 0;
+#endif
+}
+
+struct ww_mutex *os_dma_resv_get_ww_mutex(struct dma_resv *resv)
+{
+#if defined(OS_LINUX_DMA_RESV_H_EXIST)
+	return &resv->lock;
+#else
+	return &((struct reservation_object *)resv)->lock;
+#endif
+}
+
+void os_dma_resv_add_excl_fence(struct dma_resv *obj, struct dma_fence *fence)
+{
+#if defined(OS_FUNC_DMA_RESV_ADD_FENCE_EXIST)
+	dma_resv_reserve_fences(obj, 1);
+	dma_resv_add_fence(obj, fence, DMA_RESV_USAGE_WRITE);
+#elif defined(OS_LINUX_DMA_RESV_H_EXIST)
+	dma_resv_add_excl_fence(obj, fence);
+#else
+	reservation_object_add_excl_fence((struct reservation_object *)obj, fence);
+#endif
+}
+
+void os_dma_resv_add_shared_fence(struct dma_resv *obj, struct dma_fence *fence)
+{
+#if defined(OS_FUNC_DMA_RESV_ADD_FENCE_EXIST)
+	dma_resv_add_fence(obj, fence, DMA_RESV_USAGE_READ);
+#elif defined(OS_LINUX_DMA_RESV_H_EXIST)
+	dma_resv_add_shared_fence(obj, fence);
+#else
+	reservation_object_add_shared_fence((struct reservation_object *)obj, fence);
+#endif
+}
+
+int os_dma_resv_get_fences(struct dma_resv *obj,
+			   struct dma_fence **pfence_excl,
+			   unsigned int *num_fences,
+			   struct dma_fence ***pfences,
+			   bool usage_write,
+			   bool *fence_overall)
+{
+	*fence_overall = false;
+
+#if defined(OS_ENUM_DMA_RESV_USAGE_EXIST)
+	*fence_overall = true;
+
+	return dma_resv_get_fences(obj, usage_write ? DMA_RESV_USAGE_READ :
+				   DMA_RESV_USAGE_WRITE, num_fences, pfences);
+#elif defined(OS_FUNC_DMA_RESV_GET_FENCES_EXIST)
+	return dma_resv_get_fences(obj, pfence_excl, num_fences, pfences);
+#elif defined(OS_LINUX_DMA_RESV_H_EXIST)
+	return dma_resv_get_fences_rcu(obj, pfence_excl, num_fences, pfences);
+#else
+	return reservation_object_get_fences_rcu((struct reservation_object *)obj,
+						 pfence_excl, num_fences, pfences);
+#endif
+}
+
+struct ww_class *os_get_reservation_ww_class(void)
+{
+	return &reservation_ww_class;
+}
+
+struct ww_acquire_ctx *os_ww_acquire_ctx_create(void)
+{
+	return kzalloc(sizeof(struct ww_acquire_ctx), GFP_KERNEL);
+}
+
+void os_ww_acquire_ctx_destroy(struct ww_acquire_ctx *acquire_ctx)
+{
+	return kfree(acquire_ctx);
+}
+
+void os_ww_acquire_init(struct ww_acquire_ctx *ctx,
+			struct ww_class *ww_class)
+{
+	ww_acquire_init(ctx, ww_class);
+}
+
+int os_ww_mutex_lock_interruptible(struct ww_mutex *lock, struct ww_acquire_ctx *ctx)
+{
+	return ww_mutex_lock_interruptible(lock, ctx);
+}
+
+void os_ww_acquire_done(struct ww_acquire_ctx *ctx)
+{
+	ww_acquire_done(ctx);
+}
+
+void os_ww_mutex_unlock(struct ww_mutex *lock)
+{
+	ww_mutex_unlock(lock);
+}
+
+void os_ww_acquire_fini(struct ww_acquire_ctx *ctx)
+{
+	ww_acquire_fini(ctx);
+}
+
+int os_ww_mutex_lock_slow_interruptible(struct ww_mutex *lock,
+					struct ww_acquire_ctx *ctx)
+{
+	return ww_mutex_lock_slow_interruptible(lock, ctx);
+}
+
 int os_get_unused_fd_flags(unsigned flag)
 {
 	return get_unused_fd_flags(flag);
@@ -3319,6 +3656,11 @@ bool OS_WARN_ON_ONCE(bool condition)
 void OS_BUG_ON(bool condition)
 {
 	BUG_ON(condition);
+}
+
+void os_dump_stack(void)
+{
+	dump_stack();
 }
 
 int os_sscanf(const char *str, const char *fmt, ...)
@@ -3467,6 +3809,38 @@ int os_get_dmi_device_board_instance(const struct dmi_dev_onboard *dev_onboard)
 const char *os_get_dmi_device_board_name(const struct dmi_dev_onboard *dev_onboard)
 {
 	return dev_onboard->dev.name;
+}
+
+DEFINE_SPINLOCK(mtgpu_global_bo_handle_idr_spinlock);
+
+void os_idr_destroy(struct idr *idr)
+{
+	idr_destroy(idr);
+}
+
+int os_idr_alloc(struct idr *idr, void *ptr, int start, int end, gfp_t gfp_flags)
+{
+	return idr_alloc(idr, ptr, start, end, gfp_flags);
+}
+
+void *os_idr_find(const struct idr *idr, unsigned long id)
+{
+	return idr_find(idr, id);
+}
+
+void *os_idr_remove(struct idr *idr, unsigned long id)
+{
+	return idr_remove(idr, id);
+}
+
+void os_idr_preload(void)
+{
+	idr_preload(GFP_KERNEL);
+}
+
+void os_idr_preload_end(void)
+{
+	idr_preload_end();
 }
 
 #define define_os_dev_printk_level(func, kern_level)		\

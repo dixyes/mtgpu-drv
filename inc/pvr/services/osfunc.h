@@ -101,6 +101,11 @@ enum {
 	OS_PVR_VALUE_MAX,
 };
 
+#if defined(PVRSRV_ENABLE_WORK_QUEUE_OPTIMIZATION)
+/* The max cpu number for work queue to schedule on. */
+#define MAX_CPU_NUM 128
+#endif
+
 extern const IMG_UINT64 OSPvrValue[];
 
 #ifndef KERN_SOH
@@ -1814,6 +1819,8 @@ void OSDmaForceCleanup(PVRSRV_DEVICE_NODE *psDevNode, void *pvChan,
 					   PFN_SERVER_CLEANUP pfnServerCleanup);
 #endif
 
+IMG_INT OSRoundDownPowOfTwo(IMG_UINT32 n);
+
 void __user *OSValidateAndGetCPUUserVA(PMR *psPMR,
 				       IMG_CPU_VIRTADDR pvAddress,
 				       IMG_DEVMEM_OFFSET_T uiOffset,
@@ -1831,20 +1838,22 @@ void OSDmaFreeCoherent(struct device *pvOSDevice,
 IMG_PID HostPid2ContainerPID(IMG_PID hostPid);
 IMG_PCHAR OSGetProcessNameByPid(IMG_PID uiPid);
 
-unsigned short OSGetPcieDeviceID(PVRSRV_DEVICE_NODE *psDeviceNode);
+struct pci_dev *OSGetPcieDeviceFromVendor(IMG_UINT32 ui32VendorID,
+					  IMG_UINT32 ui32DeviceID,
+					  struct pci_dev *psPCIDev);
+IMG_UINT16 OSGetPcieDeviceIDFromPdev(struct pci_dev *psPCIDev);
+IMG_UINT16 OSGetPcieDeviceID(PVRSRV_DEVICE_NODE *psDeviceNode);
 
-#if !defined(NO_HARDWARE)
 struct platform_device;
 struct resource;
-
 void *OSGetMtgpuDevice(struct platform_device *pdev);
-
 struct platform_device *OSGetPlatformDevice(void *pvOSDevice);
 struct resource *OSPlatformGetResourceIRQ(struct platform_device *psPlatformDevice, IMG_UINT32 uiIndex);
 IMG_UINT64 OSGetResourceStart(struct resource *psResource);
 void *OSGetPlatformDeviceParent(struct platform_device *pdev);
 void *OSGetPlatformData(struct platform_device *pdev);
 
+#if !defined(NO_HARDWARE)
 void OSDeviceConfigInit(PVRSRV_DEVICE_CONFIG *psDevConfig,
 			struct platform_device *pdev,
 			struct resource *registers);
@@ -2111,6 +2120,8 @@ struct workqueue_struct;
 typedef void (*work_func_t)(struct work_struct *work);
 bool OSQueueWork(struct workqueue_struct *psWorkQueue, struct work_struct *psWork);
 struct workqueue_struct *OSAllocWorkqueue(const char *pszFormat, unsigned int flags, int max_active);
+struct workqueue_struct *OSCreateSingleThreadWorkqueue(const IMG_CHAR *pszFormat);
+void OSFlushWorkqueue(struct workqueue_struct *psWorkQueue);
 void OSDestroyWorkqueue(struct workqueue_struct *psWorkQueue);
 void *OSCreateWork(work_func_t pfnFunc);
 void OSDestroyWork(struct work_struct *psWork);

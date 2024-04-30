@@ -93,6 +93,7 @@ enum event_id {
 	IPC_EVENT_FEC_POWER_MGR              = 31,
 	IPC_EVENT_FEC_KMD_DRV                = 32,
 	IPC_EVENT_FEC_KMD_DRV_EVENT          = 33,
+	IPC_EVENT_FEC_DBG_EVENT              = 38,
 	IPC_EVENT_FEC_RB_EVENT               = 39,
 
 	IPC_EVENT_GET_REG                    = 51,

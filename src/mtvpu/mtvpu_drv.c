@@ -11,6 +11,7 @@
 #include <linux/kthread.h>
 #include <linux/mod_devicetable.h>
 #include <linux/pci.h>
+#include <linux/version.h>
 #include <linux/moduleparam.h>
 #include <drm/drm_gem.h>
 #if defined(OS_DRM_DRMP_H_EXIST)
@@ -37,6 +38,7 @@
 #include "mtvpu_mem.h"
 #include "mtvpu_mon.h"
 #include "mtvpu_pool.h"
+#include "mtvpu_smmu.h"
 
 #include "misc.h"
 
@@ -93,7 +95,7 @@ static int vpu_component_bind(struct platform_device *pdev)
 	bool is_native = mtgpu_get_driver_mode() == MTGPU_DRIVER_MODE_NATIVE;
 #endif
 
-	pr_info("mtvpu Init %s, Version %s\n", is_native ? "Native" : is_host ? "Host" : "Guest", MT_BUILD_VPU);
+	vpu_info("Init %s, Version %s\n", is_native ? "Native" : is_host ? "Host" : "Guest", MT_BUILD_VPU);
 	chip = kzalloc(sizeof(struct mt_chip), GFP_KERNEL);
 	if (!chip)
 		return -ENOMEM;
@@ -104,6 +106,7 @@ static int vpu_component_bind(struct platform_device *pdev)
 		goto err_timer;
 
 #else
+	chip->inst_cnt = 0;
 	chip->parent = dev->parent->parent;
 	chip->dev = dev;
 	chip->drm_host = drm;
@@ -111,7 +114,7 @@ static int vpu_component_bind(struct platform_device *pdev)
 
 	mtdev = dev_get_drvdata(chip->parent);
 	if (unlikely(!mtdev)) {
-		pr_err("mtvpu Failed to get mtdev\n");
+		vpu_err("Failed to get mtdev\n");
 		goto err_timer;
 	}
 
@@ -165,6 +168,11 @@ static int vpu_component_bind(struct platform_device *pdev)
 		goto err_mpc_lock;
 	spin_lock_init(chip->mpc_lock);
 
+	chip->inst_cnt_lock = kzalloc(sizeof(*chip->inst_cnt_lock), GFP_KERNEL);
+	if (!chip->inst_cnt_lock)
+		goto err_inst_cnt_lock;
+	mutex_init(chip->inst_cnt_lock);
+
 	chip->pool_lock = kzalloc(sizeof(*chip->pool_lock), GFP_KERNEL);
 	if (!chip->pool_lock)
 		goto err_pool_lock;
@@ -217,7 +225,9 @@ static int vpu_component_bind(struct platform_device *pdev)
 			goto err_lock;
 		mutex_init(chip->core[i].open_lock);
 
-		if (chip->conf.product[i] == WAVE517_CODE)
+		if (chip->conf.product[i] == WAVE517_CODE
+		    || chip->conf.product[i] == WAVE627_CODE
+		    || chip->conf.product[i] == WAVE627B_CODE)
 			for (j = 0; j < INST_MAX_SIZE; j++) {
 				chip->core[i].inst_lock[j] =
 					kzalloc(sizeof(*chip->core[i].inst_lock[j]), GFP_KERNEL);
@@ -273,43 +283,43 @@ static int vpu_component_bind(struct platform_device *pdev)
 	for (i = 0; i < chip->conf.core_size; i++) {
 		if (chip->conf.product[i] == WAVE517_CODE) {
 			if ((core_bits >> dec_bit_offset) & 0x1) {
-				pr_info("mtvpu dec core:%d offset:%d not available\n", i, dec_bit_offset);
+				vpu_info("dec core:%d offset:%d not available\n", i, dec_bit_offset);
 				chip->core[i].available = 0;
 			} else {
 				chip->core[i].available = 1;
 				chip->core[i].drm = drm;
 				chip->core[i].product_id = WAVE517_CODE;
-				pr_info("mtvpu dec core:%d offset:%d available\n", i, dec_bit_offset);
+				vpu_info("dec core:%d offset:%d available\n", i, dec_bit_offset);
 			}
 			dec_bit_offset++;
 		} else if (chip->conf.product[i] == WAVE627_CODE ||
 			   chip->conf.product[i] == WAVE627B_CODE) {
 			if ((core_bits >> enc_bit_offset) & 0x1) {
-				pr_info("mtvpu enc core:%d offset:%d not available\n", i, enc_bit_offset);
+				vpu_info("enc core:%d offset:%d not available\n", i, enc_bit_offset);
 				chip->core[i].available = 0;
 			} else {
 				chip->core[i].available = 1;
 				chip->core[i].drm = drm;
 				chip->core[i].product_id = chip->conf.product[i];
-				pr_info("mtvpu enc core:%d offset:%d available\n", i, enc_bit_offset);
+				vpu_info("enc core:%d offset:%d available\n", i, enc_bit_offset);
 			}
 			enc_bit_offset++;
 		} else if (chip->conf.product[i] == CODA980_CODE) {
 			if ((core_bits >> boda_bit_offset) & 0x1) {
-				pr_info("mtvpu dec core:%d offset:%d not available\n", i, boda_bit_offset);
+				vpu_info("dec core:%d offset:%d not available\n", i, boda_bit_offset);
 				chip->core[i].available = 0;
 			} else {
 				chip->core[i].available = 1;
 				chip->core[i].drm = drm;
 				chip->core[i].product_id = CODA980_CODE;
-				pr_info("mtvpu dec core:%d offset:%d available\n", i, boda_bit_offset);
+				vpu_info("dec core:%d offset:%d available\n", i, boda_bit_offset);
 			}
 		} else if (chip->conf.product[i] == CODAJ12_CODE) {
 			chip->core[i].available = 1;
 			chip->core[i].drm = drm;
 			chip->core[i].product_id = CODAJ12_CODE;
 			jpu_core_size++;
-			pr_info("mtvpu jpu core:%d available\n", i);
+			vpu_info("jpu core:%d available\n", i);
 		}
 		chip->core[i].idx = i;
 		chip->core[i].priv = chip;
@@ -420,11 +430,21 @@ static int vpu_component_bind(struct platform_device *pdev)
 				vpu_slice_mode_config(chip, i);
 	}
 
+	vpu_report_power_state(chip, 0);
+
+#ifdef SUPPORT_SMMU
+	ret = vpu_smmu_init(chip);
+	if (ret)
+		goto err_lock;
+#endif
+
 	return 0;
 
 err_lock:
 	for (i = 0; i < chip->conf.core_size; i++) {
-		if (chip->conf.product[i] == WAVE517_CODE) {
+		if (chip->conf.product[i] == WAVE517_CODE
+		    || chip->conf.product[i] == WAVE627_CODE
+		    || chip->conf.product[i] == WAVE627B_CODE) {
 			for (j = 0; j < INST_MAX_SIZE; j++) {
 				if (chip->core[i].inst_lock[j]) {
 					mutex_destroy(chip->core[i].inst_lock[j]);
@@ -463,6 +483,9 @@ err_core_lock:
 		if (chip->sync.core_lock[i])
 			kfree(chip->sync.core_lock[i]);
 err_pool_lock:
+	mutex_destroy(chip->inst_cnt_lock);
+	kfree(chip->inst_cnt_lock);
+err_inst_cnt_lock:
 	kfree(chip->mpc_lock);
 err_mpc_lock:
 	kfree(chip->sync.sync_lock);
@@ -487,7 +510,7 @@ err_host_init:
 	vpu_deinit_conf(chip);
 err_timer:
 	kfree(chip);
-	pr_err("mtvpu Init Error\n");
+	vpu_err("Init Error\n");
 	return -ENODEV;
 }
 
@@ -512,6 +535,10 @@ static void vpu_component_unbind(struct device *dev, struct device *master, void
 
 	kfree(chip->timer);
 
+#ifdef SUPPORT_SMMU
+	vpu_smmu_deinit(chip);
+#endif
+
 	if (chip->debugfs)
 		debugfs_remove_recursive(chip->debugfs);
 
@@ -525,25 +552,27 @@ static void vpu_component_unbind(struct device *dev, struct device *master, void
 
 	for (idx = 0; idx < chip->conf.core_size; idx++) {
 		core = &chip->core[idx];
-
-		if (core->bak_addr)
+		if (core->bak_addr) {
 			vfree(core->bak_addr);
-
-		if (!core->fw)
-			continue;
-
-		vpu_hw_reset(chip->conf.core_base + idx);
-		vpu_hw_deinit(chip->conf.core_base + idx);
-
-		release_firmware(core->fw);
-
-		if (chip->core[idx].open_lock) {
-			mutex_destroy(chip->core[idx].open_lock);
-			kfree(chip->core[idx].open_lock);
+			core->bak_addr = NULL;
 		}
-		if (chip->core[idx].regs_lock) {
-			mutex_destroy(chip->core[idx].regs_lock);
-			kfree(chip->core[idx].regs_lock);
+		if (core->fw) {
+			vpu_hw_reset(chip->conf.core_base + idx);
+			vpu_hw_deinit(chip->conf.core_base + idx);
+			release_firmware(core->fw);
+			core->inited = 0;
+			core->fw = NULL;
+		}
+
+		if (core->open_lock) {
+			mutex_destroy(core->open_lock);
+			kfree(core->open_lock);
+			core->open_lock = NULL;
+		}
+		if (core->regs_lock) {
+			mutex_destroy(core->regs_lock);
+			kfree(core->regs_lock);
+			core->regs_lock = NULL;
 		}
 	}
 
@@ -556,6 +585,8 @@ static void vpu_component_unbind(struct device *dev, struct device *master, void
 	kfree(chip->sync.sema);
 	kfree(chip->sync.sync_lock);
 	kfree(chip->pool_lock);
+	mutex_destroy(chip->inst_cnt_lock);
+	kfree(chip->inst_cnt_lock);
 	kfree(chip->mpc_lock);
 
 	for (i = 0; i < SYNC_ADDR_SIZE; i++)
@@ -567,7 +598,9 @@ static void vpu_component_unbind(struct device *dev, struct device *master, void
 		}
 	}
 	for (i = 0; i < chip->conf.core_size; i++) {
-		if (chip->conf.product[i] == WAVE517_CODE) {
+		if (chip->conf.product[i] == WAVE517_CODE
+		    || chip->conf.product[i] == WAVE627_CODE
+		    || chip->conf.product[i] == WAVE627B_CODE) {
 			for (j = 0; j < INST_MAX_SIZE; j++) {
 				if (chip->core[i].inst_lock[j]) {
 					mutex_destroy(chip->core[i].inst_lock[j]);
@@ -608,6 +641,10 @@ static struct platform_device_id vpu_id_tbl[] = {
 static struct of_device_id vpu_of_id_tbl[] = {
 	{ .compatible = "mthreads,apollo-vpu"}
 };
+
+static struct acpi_device_id vpu_acpi_id_tbl[] = {
+	{.id = "MVPU0001", .driver_data = 0}
+};
 #endif
 
 static int vpu_probe(struct platform_device *pdev)
@@ -643,6 +680,7 @@ struct platform_driver vpu_driver = {
 		.pm = &vpu_pm_ops,
 #ifdef SOC_MODE
 		.of_match_table = vpu_of_id_tbl,
+		.acpi_match_table = vpu_acpi_id_tbl,
 #endif
 	},
 	.probe = vpu_probe,
@@ -672,4 +710,7 @@ module_exit(vpu_exit);
 
 MODULE_DESCRIPTION("MooreThreads mtvpu soc driver");
 MODULE_LICENSE("Dual MIT/GPL");
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 16, 0))
+MODULE_IMPORT_NS(DMA_BUF);
+#endif
 #endif

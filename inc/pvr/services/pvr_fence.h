@@ -45,12 +45,6 @@
 #define __PVR_FENCE_H__
 
 #include <linux/version.h>
-
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 17, 0))
-static inline void pvr_fence_cleanup(void)
-{
-}
-#else
 #include "services_kernel_client.h"
 #include "pvr_linux_fence.h"
 #include <linux/list.h>
@@ -194,15 +188,6 @@ u32 pvr_fence_dump_info_on_stalled_ufos(struct pvr_fence_context *fctx,
 					u32 nr_ufos,
 					u32 *vaddrs);
 
-static inline void pvr_fence_cleanup(void)
-{
-	/*
-	 * Ensure all PVR fence contexts have been destroyed, by flushing
-	 * the global workqueue.
-	 */
-	flush_scheduled_work();
-}
-
 #if defined(PVR_FENCE_DEBUG)
 #define PVR_FENCE_CTX_TRACE(c, fmt, ...)                                   \
 	do {                                                               \
@@ -241,5 +226,4 @@ static inline void pvr_fence_cleanup(void)
 #define PVR_FENCE_ERR(f, fmt, ...)                                         \
 	DMA_FENCE_ERR(f, "(PVR) " fmt, ## __VA_ARGS__)
 
-#endif /* (LINUX_VERSION_CODE < KERNEL_VERSION(3, 17, 0)) */
 #endif /* !defined(__PVR_FENCE_H__) */

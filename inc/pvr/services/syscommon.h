@@ -137,18 +137,22 @@ PVRSRV_ERROR SysUninstallDeviceLISR(IMG_HANDLE hLISRData);
                 executed in the main RGX MISR. (e.g. any blocking or lengthy
                 work should be performed by a worker queue/thread instead).
 @Input          hSysData      pointer to the system data of the device
+@Input          psDeviceNode  pointer to the info of device
 @Output         psErrorData   structure containing details of the reported error
 @Return         None.
 */ /***************************************************************************/
 void SysRGXErrorNotify(IMG_HANDLE hSysData,
-                       PVRSRV_ROBUSTNESS_NOTIFY_DATA *psErrorData);
+		       PVRSRV_ROBUSTNESS_NOTIFY_DATA *psErrorData,
+		       struct _PVRSRV_DEVICE_NODE_ *psDeviceNode);
 
 /*************************************************************************/ /*!
-@Description    Check if host enable sriov
-@Input  psDevConfig  pointer to device configuration info.
-@Return         True if host enable sriov, false otherwise.
+@Description    Trye to conver GPA to IOVA.
+@Input          psDevConfig  pointer to device configuration info.
+@Return         True if host enable IOMMU and convert successfullly.
+                Otherwise false.
 */ /**************************************************************************/
-bool IsHostEnableIommu(PVRSRV_DEVICE_CONFIG *psDevConfig);
+bool TryToConvertGPAToIOVA(PVRSRV_DEVICE_CONFIG *psDevConfig,
+			   IMG_UINT64 ui64GPA, IMG_UINT64 *ui64HPA);
 
 /**************************************************************************/ /*!
 @Function	GuestDevicePAddrToHostDevicePAddr

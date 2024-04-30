@@ -40,6 +40,20 @@ enum dpcd_phy_test_pattern {
 	PHY_TEST_PATTERN_CP2520_3, /* same as TPS4 */
 };
 
+/* the monitors which need patch like skip TPS4
+ * as sudi do not support it when use DP1.4;
+ * we can expand these array for other patchs.
+ */
+enum monitor_patch_type {
+	PATCH_SKIP_TPS4_FOR_TRAINING = 0x01,
+};
+
+struct monitor_patch {
+	u8 vendor_id[4];
+	u32 product_id;
+	u32 patch_type;
+};
+
 struct mtgpu_dp_debugfs {
 	struct dentry *dentry;
 	u32 link_rate;
@@ -118,6 +132,7 @@ struct mtgpu_dp_ops {
 struct mtgpu_dp_glb_ops {
 	void (*init)(struct mtgpu_dp_ctx *ctx);
 	void (*reset)(struct mtgpu_dp_ctx *ctx);
+	bool (*monitor_patch_check)(u8 *vendor, u32 product, u32 type);
 };
 
 struct mtgpu_dp_chip {

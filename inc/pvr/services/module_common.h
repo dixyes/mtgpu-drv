@@ -54,6 +54,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /* Get the specific firmware path */
 #define FIRMWARE_LOAD_PATH(binary_name) "mthreads/" binary_name
 
+#define ENABLE_ASYNC_JOB_SUBMIT_TQ       (enable_async_job_submit & 0x1)
+#define ENABLE_ASYNC_JOB_SUBMIT_CE       (enable_async_job_submit & (0x1 << 1))
+#define ENABLE_ASYNC_JOB_SUBMIT_COMPUTE  (enable_async_job_submit & (0x1 << 2))
+#define ENABLE_ASYNC_JOB_SUBMIT_RENDER   (enable_async_job_submit & (0x1 << 3))
+
 struct _PVRSRV_DEVICE_NODE_;
 struct drm_file;
 struct drm_device;
@@ -92,6 +97,8 @@ extern bool disable_gpu;
 extern bool enable_rdma;
 extern int enable_large_mem_mode;
 extern bool enable_mmu_persistence;
+extern unsigned int enable_async_job_submit;
+extern bool enable_mss_mmu;
 #if defined(DEBUG)
 extern IMG_UINT32 gPMRAllocFail;
 #endif /* DEBUG */
@@ -100,6 +107,8 @@ extern IMG_UINT32 gPMRAllocFail;
 #define gpu_page_size OSGetPageSize()
 #define gpu_page_shift OSGetPageShift()
 #endif
+
+bool mtgpu_queue_work(struct work_struct *work);
 
 int PVRSRVDriverInit(void);
 void PVRSRVDriverDeinit(void);

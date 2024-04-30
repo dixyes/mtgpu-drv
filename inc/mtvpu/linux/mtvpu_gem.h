@@ -23,4 +23,6 @@ int ion_free_node(struct mt_node *);
 u64 get_dev_addr_dma_buf(struct dma_buf *psDmaBuf);
 #endif
 
+void gem_dump_instance(struct mt_chip *chip, struct mt_core *core, u32 instIdx);
+void gem_dump_core(struct mt_chip *chip, u32 coreIdx);
 #endif /* _MTVPU_GEM_H_ */

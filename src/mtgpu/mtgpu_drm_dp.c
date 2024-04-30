@@ -148,9 +148,15 @@ static int mtgpu_dp_mode_supported_by_product(struct mtgpu_dp *dp,
 	struct mtgpu_dp_dsc_param *dp_dsc_param = &dp->ctx.dsc_param;
 	bool dsc_support = (dp_dsc_param->dsc_capable &&
 			    dp_dsc_param->sink_dsc_support);
+	int max_pclk;
 
-	/* If both DE and sink support dsc, we no need check pclk */
-	if (!dsc_support && mode->clock / 100 > dp->ctx.max_pclk_100khz)
+	if (dp->ctx.max_rate == 0)
+		mtgpu_dp_get_sinkcaps(dp);
+
+	max_pclk = mtgpu_dp_link_rate_to_pclk(dp->ctx.max_rate, dp->ctx.lane_cnt, 24);
+
+	if (mode->clock > dp->ctx.max_pclk_100khz * 100 ||
+	    (!dsc_support && mode->clock > max_pclk))
 		return MODE_CLOCK_HIGH;
 
 	if (mode->hdisplay > dp->ctx.max_hres)
@@ -263,18 +269,18 @@ mtgpu_dp_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	dp->ctx.bpp = 24;
 	dp->ctx.pclk = adjusted_mode->clock;
 
-	if (dp->ctx.dsc_param.dsc_capable) {
+	if (dp->ctx.dsc_param.dsc_capable && dp->connected) {
 		mtgpu_dp_get_sinkcaps(dp);
 
 		max_pclk = mtgpu_dp_link_rate_to_pclk(dp->ctx.max_rate,
 						      dp->ctx.lane_cnt,
 						      dp->ctx.bpp);
 
-		/* max_pclk < dp->ctx.pclk:
+		/* dp->ctx.pclk > max_pclk:
 		 * Use DSC when pixel clock exceed DP link clock!
 		 * and the sink must support dsc,too.
 		 */
-		if (dp->ctx.dsc_param.sink_dsc_support && max_pclk < dp->ctx.pclk)
+		if (dp->ctx.dsc_param.sink_dsc_support && dp->ctx.pclk > max_pclk)
 			mtgpu_compute_dsc_params(encoder, crtc_state->crtc);
 		else
 			mtgpu_dsc_param_restore(encoder, crtc_state->crtc);
@@ -694,8 +700,8 @@ static int mtgpu_dp_component_bind(struct device *dev,
 		goto err_free_dp;
 	}
 
-	ret = mtgpu_set_interrupt_handler(dev->parent->parent, res->start,
-					  mtgpu_dp_irq_handler, dp);
+	ret = mtgpu_register_interrupt(dev->parent->parent, res->start,
+				       mtgpu_dp_irq_handler, dp, "dp");
 	if (ret) {
 		DRM_DEV_ERROR(dev, "failed to register DisplayPort irq handler\n");
 		ret = -EINVAL;
@@ -812,7 +818,7 @@ static void mtgpu_dp_component_unbind(struct device *dev,
 	if (ret)
 		DRM_DEV_ERROR(dev, "failed to disable DisplayPort irq\n");
 
-	ret = mtgpu_set_interrupt_handler(dev->parent->parent, dp->ctx.irq, NULL, NULL);
+	ret = mtgpu_unregister_interrupt(dev->parent->parent, dp->ctx.irq);
 	if (ret)
 		DRM_DEV_ERROR(dev, "failed to deregister DisplayPort irq handler\n");
 

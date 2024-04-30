@@ -1541,19 +1541,20 @@ typedef struct
 
 RGX_FW_STRUCT_SIZE_ASSERT(RGX_HWPERF_CONFIG_CNTBLK);
 
-#define MUSA_PFM_NORMAL_MODE (0U)
-#define MUSA_PFM_INTERVAL_MODE (1U)
-#define MUSA_PFM_SWIFT_MASK (0x1e)
-#define MUSA_PFM_SWIFT_DUMP_ONCE_SIZE (256U)
-#define MUSA_PFM_COMMON_DUMP_ONCE_SIZE (512U)
+typedef enum
+{
+	RGX_HWPERF_PFM_ARCH_TYPE_QY2,
+	RGX_HWPERF_PFM_ARCH_TYPE_PH1,
+} RGX_HWPERF_PFM_ARCH_TYPE;
 
 typedef struct
 {
 	IMG_UINT32 ui32CoreId;
 	IMG_UINT32 ui32WrapperSelc;
 	IMG_UINT32 ui32InstanceSelc;
-	IMG_INT32  i32MemIndex;
-} RGX_HWPERF_PFM_INSTANCE_CONFIG;
+	IMG_UINT64 ui64BaseAddrOffset;
+	IMG_UINT64 ui64PointerAddrOffset;
+} RGX_HWPERF_PFM_INSTANCE_CONFIG_QY2;
 
 typedef struct
 {
@@ -1561,19 +1562,178 @@ typedef struct
 	IMG_UINT32 ui32WrapperSelc;
 	IMG_UINT32 ui32InstanceEnable;
 	IMG_UINT64 ui64GroupSelc;
+} RGX_HWPERF_PFM_WRAPPER_CONFIG_QY2;
+
+typedef struct
+{
+	IMG_BOOL bEnablePFM;
+	IMG_UINT32 ui32TimeInterval;
+	IMG_UINT32 ui32NumPages;
+	IMG_UINT32 ui32PointerUpdateFreq;
+} RGX_HWPERF_PFM_GLOBAL_CONFIG_QY2;
+
+typedef struct
+{
+	IMG_UINT32 ui32Instance;
+	IMG_UINT32 ui32LayoutCtrl;
+	IMG_UINT64 ui64CountBaseAddrOffset;
+	IMG_UINT64 ui64PointerAddrOffset;
+	IMG_UINT64 ui64InstanceCtrl;
+	IMG_UINT64 ui64TriggerCtrl;
+	IMG_UINT32 aui32Group;
+} RGX_HWPERF_PFM_INSTANCE_CONFIG_PH1;
+
+#define RGX_PFM_MAX_WRAPPER_COUNT_PER_CORE_PH1 8
+typedef struct
+{
+	IMG_UINT32 ui32CoreId;
+	IMG_UINT32 ui32Wrapper;
+	IMG_UINT32 ui32Count;
+	RGX_HWPERF_PFM_INSTANCE_CONFIG_PH1 apsInstCfgs[RGX_PFM_MAX_WRAPPER_COUNT_PER_CORE_PH1];
+} RGX_HWPERF_PFM_WRAPPER_CONFIG_PH1;
+
+typedef struct
+{
+	IMG_BOOL bEnablePFM;
+	IMG_UINT32 ui32BufferCtrl;
+	IMG_UINT32 ui32MhCtl;
+} RGX_HWPERF_PFM_GLOBAL_CONFIG_PH1;
+
+typedef struct
+{
+	IMG_HANDLE hPmrHandle;
+	IMG_HANDLE hOSMMapHandle;
+	IMG_PBYTE pBaseAddr;
+	IMG_UINT64 ui64Size;
+} RGX_HWPERF_PFM_DESC;
+
+typedef struct
+{
+	RGX_HWPERF_PFM_ARCH_TYPE eArchType;
+	union
+	{
+		RGX_HWPERF_PFM_INSTANCE_CONFIG_QY2 sPFMInstCfgQY2;
+		RGX_HWPERF_PFM_INSTANCE_CONFIG_PH1 sPFMInstCfgPH1;
+	} uConfig;
+} RGX_HWPERF_PFM_INSTANCE_CONFIG;
+
+typedef struct
+{
+	RGX_HWPERF_PFM_ARCH_TYPE eArchType;
+	union
+	{
+		RGX_HWPERF_PFM_WRAPPER_CONFIG_QY2 sPFMWrapCfgQY2;
+		RGX_HWPERF_PFM_WRAPPER_CONFIG_PH1 sPFMWrapCfgPH1;
+	} uConfig;
 } RGX_HWPERF_PFM_WRAPPER_CONFIG;
 
 typedef struct
 {
-	IMG_BOOL   bEnablePFM;
-	IMG_UINT32 ui32TimeInterval;
-	IMG_UINT32 ui32PointerUpdateFreq;
-	IMG_UINT32 ui32InstBufferSize;
-	IMG_UINT32 ui32MaxInstance;
-	IMG_UINT32 ui32PointerBufferSize;
-	IMG_UINT32 ui32Mode;
-	IMG_BOOL   bIsSysMemory;
-}  RGX_HWPERF_PFM_GLOBAL_CONFIG;
+	RGX_HWPERF_PFM_ARCH_TYPE eArchType;
+	union
+	{
+		RGX_HWPERF_PFM_GLOBAL_CONFIG_QY2 sPFMGlobalCfgQY2;
+		RGX_HWPERF_PFM_GLOBAL_CONFIG_PH1 sPFMGlobalCfgPH1;
+	} uConfig;
+} RGX_HWPERF_PFM_GLOBAL_CONFIG;
+
+typedef enum
+{
+        RGX_HWPERF_PFM_MSS_DDRC,
+        RGX_HWPERF_PFM_MSS_D2D_0,
+        RGX_HWPERF_PFM_MSS_D2D_1,
+        RGX_HWPERF_PFM_MSS_LLC,
+} RGX_HWPERF_PFM_MSS_TYPE_PH1;
+
+typedef struct
+{
+        RGX_HWPERF_PFM_MSS_TYPE_PH1 eMSSCfgType;
+        IMG_UINT32 MSSCfgOffset;
+        IMG_BOOL bMSSEnable;
+        IMG_UINT32 ui32TimeSlot;
+        IMG_UINT32 ui32OrderEnable;
+        IMG_UINT32 ui32DumpFreq;
+        IMG_UINT32 ui32DestSpace;
+        IMG_UINT32 ui32PointSelc;
+        IMG_UINT32 ui32GroupSelc;
+        IMG_UINT64 ui64BaseAddrOffset;
+        IMG_UINT64 ui64PointAddrOffset;
+        IMG_UINT32 ui32LayoutCtrl;
+        IMG_UINT32 ui32SpaceOverFlow;
+        IMG_UINT32 ui32Absolute;
+        IMG_UINT32 ui32TrigSource;
+        IMG_UINT32 ui32BroadMode;
+        IMG_UINT32 ui32RegMode;
+        IMG_UINT32 ui32RegCommand;
+} RGX_HWPERF_PFM_MSS_CONFIG_PH1;
+
+typedef struct
+{
+        RGX_HWPERF_PFM_ARCH_TYPE eArchType;
+        IMG_UINT32 ui32Count;
+        union
+        {
+                RGX_HWPERF_PFM_MSS_CONFIG_PH1 *psPFMMSSCfgPH1;
+        } uConfig;
+} RGX_HWPERF_PFM_MSS_CONFIG;
+
+typedef struct
+{
+        IMG_UINT32 ui32DumpEnable;
+        IMG_UINT32 ui32DumpCmd;
+        IMG_UINT32 ui32PFMCtrl0;
+} RGX_HWPERF_PFM_CMSS_CONFIG_PH1;
+
+typedef enum
+{
+	RGX_HWPERF_PFM_DUMP_TRIGGER_GPU,
+	RGX_HWPERF_PFM_DUMP_TRIGGER_CMSS,
+	RGX_HWPERF_PFM_DUMP_TRIGGER_MSS,
+} RGX_HWPERF_PFM_DUMP_TRIGGER_TYPE;
+
+typedef enum
+{
+	RGX_HWPERF_PFM_NORM_DUMP_START,
+	RGX_HWPERF_PFM_NORM_DUMP_ONCE,
+	RGX_HWPERF_PFM_NORM_DUMP_END,
+	RGX_HWPERF_PFM_INTV_DUMP_START,
+	RGX_HWPERF_PFM_INTV_DUMP_END,
+} RGX_HWPERF_PFM_DUMP_TRIGGER_CONTROL;
+
+typedef struct
+{
+	RGX_HWPERF_PFM_MSS_TYPE_PH1 eMSSCfgType;
+	IMG_UINT32 MSSCfgOffset;
+	RGX_HWPERF_PFM_DUMP_TRIGGER_CONTROL ePFMDumpCtrl;
+} RGX_HWPERF_PFM_DUMP_TRIG_MSS_PH1;
+
+typedef struct
+{
+        RGX_HWPERF_PFM_ARCH_TYPE eArchType;
+        union
+        {
+                RGX_HWPERF_PFM_DUMP_TRIG_MSS_PH1 sPFMDumpTrigMSSPH1;
+        } uConfig;
+} RGX_HWPERF_PFM_DUMP_TRIG_MSS;
+
+typedef struct
+{
+	RGX_HWPERF_PFM_DUMP_TRIGGER_TYPE eDumpType;
+	union
+	{
+		RGX_HWPERF_PFM_DUMP_TRIGGER_CONTROL ePFMDumpCtrlGPU;
+		RGX_HWPERF_PFM_DUMP_TRIGGER_CONTROL ePFMDumpCtrlCMSS;
+		RGX_HWPERF_PFM_DUMP_TRIG_MSS sPFMDumpTrigMSS;
+	} uConfig;
+} RGX_HWPERF_PFM_DUMP_TRIGGER_CONFIG;
+
+typedef struct
+{
+	RGX_HWPERF_PFM_ARCH_TYPE eArchType;
+	IMG_BOOL bIsSysMemory;
+	IMG_UINT64 ui64BufSize;
+	IMG_UINT32 ui32PfmCMSSCtrl;
+} RGX_HWPERF_PFM_INIT_PARAM;
 
 #if defined(__cplusplus)
 }

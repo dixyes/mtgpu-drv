@@ -62,6 +62,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define RGX_FIRMWARE_RAW_HEAP_BASE                   (0xE1C0000000ULL)
 #define RGX_FIRMWARE_RAW_HEAP_SIZE                   (IMG_UINT32_C(1) << RGX_FIRMWARE_HEAP_SHIFT)
 #define RGX_FIRMWARE_HEAP_MAX_SHIFT                  28
+#define RGX_NUMBER_OF_RESERVED_HEAPS                 (IMG_UINT32_C(4))
+
 
 /* To enable the firmware to compute the exact address of structures allocated by the KM
  * in the Fw Config subheap, regardless of the KM's page size (and PMR granularity),

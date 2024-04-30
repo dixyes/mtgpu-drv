@@ -197,6 +197,7 @@ typedef struct _PVRSRV_DEVICE_DEBUG_INFO_
 {
 	DI_GROUP *psGroup;
 	DI_ENTRY *psDumpDebugEntry;
+	DI_ENTRY *psPowerModeEntry;
 	DI_ENTRY *psHardwareResetEntry;
 #ifdef SUPPORT_RGX
 	DI_ENTRY *psFWTraceEntry;
@@ -221,6 +222,7 @@ typedef struct _PVRSRV_DEVICE_DEBUG_INFO_
 #endif
 	DI_ENTRY *psGpuMemUseEntry;
 	DI_ENTRY *psGpuStatusEntry;
+	DI_ENTRY *psGpuIovaAllocatedSizeEntry;
 
 #if defined(PVRSRV_ENABLE_PVR_ION_STATS)
 	struct _pvr_ion_stats_state_ *psPvrIonStatsState;
@@ -273,8 +275,8 @@ typedef struct _LISR_EXECUTION_INFO_
 typedef struct _PVRSRV_DEVICE_NODE_
 {
 	PVRSRV_DEVICE_IDENTIFIER	sDevId;
-
-	PVRSRV_DEVICE_STATE			eDevState;
+	PVRSRV_DEVICE_STATE		eDevState;
+	IMG_BOOL			bForceLegacyHeap; /* Force to use Legacy heap layout */
 	PVRSRV_DEVICE_FABRIC_TYPE	eDevFabricType;
 
 	ATOMIC_T					eHealthStatus; /* Holds values from PVRSRV_DEVICE_HEALTH_STATUS */
@@ -554,6 +556,10 @@ typedef struct _PVRSRV_DEVICE_NODE_
 	// Trace pointer for streaming trace
 	IMG_UINT32 ui32OldTracePtr[RGXFW_THREAD_NUM];
 #endif
+
+	IMG_UINT64 ui64IovaAllocatedSize;
+	IMG_UINT32 ui32DmaMapTimes;
+	IMG_UINT32 ui32DmaUnmapTimes;
 } PVRSRV_DEVICE_NODE;
 
 /*

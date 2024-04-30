@@ -30,6 +30,9 @@ int mtgpu_semaphore_get_fwaddr(struct _CONNECTION_DATA_ *conn, void *handle, u32
 int mtgpu_semaphore_create_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
 int mtgpu_semaphore_destroy_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
 int mtgpu_semaphore_submit_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
+int mtgpu_semaphore_cpu_signal_ioctl(struct drm_device *drm, void *data,
+				     struct drm_file *file_priv);
+int mtgpu_semaphore_to_fd_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
 PVRSRV_ERROR
 mtgpu_semaphore_resolve(struct _CONNECTION_DATA_ *conn,
 			struct drm_mtgpu_semaphore *check_semas,
@@ -38,5 +41,7 @@ mtgpu_semaphore_resolve(struct _CONNECTION_DATA_ *conn,
 			PSYNC_CHECKPOINT **checkpoints_out,
 			u32 **values_out,
 			u64 *sema_uid);
+int mtgpu_semaphore_signal_callback_register(void);
+void mtgpu_semaphore_signal_callback_unregister(void);
 
 #endif /* _MTGPU_SEMAPHORE_H_ */

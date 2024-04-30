@@ -453,7 +453,11 @@ _GetPoolListHead(IMG_UINT32 ui32CPUCacheFlags,
 	return IMG_TRUE;
 }
 
+#if defined (OS_FUNC_SHRINKER_REGISTER_EXIST)
+static struct shrinker *g_psShrinker;
+#else
 static struct shrinker g_sShrinker;
+#endif
 
 /* Returning the number of pages that still reside in the page pool. */
 static unsigned long
@@ -469,9 +473,13 @@ _CountObjectsInPagePool(struct shrinker *psShrinker, struct shrink_control *psSh
 {
 	int remain;
 
+#if defined (OS_FUNC_SHRINKER_REGISTER_EXIST)
+	PVR_ASSERT(psShrinker == g_psShrinker);
+#else
 	PVR_ASSERT(psShrinker == &g_sShrinker);
 	(void)psShrinker;
 	(void)psShrinkControl;
+#endif
 
 	/* In order to avoid possible deadlock use mutex_trylock in place of mutex_lock */
 	if (_PagePoolTrylock() == 0)
@@ -491,8 +499,12 @@ _ScanObjectsInPagePool(struct shrinker *psShrinker, struct shrink_control *psShr
 	LinuxUnpinEntry *psUnpinEntry, *psTempUnpinEntry;
 	IMG_UINT32 uiPagesFreed;
 
+#if defined (OS_FUNC_SHRINKER_REGISTER_EXIST)
+	PVR_ASSERT(psShrinker == g_psShrinker);
+#else
 	PVR_ASSERT(psShrinker == &g_sShrinker);
 	(void)psShrinker;
+#endif
 
 	/* In order to avoid possible deadlock use mutex_trylock in place of mutex_lock */
 	if (_PagePoolTrylock() == 0)
@@ -562,41 +574,12 @@ e_exit:
 		PVR_ASSERT(g_ui32UnpinPageCount == 0);
 	}
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0))
-	{
-		int remain;
-		remain = _GetNumberOfPagesInPoolUnlocked();
-		_PagePoolUnlock();
-		return remain;
-	}
-#else
 	/* Returning the number of pages freed during the scan */
 	_PagePoolUnlock();
 	return psShrinkControl->nr_to_scan - uNumToScan + uSurplus;
-#endif
 }
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0))
-static int
-_ShrinkPagePool(struct shrinker *psShrinker, struct shrink_control *psShrinkControl)
-{
-	if (psShrinkControl->nr_to_scan != 0)
-	{
-		return _ScanObjectsInPagePool(psShrinker, psShrinkControl);
-	}
-	else
-	{
-		/* No pages are being reclaimed so just return the page count */
-		return _CountObjectsInPagePool(psShrinker, psShrinkControl);
-	}
-}
-
-static struct shrinker g_sShrinker =
-{
-	.shrink = _ShrinkPagePool,
-	.seeks = DEFAULT_SEEKS
-};
-#else
+#if !defined (OS_FUNC_SHRINKER_REGISTER_EXIST)
 static struct shrinker g_sShrinker =
 {
 	.count_objects = _CountObjectsInPagePool,
@@ -614,7 +597,12 @@ void LinuxInitPhysmem(void)
 	if (g_psLinuxPagePoolCache)
 	{
 		/* Only create the shrinker if we created the cache OK */
-#if defined(OS_REGISTER_SHRINKER_HAS_ONE_ARG)
+#if defined (OS_FUNC_SHRINKER_REGISTER_EXIST)
+		g_psShrinker = shrinker_alloc(0, "mtgpu-pagepool");
+		g_psShrinker->count_objects = _CountObjectsInPagePool;
+		g_psShrinker->scan_objects = _ScanObjectsInPagePool;
+		shrinker_register(g_psShrinker);
+#elif defined(OS_REGISTER_SHRINKER_HAS_ONE_ARG)
 		register_shrinker(&g_sShrinker);
 #else
 		register_shrinker(&g_sShrinker, "mtgpu-pagepool");
@@ -647,8 +635,11 @@ void LinuxDeinitPhysmem(void)
 
 	/* Free the page cache */
 	kmem_cache_destroy(g_psLinuxPagePoolCache);
-
+#if defined (OS_FUNC_SHRINKER_REGISTER_EXIST)
+	shrinker_free(g_psShrinker);
+#else
 	unregister_shrinker(&g_sShrinker);
+#endif
 	_PagePoolUnlock();
 
 	kmem_cache_destroy(g_psLinuxPageArray);

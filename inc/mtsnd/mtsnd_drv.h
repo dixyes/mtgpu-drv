@@ -72,7 +72,7 @@ struct mtsnd_pcm {
 struct mtsnd_chip {
 	/* I/O resources */
 	struct mtsnd_bar bar[2];
-	int irq;
+	int irq[4];
 	int idx;
 
 	u32 open_compr: 1;

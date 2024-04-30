@@ -10,6 +10,7 @@
  */
 
 #include <linux/moduleparam.h>
+#include <linux/errno.h>
 
 #include "mtgpu_defs.h"
 
@@ -71,13 +72,63 @@ MODULE_PARM_DESC(mtgpu_dma_debug,
 		 "mtgpu udma and hdma debug information enable(1)/disable(0) ");
 
 #if (RGX_NUM_OS_SUPPORTED > 1)
-int mtgpu_driver_mode = MTGPU_DRIVER_MODE_HOST;
-module_param(mtgpu_driver_mode, int, 0444);
-MODULE_PARM_DESC(mtgpu_driver_mode,
-		 "mtgpu driver mode (native = -1, host = 0, guest = 1 )");
+int mtgpu_drm_major = 2;
 #else
-int mtgpu_driver_mode = MTGPU_DRIVER_MODE_NATIVE;
+int mtgpu_drm_major = 1;
 #endif
+module_param(mtgpu_drm_major, int, 0444);
+MODULE_PARM_DESC(mtgpu_drm_major, "1 - ddk1.0, 2 - ddk2.0. The default value is 1");
+
+#if (RGX_NUM_OS_SUPPORTED > 1)
+long mtgpu_driver_mode = MTGPU_DRIVER_MODE_HOST;
+#else
+long mtgpu_driver_mode = MTGPU_DRIVER_MODE_NATIVE;
+#endif
+
+static int driver_mode_set(const char *arg, const struct kernel_param *kp)
+{
+	int ret = 0;
+	long new_driver_mode;
+
+	ret = kstrtol(arg, 10, &new_driver_mode);
+	if (ret) {
+		pr_err("mtgpu: driver mode setting error(kstrtol)\n");
+		goto exit;
+	}
+
+#if (RGX_NUM_OS_SUPPORTED > 1)
+	if (!(new_driver_mode == MTGPU_DRIVER_MODE_HOST ||
+	      new_driver_mode == MTGPU_DRIVER_MODE_GUEST)) {
+		pr_err("mtgpu: mtgpu_driver_mode(%ld), setting error in this mode(host = 0,  guest = 1)\n",
+		       new_driver_mode);
+		ret = -EINVAL;
+		goto exit;
+	}
+#else
+	if (new_driver_mode != MTGPU_DRIVER_MODE_NATIVE) {
+		pr_err("mtgpu: mtgpu_driver_mode(%ld), setting error in this mode(native = -1)\n",
+		       new_driver_mode);
+		ret = -EINVAL;
+		goto exit;
+	}
+#endif
+
+	mtgpu_driver_mode = new_driver_mode;
+	/* Ensure mtgpu_driver_mode is flushed */
+	smp_mb();
+
+exit:
+	return ret;
+}
+
+static const struct kernel_param_ops driver_mode_ops = {
+	.set = driver_mode_set,
+	.get = param_get_int,
+};
+
+module_param_cb(mtgpu_driver_mode, &driver_mode_ops, &mtgpu_driver_mode, 0444);
+MODULE_PARM_DESC(mtgpu_driver_mode,
+		 "mtgpu driver mode (native = -1, host = 0, guest = 1)");
 
 unsigned long mtvpu_reserved_mem_size;
 module_param(mtvpu_reserved_mem_size, ulong, 0444);
@@ -110,15 +161,20 @@ int enable_mtlink;
 module_param(enable_mtlink, int, 0444);
 MODULE_PARM_DESC(enable_mtlink, "1:enable mtlink, 0:disable mtlink");
 
-unsigned long mtlink_timer_expires = 5000;
+unsigned long mtlink_timer_expires = 25000;
 module_param(mtlink_timer_expires, ulong, 0444);
 MODULE_PARM_DESC(mtlink_timer_expires,
-		 "timer expires(ms) from pcie probe to mtlink init, default 5000ms");
+		 "timer expires(ms) from pcie probe to mtlink init, default 25000ms");
 
 int mtlink_topo_type;
 module_param(mtlink_topo_type, int, 0444);
 MODULE_PARM_DESC(mtlink_topo_type,
 		 "0:default, normal topology, 1:eight-card fc topology, 2:two groups of four-card fc topology");
+
+int enable_event_report;
+module_param(enable_event_report, int, 0444);
+MODULE_PARM_DESC(enable_event_report,
+		 "0:default, disable mtgpu_event_report, 1:enable mtgpu_event_report");
 
 /**
  * pstate mode
@@ -188,10 +244,20 @@ module_param(mtgpu_load_windows_firmware, bool, 0444);
 MODULE_PARM_DESC(mtgpu_load_windows_firmware,
 	"0 - load linux fw, 1 - load windows fw. The default value is 1");
 
-int vgpu_mm_mapping_mode = 1;
+bool mtgpu_vgpu_enable_share_vpu_mem = false;
+module_param(mtgpu_vgpu_enable_share_vpu_mem, bool, 0444);
+MODULE_PARM_DESC(mtgpu_vgpu_enable_share_vpu_mem,
+		 "Share guest vpu memory for gpu use (0: disable(default), 1: enable)");
+
+int vgpu_mm_mapping_mode = 2;
 module_param(vgpu_mm_mapping_mode, int, 0444);
 MODULE_PARM_DESC(vgpu_mm_mapping_mode,
-	"vGPU system memory mapping mode(0: non_linear, 1: linear(default), 2: linear_prealloc)");
+	"vGPU system memory mapping mode(0: non_linear, 1: linear, 2: linear_prealloc(default))");
+
+int vgpu_iommu_mode = 2;
+module_param(vgpu_iommu_mode, int, 0444);
+MODULE_PARM_DESC(vgpu_iommu_mode,
+		 "vGPU iommu mode(0: force disable, 1: auto, 2: follow system(default))");
 
 #if defined(VDI_PLATFORM_SANGFOR)
 #define MTGPU_VGPU_VDMA_DEFAULT  1
@@ -203,7 +269,7 @@ int mtgpu_vdma_enable = MTGPU_VGPU_VDMA_DEFAULT;
 module_param(mtgpu_vdma_enable, int, 0444);
 MODULE_PARM_DESC(mtgpu_vdma_enable, "vdma enable mode (0: not enable, 1: enable)");
 
-unsigned long mtgpu_win_fw_context_switch_value;
+unsigned long mtgpu_win_fw_context_switch_value = 0x1E;
 module_param(mtgpu_win_fw_context_switch_value, ulong, 0444);
 MODULE_PARM_DESC(mtgpu_win_fw_context_switch_value,
 	"windows firmware DM(TDM, TA, 3D, CDM) context switch. Each bit represents each DM (0: not enable, 1: enable)");

@@ -35,7 +35,6 @@
 #define STREAM_FILL_SIZE                0x10000
 #define STREAM_END_SIZE                 0
 #define JPU_GBU_SIZE                    256
-#define STREAM_BUF_SIZE                 (2 << 20)
 #define JPU_CHECK_WRITE_RESPONSE_BVALID_SIGNAL 0
 #define JPU_INTERRUPT_TIMEOUT_MS        5000
 #define JPU_INST_CTRL_TIMEOUT_MS        5000

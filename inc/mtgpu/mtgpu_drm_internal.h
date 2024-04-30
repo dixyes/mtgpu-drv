@@ -33,6 +33,7 @@ struct mtgpu_gem_object {
 	void *handle;
 	u64 private_data;
 	u32 type;
+	u64 global_handle;
 };
 
 /* The following functions are defined in open source file */

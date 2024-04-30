@@ -898,6 +898,8 @@ enum PVRSRV_ERROR_TAG pvr_sync_register_functions(void)
 	return SyncCheckpointRegisterFunctions(&pvr_sync_data.sync_checkpoint_ops);
 }
 
+extern struct workqueue_struct *mtgpu_wq;
+
 int pvr_sync_init(void)
 {
 	int err;
@@ -928,7 +930,7 @@ int pvr_sync_init(void)
 
 err_ioctl_init:
 	pvr_fence_context_destroy(pvr_sync_data.foreign_fence_context);
-	pvr_fence_cleanup();
+	flush_workqueue(mtgpu_wq);
 err_out:
 	return err;
 }
@@ -937,7 +939,7 @@ void pvr_sync_deinit(void)
 {
 	pvr_sync_ioctl_deinit();
 	pvr_fence_context_destroy(pvr_sync_data.foreign_fence_context);
-	pvr_fence_cleanup();
+	flush_workqueue(mtgpu_wq);
 }
 
 enum PVRSRV_ERROR_TAG pvr_sync_device_init(struct device *dev)

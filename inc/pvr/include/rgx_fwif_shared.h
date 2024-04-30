@@ -210,13 +210,11 @@ typedef struct
 	                                      fence dependencies are not met. */
 	IMG_UINT32  ui32WrapMask;       /*!< Offset wrapping mask, total capacity
 	                                      in bytes of the CCB-1 */
-#if defined(SUPPORT_AGP)
+
+	/* Used for CDM multiqueue. */
 	IMG_UINT32  ui32ReadOffset2;
-#if defined(SUPPORT_AGP4)
 	IMG_UINT32  ui32ReadOffset3;
 	IMG_UINT32  ui32ReadOffset4;
-#endif
-#endif
 } UNCACHED_ALIGN RGXFWIF_CCCB_CTL;
 
 
@@ -376,13 +374,54 @@ typedef enum
 	RGX_CONTEXT_GEOM_OOM_DISABLED                = 16,	/*!< Geometry DM OOM event is not allowed */
 } RGX_CONTEXT_RESET_REASON;
 
+typedef struct
+{
+	/* FIXME: To ensure the normal compilation of other modules in gr-umd, we temporarily need to
+	 *        use hard core to define the dimensions of the USC_SLOT registers, the reason is that
+	 *        using macro definitions could lead to compilation failures in other modules.
+	 *        The first dimension is RGX_MAX_NUM_CORES, the second is RGX_FEATURE_NUM_CLUSTERS,
+	 *        the last is RGX_FEATURE_USC_SLOTS. */
+	/* TODO: Move the definition of RGX_CONTEXT_RESET_REASON_DATA to shared_include, and replace
+	 *       the hard code by macro definitions */
+	IMG_UINT32 ui32UscWatchDogStatus[8];
+	IMG_UINT64 ui64UscSlot[8][8][96];
+} USC_DUMP;
+
+typedef struct
+{
+	IMG_UINT64 ui64Addr;
+	IMG_UINT64 bfPC : 32;
+	IMG_UINT64 bfRead : 1;
+	IMG_UINT64 bfFault : 1;
+	IMG_UINT64 bfROFault : 1;
+	IMG_UINT64 bfProtFault : 1;
+	IMG_UINT64 bfPageFault : 1;
+	IMG_CHAR pszTagID[16];
+	IMG_CHAR pszMMULevel[16];
+	IMG_CHAR pszTagSB[32];
+} PAGE_FAULT_INFO;
+
+typedef struct
+{
+	IMG_UINT64 ui64MmuFaultStatus1[8];
+	IMG_UINT64 ui64MmuFaultStatus2[8];
+	PAGE_FAULT_INFO sPageFaultPrint[8];
+} MMU_FAULT_DUMP;
+
 /*!
 	@Brief Context reset data shared with the host
 */
 typedef struct
 {
-	RGX_CONTEXT_RESET_REASON eResetReason; /*!< Reset reason */
-	IMG_UINT32 ui32ResetExtJobRef;  /*!< External Job ID */
+	IMG_UINT64 ui64ResetReason;       /*!< Reset reason */
+	IMG_UINT32 ui32ResetExtJobRef;    /*!< External Job ID */
+	IMG_BOOL bIsPageFault;
+	IMG_UINT64 ui64TimeStamp;
+	union CONTEXT_RESET_INFO
+	{
+		USC_DUMP sUscDump;
+		MMU_FAULT_DUMP sMmuFault;
+	} sCtxResetInfo;
 } RGX_CONTEXT_RESET_REASON_DATA;
 #endif /*  RGX_FWIF_SHARED_H */
 

@@ -137,6 +137,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "pvrsrv_sync_server.h"
 #include "lock.h"
+#include "oskm_apphint.h"
 #if defined(SUPPORT_DMA_TRANSFER)
 #include "mtgpu_dma.h"
 #endif
@@ -695,7 +696,12 @@ static struct workqueue_struct *gpFenceStatusWq;
 
 static PVRSRV_ERROR _NativeSyncInit(void)
 {
+#if defined(PVRSRV_ENABLE_WORK_QUEUE_OPTIMIZATION)
+	gpFenceStatusWq = alloc_workqueue("%s", __WQ_LEGACY | WQ_FREEZABLE | WQ_CPU_INTENSIVE |
+					  WQ_MEM_RECLAIM, 1, "musa_fence_status");
+#else
 	gpFenceStatusWq = create_freezable_workqueue("musa_fence_status");
+#endif
 	if (!gpFenceStatusWq)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "%s: Failed to create foreign fence status workqueue",
@@ -1061,14 +1067,31 @@ PVRSRV_ERROR OSInstallMISR(IMG_HANDLE *hMISRData, PFN_MISR pfnMISR,
 
 	PVR_DPF((PVR_DBG_MESSAGE, "Installing MISR with cookie %p", psMISRData));
 
+#if defined(PVRSRV_ENABLE_WORK_QUEUE_OPTIMIZATION)
+	if (pszMisrName)
+		psMISRData->psWorkQueue = alloc_workqueue("%s", __WQ_ORDERED |
+							  __WQ_ORDERED_EXPLICIT |
+							  __WQ_LEGACY | WQ_MEM_RECLAIM |
+							  WQ_CPU_INTENSIVE, 1, pszMisrName);
+	else
+		psMISRData->psWorkQueue = alloc_workqueue("%s", __WQ_ORDERED |
+							  __WQ_ORDERED_EXPLICIT |
+							  __WQ_LEGACY | WQ_MEM_RECLAIM |
+							  WQ_CPU_INTENSIVE, 1, "MUSA_Misr");
+#else
 	if (pszMisrName)
 		psMISRData->psWorkQueue = create_singlethread_workqueue(pszMisrName);
 	else
 		psMISRData->psWorkQueue = create_singlethread_workqueue("MUSA_Misr");
+#endif
 
 	if (psMISRData->psWorkQueue == NULL)
 	{
+#if defined(PVRSRV_ENABLE_WORK_QUEUE_OPTIMIZATION)
+		PVR_DPF((PVR_DBG_ERROR, "OSInstallMISR: alloc_workqueue failed"));
+#else
 		PVR_DPF((PVR_DBG_ERROR, "OSInstallMISR: create_singlethreaded_workqueue failed"));
+#endif
 		OSFreeMem(psMISRData);
 		return PVRSRV_ERROR_UNABLE_TO_CREATE_THREAD;
 	}
@@ -1101,7 +1124,53 @@ PVRSRV_ERROR OSUninstallMISR(IMG_HANDLE hMISRData)
 PVRSRV_ERROR OSScheduleMISR(IMG_HANDLE hMISRData)
 {
 	MISR_DATA *psMISRData = (MISR_DATA *) hMISRData;
+#if defined(PVRSRV_ENABLE_WORK_QUEUE_OPTIMIZATION)
+	const IMG_CHAR *pszAppHintDefault = PVRSRV_APPHINT_MISRWORKONSPECIFIEDCPU;
+	void *pvAppHintState = NULL;
+	static IMG_UINT32 ui32SelectedCpu[MAX_CPU_NUM];
+	static IMG_UINT32 ui32SelectedCpuCount;
+	static IMG_UINT32 ui32CurrentCpu;
+	static IMG_BOOL has_parsed;
+	IMG_CHAR szMISRWorkOnSpecifiedCPUAppHint[256];
+	IMG_CHAR *pszToken;
+	IMG_UINT32 ui32OfflineCpuCount = 0;
+	IMG_CHAR *pszAppintStr = szMISRWorkOnSpecifiedCPUAppHint;
 
+	if (!has_parsed)
+	{
+		OSCreateKMAppHintState(&pvAppHintState);
+		OSGetKMAppHintSTRING(APPHINT_NO_DEVICE,
+				     pvAppHintState,
+				     MISRWorkOnSpecifiedCPU,
+				     pszAppHintDefault,
+				     szMISRWorkOnSpecifiedCPUAppHint,
+				     sizeof(szMISRWorkOnSpecifiedCPUAppHint));
+		OSFreeKMAppHintState(pvAppHintState);
+
+		pszToken = strsep(&pszAppintStr, ",");
+		while (pszToken) {
+			kstrtou32(pszToken, 0, &ui32SelectedCpu[ui32SelectedCpuCount]);
+			ui32SelectedCpuCount++;
+			pszToken = strsep(&pszAppintStr, ",");
+		}
+
+		has_parsed = true;
+	}
+
+	while (!cpu_online(ui32SelectedCpu[ui32CurrentCpu]))
+	{
+		PVR_DPF((PVR_DBG_ERROR, "%d CPU is offline", ui32SelectedCpu[ui32CurrentCpu]));
+		ui32CurrentCpu++;
+		ui32OfflineCpuCount++;
+		if (ui32OfflineCpuCount == ui32SelectedCpuCount) {
+			PVR_DPF((PVR_DBG_ERROR, " All Selected CPUs are offline"));
+			return PVRSRV_ERROR_NOT_READY;
+		}
+
+		if (ui32CurrentCpu == ui32SelectedCpuCount)
+			ui32CurrentCpu = 0;
+	}
+#endif
 	/*
 		Note:
 
@@ -1114,7 +1183,17 @@ PVRSRV_ERROR OSScheduleMISR(IMG_HANDLE hMISRData)
 	return PVRSRV_OK;
 #else
 	{
+#if defined(PVRSRV_ENABLE_WORK_QUEUE_OPTIMIZATION)
+		bool rc = queue_work_on(ui32SelectedCpu[ui32CurrentCpu],
+					psMISRData->psWorkQueue, &psMISRData->sMISRWork);
+
+		if (ui32CurrentCpu == ui32SelectedCpuCount - 1)
+			ui32CurrentCpu = 0;
+		else
+			ui32CurrentCpu++;
+#else
 		bool rc = queue_work(psMISRData->psWorkQueue, &psMISRData->sMISRWork);
+#endif
 		return rc ? PVRSRV_OK : PVRSRV_ERROR_ALREADY_EXISTS;
 	}
 #endif
@@ -2826,6 +2905,12 @@ void __user *OSValidateAndGetCPUUserVA(PMR *psPMR,
 }
 #endif
 
+/* round the given value down to nearest power of two */
+IMG_INT OSRoundDownPowOfTwo(IMG_UINT32 n)
+{
+	return rounddown_pow_of_two(n);
+}
+
 struct device *OSGetPcieDeviceFromDeviceNode(PVRSRV_DEVICE_NODE *psDevNode)
 {
 	struct device *osDevice;
@@ -2903,7 +2988,19 @@ IMG_PCHAR OSGetProcessNameByPid(IMG_PID uiPid)
 	return task->comm;
 }
 
-unsigned short OSGetPcieDeviceID(PVRSRV_DEVICE_NODE *psDeviceNode)
+struct pci_dev *OSGetPcieDeviceFromVendor(IMG_UINT32 ui32VendorID,
+					  IMG_UINT32 ui32DeviceID,
+					  struct pci_dev *psPCIDev)
+{
+	return pci_get_device(ui32VendorID, ui32DeviceID, psPCIDev);
+}
+
+IMG_UINT16 OSGetPcieDeviceIDFromPdev(struct pci_dev *psPCIDev)
+{
+	return psPCIDev->device;
+}
+
+IMG_UINT16 OSGetPcieDeviceID(PVRSRV_DEVICE_NODE *psDeviceNode)
 {
 	struct device *dev = psDeviceNode->psDevConfig->pvOSDevice;
 	struct pci_dev *pdev = to_pci_dev(dev->parent->parent);
@@ -2911,7 +3008,6 @@ unsigned short OSGetPcieDeviceID(PVRSRV_DEVICE_NODE *psDeviceNode)
 	return pdev->device;
 }
 
-#if !defined(NO_HARDWARE)
 void *OSGetMtgpuDevice(struct platform_device *pdev)
 {
 	return dev_get_drvdata(pdev->dev.parent->parent);
@@ -2942,6 +3038,7 @@ void *OSGetPlatformData(struct platform_device *pdev)
 	return pdev->dev.platform_data;
 }
 
+#if !defined(NO_HARDWARE)
 void OSDeviceConfigInit(PVRSRV_DEVICE_CONFIG *psDevConfig,
 			struct platform_device *pdev,
 			struct resource *registers)
@@ -4299,9 +4396,19 @@ bool OSQueueWork(struct workqueue_struct *psWorkQueue, struct work_struct *psWor
 	return queue_work(psWorkQueue, psWork);
 }
 
+struct workqueue_struct *OSCreateSingleThreadWorkqueue(const IMG_CHAR *pszFormat)
+{
+	return create_singlethread_workqueue(pszFormat);
+}
+
 struct workqueue_struct *OSAllocWorkqueue(const IMG_CHAR *pszFormat, unsigned int flags, int max_active)
 {
 	return alloc_workqueue(pszFormat, flags, max_active);
+}
+
+void OSFlushWorkqueue(struct workqueue_struct *psWorkQueue)
+{
+	flush_workqueue(psWorkQueue);
 }
 
 void OSDestroyWorkqueue(struct workqueue_struct *psWorkQueue)

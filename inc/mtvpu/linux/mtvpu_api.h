@@ -35,6 +35,8 @@ struct mtgpu_gem_object {
 	void *handle;
 	u64 private_data;
 	u32 type;
+	u64 global_handle;
+	dma_addr_t iova_addr;
 };
 
 struct mtgpu_segment_stats {
@@ -62,9 +64,9 @@ struct vpu_shared_mem {
 
 #endif
 
-#define vpu_warn(fmt, ...) os_pr_warn("[mtvpu]" fmt, ##__VA_ARGS__)
-#define vpu_info(fmt, ...) os_pr_info("[mtvpu]" fmt, ##__VA_ARGS__)
-#define vpu_err(fmt, ...) os_pr_err("[mtvpu]" fmt, ##__VA_ARGS__)
+#define vpu_warn(fmt, ...) os_pr_warn("[mtvpu] " fmt, ##__VA_ARGS__)
+#define vpu_info(fmt, ...) os_pr_info("[mtvpu] " fmt, ##__VA_ARGS__)
+#define vpu_err(fmt, ...) os_pr_err("[mtvpu] " fmt, ##__VA_ARGS__)
 
 extern struct platform_driver vpu_driver;
 extern bool is_guest_cmds;

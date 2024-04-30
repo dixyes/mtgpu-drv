@@ -621,12 +621,7 @@ PMR_DevPhysAddr(const PMR *psPMR,
 		IMG_BOOL *pbValid);
 
 PVRSRV_ERROR
-PMR_GetUnifiedDevPhysAddr(const PMR *psPMR,
-			  IMG_UINT32 ui32Log2PageSize,
-			  IMG_UINT32 ui32NumOfPages,
-			  IMG_DEVMEM_OFFSET_T uiLogicalOffset,
-			  IMG_DEV_PHYADDR *psDevPAddr,
-			  IMG_BOOL *pbValid);
+PMR_GetUnifiedDevPhysAddr(const PMR *psPMR, PMR_PA_INFO *psPMRPAInfo);
 
 PVRSRV_ERROR
 PMR_UserPhysAddr(const PMR *psPMR,
@@ -674,6 +669,18 @@ PMRGetUID(PMR *psPMR,
 PVRSRV_ERROR
 PMRGetSize(PMR *psPMR,
            IMG_UINT64 *uiLogicalSize);
+
+PVRSRV_ERROR
+PMRGetFlags(PMR *psPMR,
+            IMG_UINT64 *uiFlags);
+
+PVRSRV_ERROR
+PMRGetAlignShift(PMR *psPMR,
+                 IMG_UINT32 *uiLog2ContiguityGuarantee);
+
+PVRSRV_ERROR
+PMRGetKey(PMR *psPMR,
+          IMG_UINT64 *uiKey);
 
 /*
  * PMR_ChangeSparseMem()
@@ -1085,7 +1092,8 @@ PMR_CreatePAInfo(struct _PVRSRV_DEVICE_NODE_ *psDevNode,
 		 IMG_UINT32 uiReqPageNums,
 		 IMG_DEVMEM_OFFSET_T uiLogicalOffset,
 		 PMR_PA_INFO **ppsPMRPAInfo,
-		 IMG_UINT64 uiMappingFlags);
+		 IMG_UINT64 uiMappingFlags,
+		 DEVMEM_INTERLEAVE_RATIO *psInterleaveRatio);
 
 void PMR_DestroyPAInfo(PMR_PA_INFO *psPMRPAInfo);
 

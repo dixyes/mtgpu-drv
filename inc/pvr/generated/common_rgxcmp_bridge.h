@@ -67,7 +67,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PVRSRV_BRIDGE_RGXCMP_RGXRESETLLCPERSISTING		(PVRSRV_BRIDGE_RGXCMP_CMD_FIRST + 10)
 #define PVRSRV_BRIDGE_RGXCMP_RGXCREATEFENCE			(PVRSRV_BRIDGE_RGXCMP_CMD_FIRST + 11)
 #define PVRSRV_BRIDGE_RGXCMP_RGXKICKCDM3			(PVRSRV_BRIDGE_RGXCMP_CMD_FIRST + 12)
-#define PVRSRV_BRIDGE_RGXCMP_CMD_LAST				(PVRSRV_BRIDGE_RGXCMP_CMD_FIRST + 12)
+#define PVRSRV_BRIDGE_RGXCMP_DECODEFAULTINFO			(PVRSRV_BRIDGE_RGXCMP_CMD_FIRST + 13)
+#define PVRSRV_BRIDGE_RGXCMP_CMD_LAST				(PVRSRV_BRIDGE_RGXCMP_CMD_FIRST + 13)
 
 /*******************************************
             RGXCreateComputeContext
@@ -277,6 +278,23 @@ typedef struct PVRSRV_BRIDGE_OUT_RGXGETLASTDEVICEERROR_TAG
 	PVRSRV_ERROR eError;
 	IMG_UINT32 ui32Error;
 } __packed PVRSRV_BRIDGE_OUT_RGXGETLASTDEVICEERROR;
+
+/*******************************************
+            MTDecodeFaultInfo
+ *******************************************/
+
+/* Bridge in structure for MTDecodeFaultInfo */
+typedef struct PVRSRV_BRIDGE_IN_DECODEFAULTINFO_TAG
+{
+	IMG_HANDLE hPMR;
+	IMG_UINT64 ui64LogicalOffset;
+} __packed PVRSRV_BRIDGE_IN_DECODEFAULTINFO;
+
+/* Bridge out structure for MTDecodeFaultInfo */
+typedef struct PVRSRV_BRIDGE_OUT_DECODEFAULTINFO_TAG
+{
+	PVRSRV_ERROR eError;
+} __packed PVRSRV_BRIDGE_OUT_DECODEFAULTINFO;
 
 /*******************************************
             RGXGetLLCPersistingProperties

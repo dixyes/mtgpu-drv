@@ -100,6 +100,13 @@ typedef struct
     IMG_DEVMEM_LOG2ALIGN_T uiLog2ContiguityGuarantee;
 } DEVMEM_EXPORTCOOKIE;
 
+typedef struct {
+	/* MtLink interleave ratio */
+	IMG_UINT32 ui32MTLinkRatio;
+	/* Pcie interleave ratio */
+	IMG_UINT32 ui32PCIeRatio;
+} DEVMEM_INTERLEAVE_RATIO;
+
 /* Enum that describes the operation associated with changing sparse memory */
 typedef IMG_UINT32 SPARSE_MEM_RESIZE_FLAGS;
 #define SPARSE_RESIZE_NONE 0U

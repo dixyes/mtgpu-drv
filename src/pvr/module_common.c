@@ -129,6 +129,15 @@ bool enable_mmu_persistence = 0;
 module_param(enable_mmu_persistence, bool, 0444);
 MODULE_PARM_DESC(enable_mmu_persistence, "0 - disable mmu persistence,  1 - enable mmu persistence. The default value is 0");
 
+unsigned int enable_async_job_submit;
+module_param(enable_async_job_submit, uint, 0444);
+MODULE_PARM_DESC(enable_async_job_submit,
+		 "enable job submit asynchronously, default:0. bit0~bit3 corresponds to tq,ce,compute,render job respectively");
+
+bool enable_mss_mmu = 1;
+module_param(enable_mss_mmu, bool, 0444);
+MODULE_PARM_DESC(enable_mss_mmu, "enable MSS MMU function, 0 - disable MSS MMU, 1 - enable MSS MMU. The default value is 1");
+
 #if defined(SUPPORT_DISPLAY_CLASS)
 /* Display class interface */
 #include "kerneldisplay.h"
@@ -263,6 +272,13 @@ const struct kernel_param_ops apphint_kparam_fops = {
 	APPHINT_LIST_MODPARAM
 #undef X
 
+struct workqueue_struct *mtgpu_wq;
+
+bool mtgpu_queue_work(struct work_struct *work)
+{
+	return queue_work(mtgpu_wq, work);
+}
+
 /**************************************************************************/ /*!
 @Function     PVRSRVDriverInit
 @Description  Common one time driver initialisation
@@ -343,6 +359,12 @@ int PVRSRVDriverInit(void)
 	PVRGpuTraceInitAppHintCallbacks(NULL);
 #endif
 
+	mtgpu_wq = alloc_workqueue("mtgpu-wq", 0, 0);
+	if (!mtgpu_wq)
+	{
+		return -ENOMEM;
+	}
+
 	return 0;
 }
 
@@ -353,6 +375,8 @@ int PVRSRVDriverInit(void)
 */ /***************************************************************************/
 void PVRSRVDriverDeinit(void)
 {
+	destroy_workqueue(mtgpu_wq);
+
 	pvr_apphint_deinit();
 
 #if defined(SUPPORT_NATIVE_FENCE_SYNC)
@@ -428,7 +452,7 @@ void PVRSRVDeviceDeinit(PVRSRV_DEVICE_NODE *psDeviceNode)
 	PVRSRVDeInitialiseDMA(psDeviceNode);
 #endif
 
-	pvr_fence_cleanup();
+	flush_workqueue(mtgpu_wq);
 }
 
 /**************************************************************************/ /*!
@@ -821,7 +845,9 @@ drm_pvr_srvkm_init(struct drm_device *dev, void *arg, struct drm_file *psDRMFile
 		}
 		case PVR_SRVKM_SERVICES_INIT:
 		{
+#if (PVRSRV_DEVICE_INIT_MODE != PVRSRV_LINUX_DEV_INIT_ON_OPEN)
 			iErr = PVRSRVDeviceServicesOpen(priv->dev_node, psDRMFile);
+#endif
 			break;
 		}
 		default:

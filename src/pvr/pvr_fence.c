@@ -507,7 +507,7 @@ static void pvr_fence_context_destroy_kref(struct kref *kref)
 
 	trace_pvr_fence_context_destroy_kref(fctx);
 
-	schedule_work(&fctx->destroy_work);
+	queue_work(fctx->fence_wq, &fctx->destroy_work);
 }
 
 /**

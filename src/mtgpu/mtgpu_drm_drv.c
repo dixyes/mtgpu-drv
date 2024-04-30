@@ -33,9 +33,11 @@
 #include "mtgpu_drv.h"
 #include "mtgpu_drm_drv.h"
 #include "mtgpu_drm_gem.h"
+#include "mtgpu_drm_atomic.h"
 #include "mtgpu_drm_internal.h"
 #include "pvr_drv.h"
 #include "mtgpu_vpu.h"
+#include "mtgpu_module_param.h"
 
 #define DRIVER_DESC	"Moorethreads DRM/KMS Driver"
 #define DRIVER_DATE	"20210320"
@@ -72,10 +74,16 @@ static int mtgpu_kick_out_firmware_fb(resource_size_t base, resource_size_t size
 static void mtgpu_atomic_helper_commit_tail_rpm(struct drm_atomic_state *old_state)
 {
 	struct drm_device *dev = old_state->dev;
+	struct pci_dev *pdev = to_pci_dev(dev->dev);
+	u16 device_id = pdev->device & 0xff00;
 
-	drm_atomic_helper_commit_modeset_disables(dev, old_state);
-
-	drm_atomic_helper_commit_modeset_enables(dev, old_state);
+	if (device_id == DEVICE_ID_SUDI104) {
+		drm_atomic_helper_commit_modeset_disables(dev, old_state);
+		drm_atomic_helper_commit_modeset_enables(dev, old_state);
+	} else {
+		mtgpu_atomic_helper_commit_modeset_disables(dev, old_state);
+		mtgpu_atomic_helper_commit_modeset_enables(dev, old_state);
+	}
 
 	drm_atomic_helper_commit_planes(dev, old_state,
 					DRM_PLANE_COMMIT_ACTIVE_ONLY);
@@ -187,8 +195,12 @@ static struct drm_driver mtgpu_drm_driver = {
 	.fops				= &mtgpu_drm_driver_fops,
 	.dumb_create			= mtgpu_gem_dumb_create,
 
+#ifdef OS_FUNC_DRM_GEM_PRIME_HANDLE_TO_FD_EXIST
 	.prime_handle_to_fd		= drm_gem_prime_handle_to_fd,
+#endif
+#ifdef OS_FUNC_DRM_GEM_PRIME_FD_TO_HANDLE_EXIST
 	.prime_fd_to_handle		= drm_gem_prime_fd_to_handle,
+#endif
 	.gem_prime_import		= mtgpu_gem_prime_import,
 	.gem_prime_import_sg_table	= mtgpu_gem_prime_import_sg_table,
 #if defined(OS_STRUCT_DRM_DRIVER_HAS_GEM_VM_OPS)
@@ -212,6 +224,8 @@ static int mtgpu_component_bind(struct device *dev)
 	struct drm_device *drm;
 	struct mtgpu_drm_private *private;
 	int ret;
+
+	mtgpu_drm_driver.major = mtgpu_drm_major;
 
 	drm = drm_dev_alloc(&mtgpu_drm_driver, dev->parent);
 	if (IS_ERR(drm))
@@ -377,7 +391,7 @@ static int mtgpu_drm_suspend(struct device *dev)
 	ret = drm_mode_config_helper_suspend(drm);
 
 	DRM_DEV_INFO(dev, "mtgpu drm device suspend exit\n");
-	
+
 	return ret;
 }
 
@@ -479,6 +493,8 @@ int mtgpu_drm_init(void)
 	return ret;
 }
 
+DEFINE_IDR(mtgpu_global_bo_handle_idr);
+
 void mtgpu_drm_fini(void)
 {
 	platform_unregister_drivers(component_drivers,
@@ -490,4 +506,6 @@ void mtgpu_drm_fini(void)
 	platform_driver_unregister(&mtgpu_phy_driver);
 
 	platform_driver_unregister(&mtgpu_drm_platform_driver);
+
+	idr_destroy(&mtgpu_global_bo_handle_idr);
 }

@@ -61,5 +61,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define RGX_CMP_SAFETY_RMW_HEAP_IDENT       "Compute Safety RMW"        /*!< Compute Safety RMW Heap Identifier */
 #define RGX_TEXTURE_STATE_HEAP_IDENT        "Texture State"             /*!< Texture State Heap Identifier */
 #define RGX_VISIBILITY_TEST_HEAP_IDENT      "Visibility Test"           /*!< Visibility Test Heap Identifier */
+#define RGX_GENERAL_RESERVED_HEAP_IDENT     "General Reserved"          /*!< RGX General Reserved Heap Identifier */
+#define RGX_PDSCODEDATA_RESERVED_HEAP_IDENT "PDS Reserved"              /*!< RGX PDS Code/Data Reserved Heap Identifier */
+#define RGX_USCCODE_RESERVED_HEAP_IDENT     "USC Reserved"              /*!< RGX USC Code Reserved Heap Identifier */
+#define RGX_COMPONENT_CTRL_RESERVED_HEAP_IDENT  "Component Reserved"    /*!< RGX COMPONENT Ctrl Reserved Heap Identifier */
 
 #endif /* RGX_HEAPS_H */

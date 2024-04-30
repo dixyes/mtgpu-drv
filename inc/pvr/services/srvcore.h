@@ -150,6 +150,7 @@ void BridgeGlobalStatsUnlock(void);
 extern PVRSRV_BRIDGE_GLOBAL_STATS g_BridgeGlobalStats;
 #endif
 
+void SetPStateBridgecallTable(IMG_UINT32 ui32BridgeGroup, IMG_UINT32 ui32Index);
 PVRSRV_ERROR BridgeDispatcherInit(void);
 void BridgeDispatcherDeinit(void);
 

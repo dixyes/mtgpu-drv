@@ -145,16 +145,14 @@ static void deal_pnp_event(struct mtsnd_chip *chip, int codec_index, bool connec
 		/* check if the monitor support pcm audio */
 		if (mtsnd_check_eld(chip, codec_index)) {
 			dev_info(chip->card->dev, "monitor plug in, but don't support audio\n");
-			return;
-		}
-		chip->jack_timer[codec_index]->codec_index = codec_index;
-		chip->jack_timer[codec_index]->jack_status = SND_JACK_AVOUT;
-		mod_timer(&chip->jack_timer[codec_index]->timer, jiffies + msecs_to_jiffies(2000));
-	} else {
-		chip->jack_timer[codec_index]->codec_index = codec_index;
+			chip->jack_timer[codec_index]->jack_status = 0;
+		} else
+			chip->jack_timer[codec_index]->jack_status = SND_JACK_AVOUT;
+	} else
 		chip->jack_timer[codec_index]->jack_status = 0;
-		mod_timer(&chip->jack_timer[codec_index]->timer, jiffies + msecs_to_jiffies(2000));
-	}
+
+	chip->jack_timer[codec_index]->codec_index = codec_index;
+	mod_timer(&chip->jack_timer[codec_index]->timer, jiffies + msecs_to_jiffies(2000));
 }
 
 static void report_pnp_event(struct timer_list *t)

@@ -15,7 +15,7 @@ extern int mtvpu_log_level;
 #define VLOG(level, fmt, ...)						      \
 ({									                          \
 	if (unlikely(level <= mtvpu_log_level))	    \
-		os_pr_info("[mtvpu]" fmt, ##__VA_ARGS__);	\
+		os_pr_info("[mtvpu] " fmt, ##__VA_ARGS__);	\
 })
 
 u64 osal_gettime(void);

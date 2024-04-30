@@ -30,6 +30,7 @@
 #include "mtvpu_drv.h"
 #include "mtvpu_gem.h"
 #include "mtvpu_pool.h"
+#include "mtvpu_smmu.h"
 #include "vpuapifunc.h"
 #include "misc.h"
 
@@ -90,14 +91,14 @@ struct mt_node *ion_malloc_node(struct mt_chip *chip, int idx, int drm_id, u64 s
 	if (!ion_buf) {
 		kfree(node->obj);
 		kfree(node);
-		pr_err("mtvpu ion allocate size %lld failed\n", size);
+		vpu_err("ion allocate size %lld failed\n", size);
 		return NULL;
 	}
 
 	node->ion_buf = ion_buf;
 	node->dev_addr = get_dev_addr_dma_buf(ion_buf);
 	node->obj->size = ion_buf->size;
-	pr_info("mtvpu core %d ion malloc internal 0x%llx\n", idx, node->dev_addr);
+	vpu_info("core %d ion malloc internal 0x%llx\n", idx, node->dev_addr);
 	return node;
 }
 #endif
@@ -130,7 +131,15 @@ struct mt_node *gem_malloc_node(struct mt_chip *chip, int idx, u32 pool_id, stru
 	else
 #ifdef SOC_MODE
 		ret = mtvpu_vram_alloc(drm, core->mem_group_id, size, &node->dev_addr, &node->handle);
-		pr_info("gem malloc node size %llx, addr %llx\n", size, node->dev_addr);
+		vpu_info("gem malloc node size %llx, addr %llx\n", size, node->dev_addr);
+#ifdef SUPPORT_SMMU
+		ret = vpu_smmu_map(chip, node->dev_addr, size, &node->iova_addr);
+		if (ret) {
+			vpu_err("vpu smmu map failed!");
+			goto unref;
+		}
+		vpu_info("vpu smmu map dev addr %llx, iova addr %llx!\n", node->dev_addr, node->iova_addr);
+#endif
 #else
 		ret = mtgpu_vram_alloc(drm, core->mem_group_id, size, &node->dev_addr, &node->handle);
 #endif
@@ -138,10 +147,11 @@ struct mt_node *gem_malloc_node(struct mt_chip *chip, int idx, u32 pool_id, stru
 	drm_gem_private_object_init(drm, node->obj, size);
 
 	if (ret) {
-		pr_err("mtvpu Error mtgpu_vram_alloc\n");
+		vpu_err("Error mtgpu_vram_alloc\n");
 		goto unref;
 	}
 
+	node->size = size;
 	node->pool_id = pool_id;
 	return node;
 
@@ -177,8 +187,10 @@ struct mt_node *gem_malloc(struct mt_chip *chip, int idx, int instIdx, u64 size,
 #else
 	node = gem_malloc_node(chip, idx, pool_id, drm, size, type);
 #endif
-	if (!node)
+	if (!node) {
+		gem_dump_core(chip, idx);
 		return NULL;
+	}
 
 	/*
 	 * Be careful. The VRAM for VPU can't use the address during
@@ -189,7 +201,7 @@ struct mt_node *gem_malloc(struct mt_chip *chip, int idx, int instIdx, u64 size,
 	 */
 	if ((node->dev_addr & 0xffffffffUL) < (WAVE5_MAX_CODE_BUF_SIZE + FW_LOG_BUFFER_SIZE) ||
 	    ((node->dev_addr + size) & 0xffffffffUL) > W_VCPU_SPM_ADDR) {
-		pr_err("mtvpu Error address(%llx to %llx size:%llx)\n", node->dev_addr,
+		vpu_err("Error address(%llx to %llx size:%llx)\n", node->dev_addr,
 		       node->dev_addr + size, size);
 
 		if (node->handle)
@@ -235,6 +247,9 @@ void gem_free_node(struct mt_chip *chip, struct mt_node *node)
 		vpu_mem_pool_free(chip, node->pool_id);
 	else
 #ifdef SOC_MODE
+#ifdef SUPPORT_SMMU
+		vpu_smmu_unmap(chip, node->iova_addr);
+#endif
 		mtvpu_vram_free(node->obj, node->handle);
 #else
 		mtgpu_vram_free(node->handle);
@@ -299,4 +314,35 @@ void gem_clear(struct mt_core *core, u64 dev_addr)
 			}
 		}
 	}
+}
+
+void gem_dump_instance(struct mt_chip *chip, struct mt_core *core, u32 instIdx)
+{
+	u32 nodeIdx = 0;
+	struct mt_node *node = NULL, *next = NULL;
+	struct list_head *mm_head = &core->mm_head[instIdx];
+
+	mutex_lock(chip->mm_lock);
+	vpu_err("Instance#%d Memory Info Dump Start\n", instIdx);
+	list_for_each_entry_safe(node, next, mm_head, list) {
+		vpu_err("\tnode#%d start 0x%llx, end 0x%llx, size 0x%llx\n", nodeIdx++,
+			node->dev_addr, node->dev_addr + node->size, node->size);
+	}
+	vpu_err("Instance#%d Memory Info Dump End\n", instIdx);
+	mutex_unlock(chip->mm_lock);
+}
+
+void gem_dump_core(struct mt_chip *chip, u32 coreIdx)
+{
+	u32 instIdx = 0;
+	struct mt_core *core = get_core(coreIdx);
+
+	if (!core)
+		return;
+
+	vpu_err("Core#%d Memory Info Dump Start\n", coreIdx);
+	for (instIdx = 0; instIdx < INST_MAX_SIZE; instIdx++) {
+		gem_dump_instance(chip, core, instIdx);
+	}
+	vpu_err("Core#%d Memory Info Dump End\n", coreIdx);
 }

@@ -49,7 +49,6 @@ struct mtgpu_segment_stats {
 	u64 start;
 	u64 size;
 	u64 freed;
-	u64 max_block_size;
 };
 
 #if !defined(NO_HARDWARE)

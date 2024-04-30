@@ -104,6 +104,8 @@ X(PowerDomainKickInterval,          UINT32,         VALIDATION,  0,             
 X(RCEDisableMask,                   UINT64,         VALIDATION,  PVRSRV_APPHINT_RCEDISABLEMASK,                   NO_PARAM_TABLE   ) \
 \
 X(WatchDogThreadsTimeOut,           UINT32,         ALWAYS,      PVRSRV_APPHINT_WATCHDOGTHREADSTIMEOUT,           NO_PARAM_TABLE   ) \
+\
+X(KccbCmdContinedTimeoutTimes,      UINT32,         ALWAYS,      PVRSRV_APPHINT_KCCBCMDCONTINUEDTIMEOUTCOUNT,     NO_PARAM_TABLE   )
 
 /*
 *******************************************************************************

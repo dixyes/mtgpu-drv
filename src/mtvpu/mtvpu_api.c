@@ -26,6 +26,7 @@
 #include "mtvpu_drv.h"
 #include "mtvpu_api.h"
 #include "mtvpu_pool.h"
+#include "mtvpu_smmu.h"
 #include "misc.h"
 
 bool is_guest_cmds = false;
@@ -186,6 +187,14 @@ int vpu_vram_alloc(struct drm_device *drm, u32 group_id, u32 pool_id, u32 type, 
 	} else {
 #ifdef SOC_MODE
 		err = mtvpu_vram_alloc(drm, group_id, size, &mtgpu_obj->dev_addr, &mtgpu_obj->handle);
+#ifdef SUPPORT_SMMU
+		err = vpu_smmu_map(chip, mtgpu_obj->dev_addr, size, &mtgpu_obj->iova_addr);
+		if (err) {
+			vpu_err("ioctl vpu smmu map failed!");
+			return err;
+		}
+		vpu_info("ioctl vpu smmu map dev addr %llx, iova addr %llx!\n", mtgpu_obj->dev_addr, mtgpu_obj->iova_addr);
+#endif
 #else
 		err = mtgpu_vram_alloc(drm, group_id, size, &mtgpu_obj->dev_addr, &mtgpu_obj->handle);
 #endif
@@ -205,6 +214,9 @@ void vpu_vram_free(struct mtgpu_gem_object *mtgpu_obj)
 
 		if (mtgpu_obj->handle)
 #ifdef SOC_MODE
+#ifdef SUPPORT_SMMU
+			vpu_smmu_unmap(to_chip(mtgpu_obj->obj->dev), mtgpu_obj->iova_addr);
+#endif
 			mtvpu_vram_free(mtgpu_obj->obj, mtgpu_obj->handle);
 #else
 			mtgpu_vram_free(mtgpu_obj->handle);

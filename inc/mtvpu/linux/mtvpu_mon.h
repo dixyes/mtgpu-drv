@@ -16,6 +16,7 @@ struct mt_inst_info {
 	u32 bit_rate;      /* Number of bits per second */
 	u32 latency;       /* Codec latency, in microsecond */
 	CodStd stream_type;/* Type of stream, e.g. H.265/AV1/etc. */
+	u64 vcore_mem_base;/* Each instance has a 4G group base for some instance memory */
 };
 
 struct mt_inst_extra {

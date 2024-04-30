@@ -108,18 +108,19 @@ static inline const IMG_CHAR *PVRSRVGetClientPhysHeapName(PVRSRV_PHYS_HEAP ePhys
 	#define PVRSRV_PHYS_HEAP_FW_PREMAP13  24U /* Guest OS 13 premap fw heap */
 	#define PVRSRV_PHYS_HEAP_FW_PREMAP14  25U /* Guest OS 14 premap fw heap */
 	#define PVRSRV_PHYS_HEAP_FW_PREMAP15  26U /* Guest OS 15 premap fw heap */
-	#define PVRSRV_PHYS_HEAP_MMU_TABLE    27U /* used for GPU MMU page table */
-#else
-	#define PVRSRV_PHYS_HEAP_MMU_TABLE    19U /* used for GPU MMU page table */
 #endif
 
 #if (RGX_NUM_OS_SUPPORTED > 1)
-	#define PVRSRV_PHYS_HEAP_VPU_GROUP1   ((PVRSRV_PHYS_HEAP_MMU_TABLE) + 1U)
+#if defined(SUPPORT_SW_OSID_EXTENSION)
+	#define PVRSRV_PHYS_HEAP_VPU_GROUP1   ((PVRSRV_PHYS_HEAP_FW_PREMAP15) + 1U)
+#else
+	#define PVRSRV_PHYS_HEAP_VPU_GROUP1   ((PVRSRV_PHYS_HEAP_FW_PREMAP7) + 1U)
+#endif 
 	#define PVRSRV_PHYS_HEAP_VPU_GROUP2   ((PVRSRV_PHYS_HEAP_VPU_GROUP1) + 1U)
 	#define PVRSRV_PHYS_HEAP_VPU_GROUP3   ((PVRSRV_PHYS_HEAP_VPU_GROUP2) + 1U)
 	#define PVRSRV_PHYS_HEAP_LAST         ((PVRSRV_PHYS_HEAP_VPU_GROUP3) + 1U)
 #else
-	#define PVRSRV_PHYS_HEAP_LAST         PVRSRV_PHYS_HEAP_MMU_TABLE
+	#define PVRSRV_PHYS_HEAP_LAST 	      ((PVRSRV_PHYS_HEAP_FW_PREMAP7) + 1U)
 #endif
 
 

@@ -122,8 +122,8 @@ static inline int pvr_dma_resv_get_fences(struct dma_resv *obj,
 #if defined(OS_ENUM_DMA_RESV_USAGE_EXIST)
 	*fence_overall = true;
 
-	return dma_resv_get_fences(obj, usage_write ? DMA_RESV_USAGE_WRITE :
-				   DMA_RESV_USAGE_READ, num_fences, pfences);
+	return dma_resv_get_fences(obj, usage_write ? DMA_RESV_USAGE_READ :
+				   DMA_RESV_USAGE_WRITE, num_fences, pfences);
 #elif defined(OS_FUNC_DMA_RESV_GET_FENCES_EXIST)
 	return dma_resv_get_fences(obj, pfence_excl, num_fences, pfences);
 #elif defined(OS_LINUX_DMA_RESV_H_EXIST)

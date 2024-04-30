@@ -364,6 +364,7 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 	IMG_UINT32 uiOffsetIdx;
 	IMG_UINT32 uiNumOfPFNs;
 	IMG_UINT32 uiLog2PageSize;
+	IMG_UINT32 ui32MapPageShift;
 	IMG_CPU_PHYADDR *psCpuPAddr;
 	IMG_BOOL *pbValid;
 	IMG_BOOL bUseMixedMap = IMG_FALSE;
@@ -422,6 +423,7 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 	/* Is this mmap targeting non order-zero pages or does it use pfn mappings?
 	 * If yes, don't use vm_insert_page */
 	uiLog2PageSize = PMR_GetLog2Contiguity(psPMR);
+	ui32MapPageShift = uiLog2PageSize;
 
 #if defined(PMR_OS_USE_VM_INSERT_PAGE)
 	/*
@@ -526,10 +528,11 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 	 * For SYSTEM PMR, VM_PFNMAP should not be included,
 	 * ui32LoopCount could be bigger than 1.
 	 */
-	if (PMR_IsSystem(psPMR))
+	if (PMR_IsSystem(psPMR) || PMR_GetType(psPMR) == PMR_TYPE_OSMEM)
 	{
 		OSClearVMAFlags(ps_vma, VM_PFNMAP);
 		ui32LoopCount = (1 << (uiLog2PageSize - PAGE_SHIFT));
+		ui32MapPageShift = PAGE_SHIFT;
 	}
 
 	/* For each PMR page-size contiguous bytes, map page(s) into user VMA */
@@ -553,7 +556,7 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 						     ps_vma,
 						     ui64VmOffset,
 						     &sCpuPAddr,
-						     uiLog2PageSize,
+						     ui32MapPageShift,
 						     bUseVMInsertPage,
 						     bUseMixedMap);
 				ui64VmOffset += PAGE_SIZE;

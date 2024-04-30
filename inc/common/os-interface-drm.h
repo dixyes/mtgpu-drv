@@ -26,6 +26,7 @@ struct hdmi_codec_params;
 struct sg_table;
 struct dma_buf_attachment;
 struct drm_mode_create_dumb;
+struct edid;
 
 DECLARE_OS_STRUCT_COMMON_FUNCS(drm_gem_object);
 
@@ -47,6 +48,8 @@ int os_drm_gem_dumb_map_offset(struct drm_file *file,
 			       u32 handle,
 			       u64 *offset);
 void os_drm_gem_free_mmap_offset(struct drm_gem_object *obj);
+int os_drm_gem_create_mmap_offset(struct drm_gem_object *obj);
+__u64 os_drm_vma_node_offset_addr(struct drm_gem_object *obj);
 void os_drm_prime_gem_destroy(struct drm_gem_object *obj, struct sg_table *sg);
 void os_drm_gem_private_object_init(struct drm_device *dev,
 				    struct drm_gem_object *obj,
@@ -96,6 +99,9 @@ void os_drm_dp_aux_unregister(struct drm_dp_aux *aux);
 void os_drm_connector_set_status(struct drm_connector *connector, int status);
 int os_drm_connector_get_status(struct drm_connector *connector);
 struct drm_device *os_drm_connector_get_dev(struct drm_connector *connector);
+void os_get_edid_vendor(const struct edid *edid, char *edid_vendor);
+u32 os_get_edid_productid(const struct edid *edid);
+void os_drm_edid_get_monitor_name(struct edid *edid, char *name, int bufsize);
 
 /**
  * Interface for get members of the structure.
