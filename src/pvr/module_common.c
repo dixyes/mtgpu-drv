@@ -76,6 +76,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "pvr_fence.h"
 #include "mtgpu_sync.h"
+#include "mtgpu_csc.h"
+#include "mtgpu_gfx.h"
 
 #if defined(SUPPORT_NATIVE_FENCE_SYNC)
 #include "pvr_sync.h"
@@ -120,6 +122,10 @@ bool disable_gpu;
 module_param(disable_gpu, bool, 0444);
 MODULE_PARM_DESC(disable_gpu, "0 - enable gpu, 1 - disable gpu. The default value is 0");
 
+bool disable_hwr;
+module_param(disable_hwr, bool, 0444);
+MODULE_PARM_DESC(disable_hwr, "0 - enable hwr, 1 - disable hwr. The default value is 0");
+
 int enable_large_mem_mode;
 module_param(enable_large_mem_mode, int, 0444);
 MODULE_PARM_DESC(enable_large_mem_mode,
@@ -134,9 +140,19 @@ module_param(enable_async_job_submit, uint, 0444);
 MODULE_PARM_DESC(enable_async_job_submit,
 		 "enable job submit asynchronously, default:0. bit0~bit3 corresponds to tq,ce,compute,render job respectively");
 
-bool enable_mss_mmu = 1;
-module_param(enable_mss_mmu, bool, 0444);
-MODULE_PARM_DESC(enable_mss_mmu, "enable MSS MMU function, 0 - disable MSS MMU, 1 - enable MSS MMU. The default value is 1");
+bool enable_pfm_mss = 0;
+module_param(enable_pfm_mss, bool, 0444);
+MODULE_PARM_DESC(enable_pfm_mss, "enable MSS function, 0 - disable MSS, 1 - enable MSS. The default value is 0");
+
+bool mss_mmu_bypass = 0;
+module_param(mss_mmu_bypass, bool, 0444);
+MODULE_PARM_DESC(mss_mmu_bypass, "bypass MSS MMU function, 0 - enable MSS MMU, 1 - bypass MSS MMU. The default value is 0");
+
+unsigned int enable_cache_snooping = 0x2;
+module_param(enable_cache_snooping, uint, 0444);
+MODULE_PARM_DESC(enable_cache_snooping,
+		 "enable GPU snooping into CPU cache, bit0~bit1 corresponds to non-MMU requests and MMU requests. "
+		 "The default value is 0 which means that cache snooping will be disabled.");
 
 #if defined(SUPPORT_DISPLAY_CLASS)
 /* Display class interface */
@@ -375,8 +391,6 @@ int PVRSRVDriverInit(void)
 */ /***************************************************************************/
 void PVRSRVDriverDeinit(void)
 {
-	destroy_workqueue(mtgpu_wq);
-
 	pvr_apphint_deinit();
 
 #if defined(SUPPORT_NATIVE_FENCE_SYNC)
@@ -385,6 +399,8 @@ void PVRSRVDriverDeinit(void)
 	mtgpu_sync_deinit();
 #endif
 #endif
+
+	destroy_workqueue(mtgpu_wq);
 
 	PVRSRVCommonDriverDeInit();
 
@@ -404,6 +420,19 @@ void PVRSRVDriverDeinit(void)
 */ /***************************************************************************/
 int PVRSRVDeviceInit(PVRSRV_DEVICE_NODE *psDeviceNode)
 {
+
+#if !defined(NO_HARDWARE)
+	{
+		int error = mtgpu_csc_table_init(psDeviceNode);
+		if (error)
+		{
+			PVR_DPF((PVR_DBG_ERROR, "%s: Failed to init csc table (%u)",
+				__func__, error));
+			return error;
+		}
+	}
+#endif
+
 #if defined(SUPPORT_NATIVE_FENCE_SYNC)
 	{
 		PVRSRV_ERROR eError = pvr_sync_device_init(psDeviceNode->psDevConfig->pvOSDevice);
@@ -422,8 +451,8 @@ int PVRSRVDeviceInit(PVRSRV_DEVICE_NODE *psDeviceNode)
 		if (error != 0)
 		{
 			PVR_DPF((PVR_DBG_WARNING,
-				 "%s: failed to initialise MTGPU GPU Tracing on device%d (%d)",
-				 __func__, psDeviceNode->sDevId.i32OsDeviceID, error));
+				"%s: failed to initialise MTGPU GPU Tracing on device%d (%d)",
+				__func__, psDeviceNode->sDevId.i32OsDeviceID, error));
 		}
 	}
 #endif
@@ -440,6 +469,8 @@ int PVRSRVDeviceInit(PVRSRV_DEVICE_NODE *psDeviceNode)
 */ /***************************************************************************/
 void PVRSRVDeviceDeinit(PVRSRV_DEVICE_NODE *psDeviceNode)
 {
+	struct workqueue_struct *psPvrFenceWq;
+
 #if defined(SUPPORT_RGX)
 	PVRGpuTraceDeInitDevice(psDeviceNode);
 #endif
@@ -448,8 +479,24 @@ void PVRSRVDeviceDeinit(PVRSRV_DEVICE_NODE *psDeviceNode)
 	pvr_sync_device_deinit(psDeviceNode->psDevConfig->pvOSDevice);
 #endif
 
+#if !defined(NO_HARDWARE)
+	mtgpu_csc_table_deinit(psDeviceNode);
+#endif
+
+#if !defined(NO_HARDWARE)
+	mtgpu_gfx_pb_deinit(psDeviceNode);
+#endif
+
 #if defined(SUPPORT_DMA_TRANSFER)
 	PVRSRVDeInitialiseDMA(psDeviceNode);
+#endif
+
+#if defined(SUPPORT_NATIVE_FENCE_SYNC) || defined(SUPPORT_BUFFER_SYNC)
+	psPvrFenceWq = NativeSyncGetFenceStatusWq();
+	if (psPvrFenceWq)
+	{
+		flush_workqueue(psPvrFenceWq);
+	}
 #endif
 
 	flush_workqueue(mtgpu_wq);

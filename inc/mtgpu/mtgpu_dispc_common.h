@@ -36,18 +36,21 @@ struct mtgpu_dispc_debugfs {
 	u64 underrun_cnt;
 };
 
+#define MAX_LAYER_NUM	4
+
 struct mtgpu_layer_capability {
 	u8 type;
 	u8 fmts_cnt;
-	const u32 *fmts_ptr;
-	const u64 *modifiers;
+	u32 fmts_ptr[16];
+	u8 modifier_cnt;
+	u64 modifiers[16];
 	u32 supported_encodings;
 	u32 supported_ranges;
 };
 
 struct mtgpu_dispc_capability {
 	u8 layer_count;
-	const struct mtgpu_layer_capability *layer_caps;
+	struct mtgpu_layer_capability layer_caps[MAX_LAYER_NUM];
 	u32 gamma_size;
 };
 
@@ -116,6 +119,8 @@ struct mtgpu_dispc {
 	struct device *dev;
 	struct mtgpu_cursor_info cursor_info;
 	struct mtgpu_dispc_debugfs debugfs;
+	u32 bandwidth;
+	bool active;
 };
 
 struct mtgpu_dispc_ops {
@@ -151,6 +156,8 @@ struct mtgpu_dispc_glb_ops {
 	void (*fbc_enable)(struct mtgpu_dispc_ctx *ctx,
 			   struct mtgpu_layer_config *layer, u32 index);
 	void (*fbc_disable)(struct mtgpu_dispc_ctx *ctx, u32 index);
+	bool (*is_idle_allowed)(struct mtgpu_dispc_ctx *ctx,
+				u32 bandwidth, u32 crtc_num);
 };
 
 struct mtgpu_dispc_chip {
@@ -164,7 +171,7 @@ void dispc_reg_write(struct mtgpu_dispc_ctx *ctx, int offset, u32 val)
 	os_writel(val, ctx->regs + offset);
 	/* dummy read to make post write take effect */
 	os_readl(ctx->regs + offset);
-	DISPC_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
+	DISPC_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
 }
 
 static inline
@@ -172,7 +179,7 @@ u32 dispc_reg_read(struct mtgpu_dispc_ctx *ctx, int offset)
 {
 	u32 val = os_readl(ctx->regs + offset);
 
-	DISPC_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
+	DISPC_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
 	return val;
 }
 
@@ -215,7 +222,7 @@ void dispc_glb_reg_write(struct mtgpu_dispc_ctx *ctx, int offset, u32 val)
 	os_writel(val, ctx->glb_regs + offset);
 	/* dummy read to make post write take effect */
 	os_readl(ctx->glb_regs + offset);
-	GLB_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
+	GLB_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
 }
 
 static inline
@@ -223,7 +230,7 @@ u32 dispc_glb_reg_read(struct mtgpu_dispc_ctx *ctx, int offset)
 {
 	u32 val = os_readl(ctx->glb_regs + offset);
 
-	GLB_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
+	GLB_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
 	return val;
 }
 
@@ -246,5 +253,6 @@ void dispc_glb_reg_clr(struct mtgpu_dispc_ctx *ctx, int offset, u32 bits)
 extern struct mtgpu_dispc_chip mtgpu_dispc_sudi;
 extern struct mtgpu_dispc_chip mtgpu_dispc_qy1;
 extern struct mtgpu_dispc_chip mtgpu_dispc_qy2;
+extern struct mtgpu_dispc_ops mtgpu_dispc_fec;
 
 #endif /* _MTGPU_DISPC_COMMON_H_ */

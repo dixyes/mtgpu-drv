@@ -28,8 +28,6 @@ struct mtgpu_gem_object {
 	struct sg_table *sgt;
 	phys_addr_t cpu_addr;
 	dma_addr_t dev_addr;
-	u64 *cpu_pa_array;
-	u64 cpu_pa_count;
 	void *handle;
 	u64 private_data;
 	u32 type;
@@ -45,20 +43,20 @@ const struct dma_buf_ops *mtgpu_get_gem_dmabuf_ops(void);
 void mtgpu_gem_object_free(struct drm_gem_object *obj);
 struct drm_gem_object *mtgpu_gem_object_create(struct drm_device *drm, size_t size, int flags);
 int mtgpu_gem_dumb_create(struct drm_file *file, struct drm_device *drm,
-                          struct drm_mode_create_dumb *args);
+			  struct drm_mode_create_dumb *args);
 int mtgpu_gem_dmabuf_attach(struct dma_buf *dma_buf,
 			    struct dma_buf_attachment *attach);
-struct sg_table *mtgpu_gem_dmabuf_map_internal(struct dma_buf_attachment *attach,
-					 int dir);
+struct sg_table *mtgpu_gem_dmabuf_map_internal(struct dma_buf_attachment *attach, int dir);
 void mtgpu_gem_dmabuf_unmap_internal(struct dma_buf_attachment *attach,
-			       struct sg_table *sgt, int dir);
+				     struct sg_table *sgt, int dir);
 int mtgpu_gem_dmabuf_mmap(struct dma_buf *dma_buf,
 			  struct vm_area_struct *vma);
 struct drm_gem_object *mtgpu_gem_prime_import(struct drm_device *drm,
-                                              struct dma_buf *dma_buf);
+					      struct dma_buf *dma_buf);
 struct drm_gem_object *mtgpu_gem_prime_import_sg_table(struct drm_device *drm,
-                                                       struct dma_buf_attachment *attach,
-                                                       struct sg_table *sgt);
+						       struct dma_buf_attachment *attach,
+						       struct sg_table *sgt);
 int mtgpu_mmap(struct file *filp, struct vm_area_struct *vma);
+struct sg_table *mtgpu_gem_prime_get_sg_table(struct drm_gem_object *obj);
 
 #endif /* __MTGPU_DRM_INTERNAL_H__ */

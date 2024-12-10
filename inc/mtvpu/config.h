@@ -32,8 +32,6 @@
 #define SUPPORT_INTERRUPT
 #endif
 
-//#define SUPPORT_SMMU
-
 /* CODA980 */
 #define CODA980
 
@@ -53,7 +51,7 @@
 #define JPU_API_VERSION		0x128
 
 #define SUPPORT_PADDING_UNALIGNED_YUV
-#define SUPPORT_STOP_CHECKING
+//#define SUPPORT_STOP_CHECKING
 
 #endif /* __CONFIG_H__ */
 

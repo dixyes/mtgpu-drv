@@ -42,6 +42,11 @@ struct device *os_get_drm_device_base(struct drm_device *drm)
 	return drm->dev;
 }
 
+bool os_drm_is_registered(struct drm_device *dev)
+{
+	return dev->registered;
+}
+
 int os_drm_get_card_index(struct drm_device *dev)
 {
 	return dev->primary->index;
@@ -338,20 +343,6 @@ int os_drm_connector_get_status(struct drm_connector *connector)
 struct drm_device *os_drm_connector_get_dev(struct drm_connector *connector)
 {
 	return connector->dev;
-}
-
-void os_get_edid_vendor(const struct edid *edid, char *edid_vendor)
-{
-	edid_vendor[0] = ((edid->mfg_id[0] & 0x7c) >> 2) + '@';
-	edid_vendor[1] = (((edid->mfg_id[0] & 0x3) << 3) |
-			  ((edid->mfg_id[1] & 0xe0) >> 5)) + '@';
-	edid_vendor[2] = (edid->mfg_id[1] & 0x1f) + '@';
-	edid_vendor[3] = '\0';
-}
-
-u32 os_get_edid_productid(const struct edid *edid)
-{
-	return EDID_PRODUCT_ID(edid);
 }
 
 void os_drm_edid_get_monitor_name(struct edid *edid, char *name, int bufsize)

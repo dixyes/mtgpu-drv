@@ -8,9 +8,9 @@
 
 struct drm_device;
 struct drm_file;
-struct mtgpu_vm_context;
 struct DEVMEM_HEAP_TAG;
 struct _DEVMEMINT_MAPPING_;
+struct mutex;
 
 #define DEVMEM_HEAPNAME_MAXLENGTH 160
 
@@ -20,12 +20,27 @@ struct mtgpu_vm_bo {
 	void *pmr;
 	uint64_t dev_vaddr;
 	void *cpu_vaddr;
+	void *map_data;
+};
+
+struct mtgpu_vm_context {
+	struct _DEVMEMINT_CTX_ *devmem_int_ctx;
+	struct _DEVMEMINT_HEAP_ *reserved_int_heap;
+	struct _DEVMEMINT_HEAP_ **app_int_heaps;
+	u32 app_heap_count;
+	struct rb_root_cached *root;
+	struct mutex *tree_lock;	/* Mutex lock for tree access */
+	u32 reserved_heap_count;
+	struct DEVMEM_HEAP_TAG **reserved_heap_array;
+	struct mtgpu_vm_bo *yuv_csc_buffer;
+	struct mtgpu_vm_bo *pb_bo;
 };
 
 int mtgpu_vm_bo_create_and_map(PVRSRV_DEVICE_NODE *dev_node,
 			       struct mtgpu_vm_context *vm_ctx,
 			       char *heap_name,
 			       u64 size,
+			       u64 flags,
 			       struct mtgpu_vm_bo **buffer_obj);
 int mtgpu_vm_bo_unmap_and_destroy(struct mtgpu_vm_bo *bo);
 

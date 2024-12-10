@@ -157,6 +157,15 @@ char *fec_kernel_params;
 module_param(fec_kernel_params, charp, 0444);
 MODULE_PARM_DESC(fec_kernel_params, "mtgpu fec kernel extra params");
 
+unsigned long fec_image_base;
+module_param(fec_image_base, ulong, 0444);
+MODULE_PARM_DESC(fec_image_base,
+		 "mtgpu fec image base address, larger than vram size is relocated in host mem region");
+
+unsigned long fec_image_size;
+module_param(fec_image_size, ulong, 0444);
+MODULE_PARM_DESC(fec_image_size, "mtgpu fec image reserved size");
+
 int enable_mtlink;
 module_param(enable_mtlink, int, 0444);
 MODULE_PARM_DESC(enable_mtlink, "1:enable mtlink, 0:disable mtlink");
@@ -171,10 +180,10 @@ module_param(mtlink_topo_type, int, 0444);
 MODULE_PARM_DESC(mtlink_topo_type,
 		 "0:default, normal topology, 1:eight-card fc topology, 2:two groups of four-card fc topology");
 
-int enable_event_report;
+int enable_event_report = 1;
 module_param(enable_event_report, int, 0444);
 MODULE_PARM_DESC(enable_event_report,
-		 "0:default, disable mtgpu_event_report, 1:enable mtgpu_event_report");
+		 "1:default, enable mtgpu_event_report, 0:disable mtgpu_event_report");
 
 /**
  * pstate mode
@@ -218,6 +227,10 @@ bool disable_pcie_link_monitor;
 module_param(disable_pcie_link_monitor, bool, 0444);
 MODULE_PARM_DESC(disable_pcie_link_monitor, "disable pcie link monitor, default 0.");
 
+bool enable_reserved_memory = true;
+module_param(enable_reserved_memory, bool, 0444);
+MODULE_PARM_DESC(enable_reserved_memory, "enable reserved memory for igpu, default 0.");
+
 #if (RGX_NUM_OS_SUPPORTED > 1)
 int mtgpu_vgpu_scheduling_policy;
 module_param(mtgpu_vgpu_scheduling_policy, int, 0444);
@@ -244,11 +257,6 @@ module_param(mtgpu_load_windows_firmware, bool, 0444);
 MODULE_PARM_DESC(mtgpu_load_windows_firmware,
 	"0 - load linux fw, 1 - load windows fw. The default value is 1");
 
-bool mtgpu_vgpu_enable_share_vpu_mem = false;
-module_param(mtgpu_vgpu_enable_share_vpu_mem, bool, 0444);
-MODULE_PARM_DESC(mtgpu_vgpu_enable_share_vpu_mem,
-		 "Share guest vpu memory for gpu use (0: disable(default), 1: enable)");
-
 int vgpu_mm_mapping_mode = 2;
 module_param(vgpu_mm_mapping_mode, int, 0444);
 MODULE_PARM_DESC(vgpu_mm_mapping_mode,
@@ -273,4 +281,32 @@ unsigned long mtgpu_win_fw_context_switch_value = 0x1E;
 module_param(mtgpu_win_fw_context_switch_value, ulong, 0444);
 MODULE_PARM_DESC(mtgpu_win_fw_context_switch_value,
 	"windows firmware DM(TDM, TA, 3D, CDM) context switch. Each bit represents each DM (0: not enable, 1: enable)");
+
+int mtgpu_vgpu_dyn_mpc_mode = 1;
+module_param(mtgpu_vgpu_dyn_mpc_mode, int, 0444);
+MODULE_PARM_DESC(mtgpu_vgpu_dyn_mpc_mode, "vgpu dynamic change mpc mode (0: disable, 1: enable(default))");
+
+bool vgpu_qos = 1;
+module_param(vgpu_qos, bool, 0444);
+MODULE_PARM_DESC(vgpu_qos,"vGPU PCIe bandwidth QoS(0: disable, 1: enable)");
+
+bool vgpu_1g_support_4k = 1;
+module_param(vgpu_1g_support_4k, bool, 0444);
+MODULE_PARM_DESC(vgpu_1g_support_4k,"1G VGPU support 4K resolution(0: disable, 1: enable)");
+
+#if defined(VGPU_COMPAT_CHECK_MODE_VERSION_LIST_FORCED)
+/**
+ * For CI release versions, this value is
+ * immutable by default to prevent user modifications.
+ *
+ * @note This Mode version list(1) is not available on the develop branch.
+ */
+int vgpu_compat_check_mode = 1;
+#else
+int vgpu_compat_check_mode = 2;
+module_param(vgpu_compat_check_mode, int, 0444);
+MODULE_PARM_DESC(vgpu_compat_check_mode,
+		 "vGPU compatibility check mode(0: disable, 1: version list, 2: strictly match)");
+#endif
+
 #endif

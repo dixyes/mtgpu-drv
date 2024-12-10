@@ -33,10 +33,11 @@
 #define WAVE637_CODE                    0x6370
 
 #define WAVE627B_CODE                   0x627B  // wave 627 but not support AV1 ENC
+#define WAVE677_CODE                    0x6770  // wave 627 for PH1
 
-#define PRODUCT_CODE_W6_SERIES(x)       (x == WAVE627_CODE || x == WAVE637_CODE || x == WAVE627B_CODE)
+#define PRODUCT_CODE_W6_SERIES(x)       (x == WAVE627_CODE || x == WAVE637_CODE || x == WAVE627B_CODE || x == WAVE677_CODE)
 #define PRODUCT_CODE_W5_SERIES(x)       (x == WAVE517_CODE || x == WAVE537_CODE || x == WAVE511_CODE || x == WAVE521_CODE || x == WAVE521E1_CODE || x == WAVE521C_CODE || x == WAVE521C_DUAL_CODE)
-#define PRODUCT_CODE_W_SERIES(x)        (x == WAVE627_CODE || x == WAVE637_CODE || x == WAVE517_CODE || x == WAVE537_CODE || x == WAVE511_CODE || x == WAVE521_CODE || x == WAVE521E1_CODE || x == WAVE521C_CODE || x == WAVE521C_DUAL_CODE || x == WAVE627B_CODE)
+#define PRODUCT_CODE_W_SERIES(x)        (x == WAVE627_CODE || x == WAVE637_CODE || x == WAVE517_CODE || x == WAVE537_CODE || x == WAVE511_CODE || x == WAVE521_CODE || x == WAVE521E1_CODE || x == WAVE521C_CODE || x == WAVE521C_DUAL_CODE || x == WAVE627B_CODE || x == WAVE677_CODE)
 #define PRODUCT_CODE_CODA_SERIES(x)     (x == BODA950_CODE || x == CODA960_CODE || x == CODA980_CODE)
 
 #define WAVE627ENC_WORKBUF_SIZE         (132*1024)
@@ -46,11 +47,12 @@
 #define WAVE521DEC_WORKBUF_SIZE         (1784*1024)
 
 #define MAX_INST_HANDLE_SIZE            48              /* DO NOT CHANGE THIS VALUE */
-#define MAX_NUM_INSTANCE                32
+#define MAX_NUM_INSTANCE                128
 #define MAX_NUM_CARD                    64
 #define MAX_NUM_VPU_CORE                256
 #define MAX_NUM_VCORE                   1
 #define MAX_INTERRUPT_QUEUE             (16*MAX_NUM_INSTANCE)
+#define MAX_NUM_INSTANCE_ORIGINAL       32
 
 #define MAX_ENC_AVC_PIC_WIDTH           4096
 #define MAX_ENC_AVC_PIC_HEIGHT          2304
@@ -137,8 +139,16 @@
 #define WAVE6_TEMPBUF_OFFSET            WAVE6_MAX_CODE_BUF_SIZE
 #define WAVE6_TEMPBUF_SIZE              (2*1024*1024)
 
+#define FW_LOG_BUFFER_SIZE              (16 << 10) //Currently 16k, if not enough enlarge the size
+
 #define ONE_TASKBUF_SIZE_FOR_CQ         0
 #define SIZE_COMMON                     (WAVE5_MAX_CODE_BUF_SIZE + WAVE5_TEMPBUF_SIZE)
+
+#define WAVE627ENC_WORKBUF_SIZE_PH      (1*1024*1024)
+#define WAVE627ENC_MAX_CODE_BUF_SIZE_PH (2*1024*1024)
+#define WAVE627ENC_TEMPBUF_OFFSET_PH    WAVE627ENC_MAX_CODE_BUF_SIZE_PH
+#define WAVE627ENC_TEMPBUF_SIZE_PH      (3*1024*1024)
+#define WAVE627ENC_SIZE_COMMON_PH       (WAVE627ENC_MAX_CODE_BUF_SIZE_PH + WAVE627ENC_TEMPBUF_SIZE_PH)
 
 #define W_VCPU_SPM_ADDR                 (0xfffef000UL)
 
@@ -179,6 +189,8 @@
 #define RDO_COL_EXT_ADDR            0x0
 #define RDO_NB_EXT_ADDR             0x0
 #define LF_NB_EXT_ADDR              0x0
+
+#define WAVE5_PERF_TICK_VCPU_COST   (300)
 
 #endif  /* _VPU_CONFIG_H_ */
 

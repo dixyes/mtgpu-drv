@@ -84,6 +84,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 	X(ENOSPC) \
 	X(EINVAL) \
 	X(ENOSYS) \
+	X(ENXIO) \
 	X(EAGAIN) \
 	X(EINTR) \
 	X(DMA_BIDIRECTIONAL) \
@@ -92,7 +93,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 	X(ERANGE) \
 	X(EEXIST) \
 	X(WQ_UNBOUND) \
-	X(WQ_FREEZABLE)
+	X(WQ_FREEZABLE) \
+	X(O_CLOEXEC)
 
 enum {
 #define X(VALUE) OS_PVR_##VALUE,
@@ -716,6 +718,8 @@ IMG_INT OSMemCmp(void *pvBufA, void *pvBufB, size_t uiLen);
 *****************************************************************************/
 void *OSMemSet(void *pvBuf, IMG_INT ui32Str, size_t uiLen);
 
+void OSMemSetIO(void *pvBuf, IMG_INT ui32Str, size_t uiLen);
+
 /*************************************************************************/ /*!
 @Function       OSMemCopy
 @Description    Copy one area of memory to another.
@@ -828,10 +832,10 @@ void OSDeInitEnvData(void);
 IMG_UINT32 OSVSScanf(const IMG_CHAR *pStr, const IMG_CHAR *pszFormat, ...);
 
 /*************************************************************************/ /*!
-@Function       OSStringLCpy
-@Description    OS function to support the standard C strlcpy() function.
+@Function       OSStringSCpy
+@Description    OS function to support the standard C strscpy() function.
 */ /**************************************************************************/
-size_t OSStringLCpy(IMG_CHAR *pszDest, const IMG_CHAR *pszSrc, size_t uDstSize);
+size_t OSStringSCpy(IMG_CHAR *pszDest, const IMG_CHAR *pszSrc, size_t uDstSize);
 
 /*************************************************************************/ /*!
 @Function       OSStringLCat
@@ -1910,6 +1914,7 @@ long OSPtrErr(const void *pvPtr);
 IMG_INT OSSScanf(const IMG_CHAR *pcBuf, const IMG_CHAR *pcFmt, ...);
 struct device *OSGetPcieDeviceFromDeviceNode(PVRSRV_DEVICE_NODE *psDevNode);
 bool OSDeviceIsPCI(struct device *psDev);
+bool OSDevToNode(struct device *psDev);
 struct device *OSGetOSDeviceFromDeviceNode(PVRSRV_DEVICE_NODE *psDevNode);
 
 struct bus_type;
@@ -1995,8 +2000,10 @@ size_t OSKSize(const void *objp);
 void OSKFree(const void *x);
 bool OSIsVMallocAddr(const void *x);
 void *OSKMalloc(size_t size);
+void *OSKMallocNode(size_t size, int node);
 void *OSKZalloc(size_t size);
 void *OSVMalloc(unsigned long size);
+void *OSVMallocNode(unsigned long size, int node);
 void *OSVZalloc(unsigned long size);
 
 unsigned int OSBigEndian32ToCPU(unsigned int uiNum);
@@ -2127,6 +2134,67 @@ void *OSCreateWork(work_func_t pfnFunc);
 void OSDestroyWork(struct work_struct *psWork);
 void OSSetWorkDrvdata(struct work_struct *psWork, void *pvData);
 void *OSGetWorkDrvdata(struct work_struct *psWork);
+
+struct delayed_work;
+
+struct workqueue_struct *OSCreateFreezableWorkqueue(char *name);
+void *OSCreateDelayedWork(void);
+void OSDestroyDelayedWork(struct delayed_work *dwork);
+void OSInitDelayedWork(struct delayed_work *dwork, work_func_t func);
+bool OSQueueDelayedWork(struct workqueue_struct *wq,
+			struct delayed_work *dwork,
+			unsigned long delay);
+bool OSCancelDelayedWorkSync(struct delayed_work *dwork);
+struct delayed_work *OSToDelayedWork(struct work_struct *work);
+
+void OSBitmapSet(unsigned long *map, IMG_UINT uiStart, IMG_UINT uiNbits);
+void OSBitmapClear(unsigned long *map, IMG_UINT start, IMG_UINT nbits);
+unsigned long OSFindFirstZeroBit(const unsigned long *addr, unsigned long size);
+
+struct dma_fence;
+struct dma_fence_ops;
+struct dma_fence_cb;
+typedef void (*dma_fence_func_t)(struct dma_fence *fence, struct dma_fence_cb *cb);
+
+void *OSCreateDmaFence(void);
+void OSDestroyDmaFence(struct dma_fence *dma_fence);
+void OSSetDmaFenceDrvdata(struct dma_fence *dma_fence, void *data);
+void *OSGetDmaFenceDrvdata(struct dma_fence *dma_fence);
+void *OSCreateDmaFenceCB(void);
+void OSDestroyDmaFenceCB(struct dma_fence_cb *dma_fence_cb);
+void OSSetDmaFenceCBDrvdata(struct dma_fence_cb *dma_fence_cb, void *data);
+void *OSGetDmaFenceCBDrvdata(struct dma_fence_cb *dma_fence_cb);
+
+struct MTDmaFenceOps {
+        const char * (*get_driver_name)(struct dma_fence *fence);
+	const char * (*get_timeline_name)(struct dma_fence *fence);
+	bool (*enable_signaling)(struct dma_fence *fence);
+	bool (*signaled)(struct dma_fence *fence);
+	signed long (*wait)(struct dma_fence *fence, bool intr, signed long timeout);
+	void (*release)(struct dma_fence *fence);
+	void (*fence_value_str)(struct dma_fence *fence, char *str, int size);
+	void (*timeline_value_str)(struct dma_fence *fence, char *str, int size);
+};
+
+IMG_UINT64 OSDmaFenceOpsInit(struct dma_fence_ops **ops,
+                             const struct MTDmaFenceOps *mt_ops);
+void OSDmaFenceInit(struct dma_fence *fence,
+                    const struct dma_fence_ops *ops,
+                    spinlock_t *lock, u64 context, u64 seqno);
+IMG_UINT64 OSDmaFenceContextAlloc(IMG_UINT32 num);
+struct dma_fence *OSDmaFenceGetStub(void);
+struct dma_fence *OSDmaFenceGet(struct dma_fence *fence);
+void OSDmaFenSignal(struct dma_fence *fence);
+void OSDmaFencePut(struct dma_fence *fence);
+bool OSDmaFenceIsSignaled(struct dma_fence *fence);
+void *OSCreateDmaFenceCB(void);
+void OSDestroyDmaFenceCB(struct dma_fence_cb *dma_fence_cb);
+int OSDmaFenceAddCallback(struct dma_fence *fence, struct dma_fence_cb *cb,
+                          dma_fence_func_t func);
+struct sync_file *OSSyncFileCreate(struct dma_fence *fence);
+int OSGetUnusedFDFlags(unsigned flag);
+void OSFDInstallSyncFile(int fd, struct sync_file *sync_file);
+struct dma_fence *OSSyncFileGetFence(int fd);
 
 #endif /* OSFUNC_H */
 /******************************************************************************

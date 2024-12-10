@@ -30,6 +30,7 @@ mtgpu-objs += src/common/os-interface.o \
 	src/mtgpu/mtgpu_drm_dp.o \
 	src/mtgpu/mtgpu_drm_dispc.o \
 	src/mtgpu/mtgpu_drm_atomic.o \
+	src/mtgpu/mtgpu_drm_utils.o \
 	src/mtgpu/mtgpu_drm_drv.o \
 	src/mtgpu/mtgpu_drm_dummy_connector.o \
 	src/mtgpu/mtgpu_drm_dummy_crtc.o \
@@ -97,6 +98,7 @@ ccflags-y += -I$(OBJ_DIR)/inc \
 	-I$(OBJ_DIR)/inc/pvr/services \
 	-I$(OBJ_DIR)/inc/common \
 	-I$(OBJ_DIR)/inc/mtgpu \
+	-I$(OBJ_DIR)/inc/shared_include/linux/uapi/drm \
 	-I$(OBJ_DIR)/inc/mtgpu-next \
 	-I$(OBJ_DIR)/inc/mtgpu/vgpu \
 	-I$(OBJ_DIR)/inc/mtgpu/ion \

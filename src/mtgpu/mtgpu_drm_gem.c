@@ -39,6 +39,7 @@ const struct drm_gem_object_funcs mtgpu_gem_object_funcs = {
 	.vmap		= mtgpu_gem_prime_vmap,
 	.vunmap		= mtgpu_gem_prime_vunmap,
 	.vm_ops		= &mtgpu_gem_vm_ops,
+	.get_sg_table	= mtgpu_gem_prime_get_sg_table,
 };
 #endif
 

@@ -23,8 +23,31 @@ static inline int mtvpu_gem_mmap_obj(void *arg1, void *arg2)
 	return 0;
 }
 
+static inline int mtvpu_gem_dmabuf_map(void *arg1, void *arg2)
+{
+	return 0;
+}
+
 static inline void mtvpu_gem_free_obj(void *arg1)
 {
+}
+
+static inline int mtvpu_job_submit(struct drm_device *drm,
+				   struct drm_file *file_priv,
+				   void __user *data,
+				   uint32_t size)
+{
+	return 0;
+}
+
+static inline int mtvpu_bo_wait(struct drm_device *drm,
+				struct drm_file *file_priv,
+				u64 bo_handle,
+				u32 offset,
+				u32 flags,
+				s64 timeout_ns)
+{
+	return 0;
 }
 #endif
 

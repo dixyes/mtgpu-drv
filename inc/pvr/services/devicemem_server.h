@@ -55,9 +55,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 typedef struct _DEVMEMINT_CTX_ DEVMEMINT_CTX;
 typedef struct _DEVMEMINT_CTX_EXPORT_ DEVMEMINT_CTX_EXPORT;
 typedef struct _DEVMEMINT_HEAP_ DEVMEMINT_HEAP;
-
+typedef struct _DEVMEMINT_HEAP2_ DEVMEMINT_HEAP2;
 typedef struct _DEVMEMINT_RESERVATION_ DEVMEMINT_RESERVATION;
+typedef struct _DEVMEMINT_RESERVATION2_ DEVMEMINT_RESERVATION2;
 typedef struct _DEVMEMINT_MAPPING_ DEVMEMINT_MAPPING;
+typedef struct _DEVMEMINT_MAPPING2_ DEVMEMINT_MAPPING2;
 typedef struct _DEVMEMINT_PF_NOTIFY_ DEVMEMINT_PF_NOTIFY;
 typedef struct _DEVMEMINT_PROCESS_DATA_ DEVMEMINT_PROCESS_DATA;
 
@@ -229,6 +231,31 @@ PVRSRV_ERROR
 DevmemIntCtxDestroy(DEVMEMINT_CTX *psDevmemCtx);
 
 /*
+ * DevmemIntHeapCreate2()
+ *
+ * Creates a new heap in this device memory context.  This will cause a call
+ * into the MMU code to allocate various data structures for managing this
+ * heap. It will not necessarily cause any page tables to be set up, as this
+ * can be deferred until first allocation. (i.e. we shouldn't care - it's up
+ * to the MMU code)
+ *
+ * The page shift bit mask must be specified, one heap can have several page
+ * size. we should choose one page size in page shift bit mask.
+ *
+ * If you call DevmemIntHeapCreate2() (and the call succeeds) you are promising
+ * that you shall subsequently call DevmemIntHeapDestroy2()
+ *
+ * Caller to provide storage for a pointer to the DEVMEM_HEAP object that will
+ * be created by this call.
+ */
+PVRSRV_ERROR
+DevmemIntHeapCreate2(DEVMEMINT_CTX *psDevmemCtx,
+		     IMG_DEV_VIRTADDR sHeapBaseAddr,
+		     IMG_DEVMEM_SIZE_T uiHeapLength,
+		     IMG_UINT32 ui32PageSizeBitMask,
+		     DEVMEMINT_HEAP2 **ppsDevmemHeapPtr);
+
+/*
  * DevmemIntHeapCreate()
  *
  * Creates a new heap in this device memory context.  This will cause a call
@@ -256,6 +283,19 @@ DevmemIntHeapCreate(DEVMEMINT_CTX *psDevmemCtx,
                     IMG_DEVMEM_SIZE_T uiHeapLength,
                     IMG_UINT32 uiLog2DataPageSize,
                     DEVMEMINT_HEAP **ppsDevmemHeapPtr);
+
+/*
+ * DevmemIntHeapDestroy2()
+ *
+ * Destroys a heap previously created with DevmemIntHeapCreate2()
+ *
+ * All allocations from his heap must have been freed before this
+ * call.
+ */
+
+PVRSRV_ERROR
+DevmemIntHeapDestroy2(DEVMEMINT_HEAP2 *psDevmemHeap);
+
 /*
  * DevmemIntHeapDestroy()
  *
@@ -266,6 +306,36 @@ DevmemIntHeapCreate(DEVMEMINT_CTX *psDevmemCtx,
  */
 PVRSRV_ERROR
 DevmemIntHeapDestroy(DEVMEMINT_HEAP *psDevmemHeap);
+
+/*
+ * DevmemIntMapPMR2()
+ *
+ * Maps the given PMR to the virtual range previously allocated with
+ * DevmemIntReserveRange2()
+ *
+ * If appropriate, the PMR must have had its physical backing committed, as
+ * this call will call into the MMU code to set up the page tables for this
+ * allocation, which shall in turn request the physical addresses from the
+ * PMR. Alternatively, the PMR implementation can choose to do so off the
+ * the back of the "lock" callback, which it will receive as a result
+ * (indirectly) of this call.
+ *
+ * This function makes no promise w.r.t. the circumstances that it can be
+ * called, and these would be "inherited" from the implementation of the PMR.
+ * For example if the PMR "lock" callback causes pages to be pinned at that
+ * time (which may cause scheduling or disk I/O etc.) then it would not be
+ * legal to "Map" the PMR in a context where scheduling events are disallowed.
+ *
+ * If you call DevmemIntMapPMR2() (and the call succeeds) then you are promising
+ * that you shall later call DevmemIntUnmapPMR2()
+ */
+PVRSRV_ERROR
+DevmemIntMapPMR2(DEVMEMINT_HEAP2 *psDevmemHeap,
+		 DEVMEMINT_RESERVATION2 *psReservation,
+		 PMR *psPMR,
+		 PVRSRV_MEMALLOCFLAGS_T uiMapFlags,
+		 DEVMEMINT_MAPPING2 **ppsMappingPtr,
+		 DEVMEM_INTERLEAVE_RATIO *psInterleaveRatio);
 
 /*
  * DevmemIntMapPMR()
@@ -296,6 +366,15 @@ DevmemIntMapPMR(DEVMEMINT_HEAP *psDevmemHeap,
 		PVRSRV_MEMALLOCFLAGS_T uiMapFlags,
 		DEVMEMINT_MAPPING **ppsMappingPtr,
 		DEVMEM_INTERLEAVE_RATIO *psInterleaveRatio);
+
+/*
+ * DevmemIntUnmapPMR2()
+ *
+ * Reverses the mapping caused by DevmemIntMapPMR2()
+ */
+PVRSRV_ERROR
+DevmemIntUnmapPMR2(DEVMEMINT_MAPPING2 *psMapping);
+
 /*
  * DevmemIntUnmapPMR()
  *
@@ -340,7 +419,7 @@ DevmemIntUnmapPages(DEVMEMINT_RESERVATION *psReservation,
                     IMG_UINT32 ui32PageCount);
 
 /*
- * DevmemIntReserveRange()
+ * DevmemIntReserveRange2()
  *
  * Indicates that the specified range should be reserved from the given heap.
  *
@@ -350,10 +429,36 @@ DevmemIntUnmapPages(DEVMEMINT_RESERVATION *psReservation,
  * promising that you shall later call DevmemIntUnreserveRange()
  */
 PVRSRV_ERROR
+DevmemIntReserveRange2(DEVMEMINT_HEAP2 *psDevmemHeap,
+                      IMG_UINT32 ui32log2PageSize,
+                      IMG_DEV_VIRTADDR sAllocationDevVAddr,
+                      IMG_DEVMEM_SIZE_T uiAllocationSize,
+                      DEVMEMINT_RESERVATION2 **ppsReservationPtr);
+
+/*
+ * DevmemIntReserveRange()
+ *
+ * Indicates that the specified range should be reserved from the given heap.
+ *
+ * In turn causes the page tables to be allocated to cover the specified range.
+ *
+ * If you call DevmemIntReserveRange() (and the call succeeds) then you are
+ * promising that you shall later call DevmemIntUnreserveRange2()
+ */
+PVRSRV_ERROR
 DevmemIntReserveRange(DEVMEMINT_HEAP *psDevmemHeap,
                       IMG_DEV_VIRTADDR sAllocationDevVAddr,
                       IMG_DEVMEM_SIZE_T uiAllocationSize,
                       DEVMEMINT_RESERVATION **ppsReservationPtr);
+
+/*
+ * DevmemIntUnreserveRange2()
+ *
+ * Undoes the state change caused by DevmemIntReserveRage2()
+ */
+PVRSRV_ERROR
+DevmemIntUnreserveRange2(DEVMEMINT_RESERVATION2 *psReservation);
+
 /*
  * DevmemIntUnreserveRange()
  *

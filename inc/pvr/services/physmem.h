@@ -180,8 +180,7 @@ PhysmemNewRamBackedPMR_direct(CONNECTION_DATA * psConnection,
 							  PVRSRV_MEMALLOCFLAGS_T *puiPMRFlags);
 
 
-IMG_BOOL PhysHeapHasEnoughMem(CONNECTION_DATA *psConnection,
-			      PVRSRV_DEVICE_NODE *psDevNode,
+IMG_BOOL PhysHeapHasEnoughMem(PVRSRV_DEVICE_NODE *psDevNode,
 			      IMG_DEVMEM_SIZE_T uiSize,
 			      PVRSRV_MEMALLOCFLAGS_T uiFlags);
 

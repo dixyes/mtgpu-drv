@@ -81,6 +81,9 @@ void LinuxBridgeForceUnblockClientsAccess(void);
 void LinuxBridgeNumActiveKernelThreadsIncrement(void);
 void LinuxBridgeNumActiveKernelThreadsDecrement(void);
 
+void LinuxBridgeDisableClientsAccess(void);
+void LinuxBridgeEnableClientsAccess(void);
+
 int PVRSRV_BridgeDispatchKM(struct drm_device *dev, void *arg,
 			    struct drm_file *file);
 

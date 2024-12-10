@@ -12,6 +12,7 @@
 #include <linux/platform_device.h>
 
 #include "mtgpu_ipc_tty.h"
+#include "mtgpu_fec_dbg.h"
 
 struct mtgpu_ipc_tty {
 	struct tty_port port;
@@ -110,6 +111,9 @@ void mtgpu_ipc_tty_handler(struct mtgpu_ipc_tty *ipctty, void *data)
 	/* Filter extra tty format info and output. */
 	if (d->is_console)
 		dev_info(ipctty->dev, "[FEC] %.*s", d->dsize, d->data);
+
+	if (d->tty_idx == 3)
+		mtgpu_fec_dbg_write_umd_log(ipctty->dev, d->dsize, d->data);
 }
 
 static void ipc_tty_console_write(struct console *co, const char *b,

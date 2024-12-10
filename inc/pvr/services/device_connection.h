@@ -116,6 +116,12 @@ typedef const struct PVRSRV_DEV_CONNECTION_TAG *SHARED_DEV_CONNECTION;
 #define PVRSRV_OB_PCI_RES_SHIFT (14)
 #define PVRSRV_OB_PCI_RES_USED  (1U << PVRSRV_OB_PCI_RES_SHIFT)
 
+/* Flag to be passed over the bridge during connection stating whether the gpu is integrated-gpu
+ * or discrete-gpu. */
+#define PVRSRV_GPU_TYPE_SHIFT	(15)
+#define PVRSRV_GPU_TYPE_DGPU	(0U << PVRSRV_GPU_TYPE_SHIFT)
+#define PVRSRV_GPU_TYPE_IGPU	(1U << PVRSRV_GPU_TYPE_SHIFT)
+
 static INLINE IMG_HANDLE GetBridgeHandle(SHARED_DEV_CONNECTION hDevConnection)
 {
 #if defined(__KERNEL__)

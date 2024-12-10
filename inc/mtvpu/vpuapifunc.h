@@ -173,14 +173,16 @@ typedef struct {
     int             clearDisplayIndexes;
     int             setDisplayIndexes;
     PhysicalAddress streamRdPtrRegAddr;
+    PhysicalAddress streamRdPtrRegAddrExt;
     PhysicalAddress streamWrPtrRegAddr;
+    PhysicalAddress streamWrPtrRegAddrExt;
     PhysicalAddress streamBufStartAddr;
     PhysicalAddress streamBufEndAddr;
     PhysicalAddress frameDisplayFlagRegAddr;
     PhysicalAddress currentPC;
     PhysicalAddress busyFlagAddr;
     PhysicalAddress rootPageTableStartAddr;
-    PhysicalAddress rootPageTableEndAddr;
+    Uint32          rootPageTablePageMask;
     int             streamBufSize;
     FrameBuffer     frameBufPool[MAX_REG_FRAME];
     vpu_buffer_t    vbFrame;
@@ -1798,13 +1800,15 @@ typedef struct {
     PhysicalAddress     streamWrPtr;
     int                 streamEndflag;
     PhysicalAddress     streamRdPtrRegAddr;
+    PhysicalAddress     streamRdPtrRegAddrExt;
     PhysicalAddress     streamWrPtrRegAddr;
+    PhysicalAddress     streamWrPtrRegAddrExt;
     PhysicalAddress     streamBufStartAddr;
     PhysicalAddress     streamBufEndAddr;
     PhysicalAddress     currentPC;
     PhysicalAddress     busyFlagAddr;
     PhysicalAddress     rootPageTableStartAddr;
-    PhysicalAddress     rootPageTableEndAddr;
+    Uint32              rootPageTablePageMask;
     int                 streamBufSize;
     int                 linear2TiledEnable;
     int                 linear2TiledMode;    // coda980 only
@@ -1885,6 +1889,7 @@ typedef struct CodecInst {
     Int32   codecMode;
     Int32   codecModeAux;
     Int32   productId;
+    Int32   support48Bit;
     Int32   loggingEnable;
     Uint32  isDecoder;
     union {

@@ -7,7 +7,6 @@
 #define __MTGPU_BOARD_CFG_H__
 
 #include "os-interface.h"
-#include "mtgpu_ipc.h"
 
 #define PORT_DISABLED		0
 /* DP port */
@@ -172,7 +171,7 @@ static inline void mtgpu_board_cfg_ddr_size_convert(u64 *ddr_size)
 		*ddr_size *= GBYTE;
 }
 
-static inline int
+int
 mtgpu_get_board_info_by_dma_coherent(struct device *dev, void *ipc_info, int ipc_info_size,
 				     int ipc_event,
 				     int dma_alloc_coherent_size,
@@ -182,58 +181,6 @@ mtgpu_get_board_info_by_dma_coherent(struct device *dev, void *ipc_info, int ipc
 				     void (*ipc_request_param_setting)(void *ipc_param,
 								       dma_addr_t dma_addr_dst,
 								       int *ipc_param_size),
-				     int (*dma_data_valid)(void *dma_data))
-{
-	struct ipc_msg ipc_msg = {0};
-	struct ipc_msg_hdr *header = &ipc_msg.header;
-	dma_addr_t dma_addr_src, dma_addr_dst;
-	void *dma_data;
-	void *ipc_param;
-	int ipc_param_size = 0;
-
-	dma_data = os_dma_alloc_coherent(dev, dma_alloc_coherent_size, &dma_addr_src,
-					 OS_VAL(GFP_DMA));
-	if (!dma_data) {
-		BOARD_ERROR(dev, "alloc dma address for info_rom failed\n");
-		return -OS_VAL(EINVAL);
-	}
-	dma_addr_dst = dma_addr_src;
-
-	if (dma_addr_offset && dma_addr_offset(dev, &dma_addr_src, &dma_addr_dst)) {
-		BOARD_ERROR(dev, "dma_addr_offset error\n");
-		goto err;
-	}
-	BOARD_INFO(dev, "alloc_dma_addr:0x%llx, dma_addr_offset:0x%llx\n", dma_addr_src,
-		   dma_addr_dst);
-
-	ipc_param = (void *)&ipc_msg.data[0];
-	if (ipc_request_param_setting)
-		ipc_request_param_setting(ipc_param, dma_addr_dst, &ipc_param_size);
-
-	header->event_type = EVENT_TYPE_HOST_TO_SMC;
-	header->event_id   = ipc_event;
-	header->response   = 1;
-	header->source     = MTGPU_IPC_NODE_PCIE;
-	header->target     = MTGPU_IPC_NODE_SMC;
-	header->data_size  = ipc_param_size / sizeof(u32);
-
-	if (mtgpu_ipc_transmit(dev, &ipc_msg) != PCIE_IPC_MSG_DONE_WITH_RESPONSE) {
-		BOARD_ERROR(dev, "get board info failed\n");
-		goto err;
-	}
-
-	if (dma_data_valid && dma_data_valid(dma_data))
-		goto err;
-
-	os_memcpy(ipc_info, dma_data, ipc_info_size);
-	os_dma_free_coherent(dev, dma_alloc_coherent_size, dma_data, dma_addr_src);
-
-	return 0;
-
-err:
-	os_dma_free_coherent(dev, dma_alloc_coherent_size, dma_data, dma_addr_src);
-
-	return -OS_VAL(EINVAL);
-}
+				     int (*dma_data_valid)(void *dma_data));
 
 #endif /* __MTGPU_BOARD_CFG_H__ */

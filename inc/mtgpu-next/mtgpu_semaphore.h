@@ -15,6 +15,7 @@ struct _RGX_SERVER_COMMON_CONTEXT_;
 struct _SYNC_ADDR_LIST_;
 struct _CONNECTION_DATA_;
 struct SYNC_CHECKPOINT_TAG;
+struct mtgpu_syncobj;
 
 struct common_context_data {
 	RGXFWIF_DM dm;
@@ -30,18 +31,21 @@ int mtgpu_semaphore_get_fwaddr(struct _CONNECTION_DATA_ *conn, void *handle, u32
 int mtgpu_semaphore_create_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
 int mtgpu_semaphore_destroy_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
 int mtgpu_semaphore_submit_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
-int mtgpu_semaphore_cpu_signal_ioctl(struct drm_device *drm, void *data,
-				     struct drm_file *file_priv);
+int mtgpu_semaphore_cpu_signal_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
 int mtgpu_semaphore_to_fd_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
-PVRSRV_ERROR
-mtgpu_semaphore_resolve(struct _CONNECTION_DATA_ *conn,
-			struct drm_mtgpu_semaphore *check_semas,
-			u32 check_sema_count,
-			u32 *checkpoint_count,
-			PSYNC_CHECKPOINT **checkpoints_out,
-			u32 **values_out,
-			u64 *sema_uid);
+int mtgpu_semaphore_from_fd_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
+void mtgpu_semaphore_signal_fences(void *data);
 int mtgpu_semaphore_signal_callback_register(void);
 void mtgpu_semaphore_signal_callback_unregister(void);
+struct mtgpu_syncobj *mtgpu_get_syncobj_from_handle(CONNECTION_DATA *conn, void *handle);
+PVRSRV_ERROR mtgpu_semaphore_resolve(struct _CONNECTION_DATA_ *conn,
+				     struct drm_mtgpu_semaphore *check_semas,
+				     u32 check_sema_count,
+				     u32 *checkpoint_count,
+				     PSYNC_CHECKPOINT **checkpoints_out,
+				     u32 **values_out,
+				     u64 *sem_uid);
+struct SYNC_CHECKPOINT_TAG *mtgpu_get_checkpoint_from_handle(CONNECTION_DATA *conn, void *handle);
+int mtgpu_semaphore_wait_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
 
 #endif /* _MTGPU_SEMAPHORE_H_ */

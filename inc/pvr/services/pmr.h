@@ -642,7 +642,7 @@ PMR_CopySystemMem(const PMR *psPMR,
 		  IMG_BOOL isToDev);
 
 void PMR_SetUnifiedDevPhysAddr(IMG_UINT64 *uiAddr, IMG_INT32 i32CardId,
-			       IMG_INT32 i32CardIdShift, IMG_INT32 i32CardIdMask);
+			       IMG_UINT64 ui64PerUpaSpace);
 
 /*
  * PMR_CpuPhysAddr()
@@ -1052,7 +1052,7 @@ PMRPDumpCBP(const PMR *psPMR,
 
 PPVRSRV_DEVICE_NODE PMRGetExportDeviceNode(PMR_EXPORT *psExportPMR);
 
-PPVRSRV_DEVICE_NODE PMR_GetDeviceNode(PMR *psPMR);
+PPVRSRV_DEVICE_NODE PMR_GetDeviceNode(const PMR *psPMR);
 
 /*
  * PMRInit()

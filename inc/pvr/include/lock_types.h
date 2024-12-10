@@ -61,6 +61,7 @@ typedef struct mutex *POS_LOCK;
 typedef struct rw_semaphore *POSWR_LOCK;
 typedef spinlock_t *POS_SPINLOCK;
 typedef atomic_t ATOMIC_T;
+typedef atomic64_t ATOMIC64_T;
 
 #else /* defined(__linux__) && defined(__KERNEL__) */
 #include "img_types.h" /* needed for IMG_INT */
@@ -76,17 +77,21 @@ typedef struct OSWR_LOCK_TAG {
 
 #if defined(__linux__)
 	typedef struct OS_ATOMIC_TAG {IMG_INT32 counter;} ATOMIC_T;
+	typedef struct OS_ATOMIC64_TAG {IMG_INT64 counter;} ATOMIC64_T;
 #elif defined(__QNXNTO__)
 	typedef struct OS_ATOMIC_TAG {IMG_INT32 counter;} ATOMIC_T;
+	typedef struct OS_ATOMIC64_TAG {IMG_INT64 counter;} ATOMIC64_T;
 #elif defined(_WIN32)
 	/*
 	 * Dummy definition. WDDM doesn't use Services, but some headers
 	 * still have to be shared. This is one such case.
 	 */
 	typedef struct OS_ATOMIC_TAG {IMG_INT32 counter;} ATOMIC_T;
+	typedef struct OS_ATOMIC64_TAG {IMG_INT64 counter;} ATOMIC64_T;
 #elif defined(INTEGRITY_OS)
 	/* Only lower 32bits are used in OS ATOMIC APIs to have consistent behaviour across all OS */
 	typedef struct OS_ATOMIC_TAG {IMG_INT64 counter;} ATOMIC_T;
+	typedef struct OS_ATOMIC64_TAG {IMG_INT64 counter;} ATOMIC64_T;
 #else
 	#error "Please type-define an atomic lock for this environment"
 #endif

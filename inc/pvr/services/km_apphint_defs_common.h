@@ -72,6 +72,8 @@ X(SignatureChecksBufSize,           UINT32,         PDUMP,       PVRSRV_APPHINT_
 X(DisableClockGating,               BOOL,           ALWAYS,      PVRSRV_APPHINT_DISABLECLOCKGATING,               NO_PARAM_TABLE   ) \
 X(DisableDMOverlap,                 BOOL,           ALWAYS,      PVRSRV_APPHINT_DISABLEDMOVERLAP,                 NO_PARAM_TABLE   ) \
 \
+X(DisableCE,                        BOOL,           ALWAYS,      PVRSRV_APPHINT_DISABLECE,                       NO_PARAM_TABLE   ) \
+\
 X(EnableRandomContextSwitch,        BOOL,           VALIDATION,  PVRSRV_APPHINT_ENABLERANDOMCONTEXTSWITCH,        NO_PARAM_TABLE   ) \
 X(EnableSoftResetContextSwitch,     BOOL,           ALWAYS,      PVRSRV_APPHINT_ENABLESOFTRESETCNTEXTSWITCH,      NO_PARAM_TABLE   ) \
 X(EnableFWContextSwitch,            UINT32,         ALWAYS,      PVRSRV_APPHINT_ENABLEFWCONTEXTSWITCH,            NO_PARAM_TABLE   ) \
@@ -272,6 +274,7 @@ X(GPUVIRT_VAL)
 #define APPHNT_CHECKPOINT_SYSTEM_MEMORY_ENABLE		BIT(2)
 #define APPHNT_DEVVAR_SYSTEM_MEMORY_ENABLE		BIT(3)
 #define APPHNT_CCCB_SYSTEM_MEMORY_ENABLE		BIT(4)
+#define APPHNT_TQCLI_SYSTEM_MEMORY_ENABLE		BIT(8)
 #define APPHNT_REDUCE_READING_VRAM_ENABLE		BIT(31)
 
 /* Data types and actions */

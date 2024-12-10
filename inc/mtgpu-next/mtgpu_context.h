@@ -15,9 +15,21 @@ struct drm_mtgpu_job_context_create;
 struct mtgpu_job_context;
 struct _RGX_SERVER_COMPUTE_CONTEXT_;
 
+struct mtgpu_render_context {
+	struct device *dev;
+	struct _RGX_SERVER_RENDER_CONTEXT_ *base;
+	struct mtgpu_render_csw_data *csw;
+};
+
 struct mtgpu_compute_context {
-    struct _RGX_SERVER_COMPUTE_CONTEXT_ *base;
-    struct mtgpu_csw_data *csw;
+	struct device *dev;
+	struct _RGX_SERVER_COMPUTE_CONTEXT_ *base;
+	struct mtgpu_compute_csw_data *csw;
+};
+
+struct mtgpu_dma_context {
+	u64 robustness_addr;
+  	struct workqueue_struct *dma_workqueue;
 };
 
 struct _PVRSRV_RGXDEV_INFO_ *mtgpu_job_context_get_devinfo(struct mtgpu_job_context *job_ctx);

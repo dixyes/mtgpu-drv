@@ -542,8 +542,12 @@ int PVRSRV_MMap(struct file *file, struct vm_area_struct *ps_vma);
 SEGMENT_INFO *pvr_get_segment_info(PVRSRV_DEVICE_NODE *psDeviceNode);
 PVRSRV_ERROR mtgpu_get_segment_stats(struct drm_device *ddev, int segment_id, struct mtgpu_segment_stats *stats);
 
-int mtgpu_system_alloc(struct drm_device *ddev, size_t size,
-		       u64 **cpu_pa_array, void **handle);
+PVRSRV_ERROR mtgpu_adjust_segment_id(struct mtgpu_segment_info *psSegmentInfo,
+				     IMG_INT32 *pi32SegmentID,
+				     IMG_UINT32 *pui32SegmentIndex,
+				     IMG_BOOL *pbSpecifiedSegment);
+
+int mtgpu_system_alloc(struct drm_device *ddev, size_t size, void **handle);
 int mtgpu_vram_alloc(struct drm_device *ddev, int segment_id, size_t size,
 		     dma_addr_t *dev_addr, void **handle);
 void mtgpu_vram_free(void *handle);
@@ -553,6 +557,8 @@ void mtgpu_vram_vunmap(void *handle, u64 private_data);
 /* In virtualization scenarios, check the fw mode */
 IMG_BOOL mtgpu_is_win_fw_mode(void);
 #endif
+void PVRSRVDisableClientsAccess(void);
+void PVRSRVEnableClientsAccess(void);
 
 PVRSRV_ERROR PVRSRVInitGpuMemStats(PVRSRV_DEVICE_NODE *psDeviceNode);
 void PVRSRVDeInitGpuMemStats(PVRSRV_DEVICE_NODE *psDeviceNode);
@@ -573,5 +579,7 @@ IMG_BOOL PVRSRVHasSamePcieRootPort(struct device *psLocalPcieDev,
 PVRSRV_ERROR PVRSRVGetDevMemClock(PVRSRV_DEVICE_NODE *psDeviceNode, IMG_PUINT32 pui32ddr_clk,
 				  IMG_PUINT32 pui32Maxddrclk);
 PVRSRV_ERROR PVRSRVCheckGpuHealthStatusAndReason(PVRSRV_DEVICE_NODE *psDeviceNode);
+PVRSRV_ERROR PVRSRVDeviceForceIdle(PVRSRV_DEVICE_NODE *psDeviceNode);
+PVRSRV_ERROR PVRSRVDeviceCancelForceIdle(PVRSRV_DEVICE_NODE *psDeviceNode);
 
 #endif /* PVRSRV_H */

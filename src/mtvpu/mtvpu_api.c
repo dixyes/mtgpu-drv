@@ -7,6 +7,8 @@
 #include <linux/slab.h>
 #include <linux/mm.h>
 #include <linux/io.h>
+#include <linux/fs.h>
+#include <linux/uaccess.h>
 #include <drm/drm_device.h>
 #include <drm/drm_gem.h>
 #if defined(OS_DRM_DRMP_H_EXIST)
@@ -16,24 +18,32 @@
 #include <drm/drm_ioctl.h>
 #endif
 
-#ifndef SOC_MODE
 #include "pvrsrv.h"
 #include "mtgpu_drm_drv.h"
 #include "mtgpu_drm_gem.h"
 #include "mtgpu_drm_internal.h"
+#include "mtgpu_module_param.h"
 #include "os-interface-drm.h"
-#endif
 #include "mtvpu_drv.h"
 #include "mtvpu_api.h"
 #include "mtvpu_pool.h"
 #include "mtvpu_smmu.h"
+#include "mtvpu_mem.h"
 #include "misc.h"
 
 bool is_guest_cmds = false;
 
+/* for CMA use, remove this later */
+struct mtvpu_gem_object {
+	struct mtgpu_gem_object mtgpu_obj;
+	void *virt_addr;
+	dma_addr_t iova_addr;
+};
+
 struct file_operations vinfo_fops = {
 	.owner = THIS_MODULE,
 	.read = vpu_info_read,
+	.write = vpu_info_write,
 };
 
 struct file_operations fwinfo_fops = {
@@ -51,14 +61,6 @@ struct file_operations *get_fwinfo_fops(void)
 	return &fwinfo_fops;
 }
 
-#ifdef SOC_MODE
-struct mt_chip *to_chip(struct drm_device *drm)
-{
-	struct mt_chip *chip = drm->dev_private;
-
-	return chip;
-}
-#else
 struct mt_chip *to_chip(struct drm_device *drm)
 {
 	struct mtgpu_drm_private *drm_private = drm->dev_private;
@@ -68,13 +70,13 @@ struct mt_chip *to_chip(struct drm_device *drm)
 
 	return drm_private->chip;
 }
-#endif
 
 struct mtgpu_gem_object *alloc_mtgpu_obj(void)
 {
 	struct mtgpu_gem_object *mtgpu_obj;
 
-	mtgpu_obj = kzalloc(sizeof(struct mtgpu_gem_object), GFP_KERNEL);
+	//mtgpu_obj = kzalloc(sizeof(struct mtgpu_gem_object), GFP_KERNEL);
+	mtgpu_obj = kzalloc(sizeof(struct mtvpu_gem_object), GFP_KERNEL);
 	if (!mtgpu_obj)
 		return NULL;
 
@@ -110,94 +112,200 @@ int get_mtgpu_obj_type(struct mtgpu_gem_object *mtgpu_obj, u32 *group_id, u32 *p
 
 struct mt_file *os_get_drm_file_private_data(struct drm_file *file)
 {
-#ifdef SOC_MODE
-	return file->driver_priv;
-#else
 	struct mtgpu_drm_file *drv_priv = file->driver_priv;
 
 	return drv_priv->vpu_priv;
-#endif
 }
 
 void os_set_drm_file_private_data(struct drm_file *file, struct mt_file *priv)
 {
-#ifdef SOC_MODE
-	file->driver_priv = priv;
-#else
 	struct mtgpu_drm_file *drv_priv = file->driver_priv;
 
 	if (!drv_priv)
 		return;
 
 	drv_priv->vpu_priv = priv;
-#endif
 }
 
-#ifdef SOC_MODE
-int mtvpu_vram_alloc(struct drm_device *drm, int segment_id, size_t size,
-		     dma_addr_t *dev_addr, void **handle)
+unsigned long os_memremap_wb(void)
 {
+	return MEMREMAP_WB;
+}
+
+void *os_memremap(resource_size_t offset, size_t size, unsigned long flags)
+{
+	return memremap(offset, size, flags);
+}
+
+void os_memunmap(void *addr)
+{
+	memunmap(addr);
+}
+
+int mtvpu_vram_alloc(struct drm_device *drm, u32 group_id, size_t size,
+		     dma_addr_t *dev_addr, void **virt_addr, dma_addr_t *iova_addr, void **handle)
+{
+	int err;
 	struct mt_chip *chip = to_chip(drm);
-	struct drm_mm_node *mm_node;
-	int ret;
+	struct sg_table *sgt;
 
-	mm_node = kzalloc(sizeof(*mm_node), GFP_KERNEL);
-	if (!mm_node)
-		goto err;
-
-	spin_lock(chip->shared_mem_lock);
-	ret = drm_mm_insert_node(chip->mm, mm_node, size);
-	spin_unlock(chip->shared_mem_lock);
-	if (ret)
-		goto err;
-
-	*dev_addr = mm_node->start;
-	*handle = mm_node;
-
-	return 0;
-err:
-	return -1;
-}
-
-void mtvpu_vram_free(struct drm_gem_object *obj, void *handle)
-{
-	struct drm_mm_node *mm_node = (struct drm_mm_node *)handle;
-	struct mt_chip *chip = to_chip(obj->dev);
-
-	if (mm_node) {
-		spin_lock(chip->shared_mem_lock);
-		drm_mm_remove_node(mm_node);
-		spin_unlock(chip->shared_mem_lock);
-		kfree(mm_node);
+	if (!chip->io_domain) {
+		if (enable_reserved_memory) {
+			err = mtgpu_vram_alloc(drm, group_id, size, dev_addr, handle);
+			if (err) {
+				OS_DRM_ERROR("%s(): allocate dumb buffer size %x, group %d failed\n", __func__, size, group_id);
+				return -OS_VAL(ENOMEM);
+			}
+		} else {
+			*virt_addr = os_dma_alloc_coherent(drm->dev, size, dev_addr,
+					GFP_USER | __GFP_NOWARN | __GFP_NOMEMALLOC | __GFP_HIGHMEM);
+			if (!*virt_addr) {
+				OS_DRM_ERROR("%s(): dma allocate coherent size %x failed\n", __func__, size);
+				return -OS_VAL(ENOMEM);
+			}
+			err = mtgpu_system_alloc(drm, size, handle);
+			if (err) {
+				OS_DRM_ERROR("%s(): mtgpu_system_alloc() failed\n", __func__);
+				return -OS_VAL(ENOMEM);
+			}
+		}
+	} else {
+		err = mtgpu_system_alloc(drm, size, handle);
+		if (err) {
+			OS_DRM_ERROR("%s(): mtgpu_system_alloc() failed\n", __func__);
+			return -OS_VAL(ENOMEM);
+		}
+		//err = vpu_smmu_map(chip, *dev_addr, size, iova_addr);
+		sgt = vpu_gem_map_internal(*handle, size);
+		err = vpu_smmu_map_sg(chip, sgt, size, iova_addr);
+		vpu_gem_unmap_internal(sgt);
+		*dev_addr = *iova_addr;
+		if (err) {
+			vpu_err("vpu smmu map failed!");
+			return err;
+		}
+		vpu_info("vpu smmu map dev addr %llx, iova addr %llx\n", *dev_addr, *iova_addr);
 	}
+	//vpu_info("mtvpu alloc dev addr %llx\n", *dev_addr);
+	return 0;
 }
-#endif
 
-/* only for ioctl */
-int vpu_vram_alloc(struct drm_device *drm, u32 group_id, u32 pool_id, u32 type, u64 size, struct mtgpu_gem_object *mtgpu_obj)
+void *vpu_gem_vmap_internal(void *handle, u64 size, u64 *private_data)
 {
-	struct mt_chip *chip = to_chip(drm);
+	void *kaddr;
 	int err;
 
+	err = mtgpu_vram_vmap(handle, size, private_data, &kaddr);
+	if (err) {
+		vpu_err("failed to acquire cpu kernel address for handle 0x%llx\n", (u64)handle);
+		return NULL;
+	}
+	vpu_info("map gem to cpu kernel addr 0x%llx\n", (u64)kaddr);
+	return kaddr;
+}
+
+void vpu_gem_vunmap_internal(void *handle, u64 private_data)
+{
+	mtgpu_vram_vunmap(handle, private_data);
+}
+
+struct sg_table *vpu_gem_map_internal(void *handle, size_t size)
+{
+	struct sg_table *sgt;
+	struct scatterlist *sgl;
+	struct page *cpu_page;
+	IMG_CPU_PHYADDR *cpu_pa;
+	IMG_BOOL *valid;
+	u32 num_pages;
+	u64 sg_idx = 0;
+	int ret;
+
+	ret = os_sg_table_create(&sgt);
+	if (ret)
+		return NULL;
+
+	num_pages = size / OS_VAL(PAGE_SIZE);
+	valid = os_kvzalloc(sizeof(*valid) * num_pages);
+	if (!valid)
+		goto err_free_sgt;
+
+	cpu_pa = os_kvzalloc(sizeof(*cpu_pa) * num_pages);
+	if (!cpu_pa)
+		goto err_free_valid;
+
+	ret = PMR_CpuPhysAddr(handle, OS_VAL(PAGE_SHIFT), num_pages, 0, cpu_pa, valid);
+	if (ret != PVRSRV_OK)
+		goto err_free_pa;
+
+	/* This gem object was exported to other drm driver,
+	 * it must be a system backed object. */
+	if (os_sg_alloc_table(sgt, num_pages)) {
+		vpu_err("%s(): sgtable alloc multi sglist failed\n", __func__);
+		goto err_free_pa;
+	}
+	os_for_each_sg(OS_SG_TABLE_MEMBER(sgt, sgl), sgl,
+		       OS_SG_TABLE_MEMBER(sgt, nents), sg_idx) {
+		cpu_page = os_phys_to_page(cpu_pa[sg_idx].uiAddr);
+		os_set_sg_page(sgl, cpu_page, OS_VAL(PAGE_SIZE), 0);
+		os_set_sg_dma_address(sgl, cpu_pa[sg_idx].uiAddr);
+		os_set_sg_dma_len(sgl, OS_VAL(PAGE_SIZE));
+	}
+	os_kvfree(cpu_pa);
+	os_kvfree(valid);
+
+	return sgt;
+
+err_free_pa:
+	os_kvfree(cpu_pa);
+err_free_valid:
+	os_kvfree(valid);
+err_free_sgt:
+	os_sg_table_destroy(sgt);
+	return NULL;
+}
+
+void vpu_gem_unmap_internal(struct sg_table *sgt)
+{
+	os_sg_free_table(sgt);
+	os_kfree(sgt);
+}
+
+/* only for ioctl */
+int vpu_vram_alloc(struct drm_device *drm, u32 group_id, u32 pool_id, u32 type, u64 size,
+		   struct mtgpu_gem_object *mtgpu_obj)
+{
+	struct mt_chip *chip = to_chip(drm);
+	struct mtvpu_gem_object *mtvpu_obj = (struct mtvpu_gem_object *)mtgpu_obj;
+	struct mtvpu_gem_priv *priv = (struct mtvpu_gem_priv *)mtgpu_obj->private_data;
+	struct mtvpu_mmu_ctx *mmu_ctx = priv->mmu_ctx;
+	int err = 0;
+
 	if (vpu_fixed_mem_qy2(chip, type)) {
-		err = vpu_mem_pool_alloc(chip, pool_id, size, &mtgpu_obj->dev_addr);
+		err = vpu_mem_pool_alloc(chip, mmu_ctx, pool_id, size, &mtgpu_obj->dev_addr);
 
 		set_mtgpu_obj_type(mtgpu_obj, group_id, pool_id);
 		set_mtgpu_obj_addr(mtgpu_obj, chip->bar_base, mtgpu_obj->dev_addr);
 	} else {
-#ifdef SOC_MODE
-		err = mtvpu_vram_alloc(drm, group_id, size, &mtgpu_obj->dev_addr, &mtgpu_obj->handle);
-#ifdef SUPPORT_SMMU
-		err = vpu_smmu_map(chip, mtgpu_obj->dev_addr, size, &mtgpu_obj->iova_addr);
-		if (err) {
-			vpu_err("ioctl vpu smmu map failed!");
-			return err;
+		if (mmu_ctx && mmu_ctx->mmu_enable) {
+			err = mtvpu_vm_pmr_create_and_map(OSGetDeviceNodeFromDrm(drm),
+						      mmu_ctx->vpu_ctx,
+						      size,
+						      PVRSRV_MEMALLOCFLAG_GPU_WRITEABLE |
+						      PVRSRV_MEMALLOCFLAG_GPU_READABLE |
+						      PVRSRV_MEMALLOCFLAG_CPU_WRITEABLE |
+						      PVRSRV_MEMALLOCFLAG_CPU_READABLE,
+						      &mtgpu_obj->handle,
+						      &mtgpu_obj->dev_addr,
+						      &priv->dev_phy_addr,
+						      (void **)&mtgpu_obj->cpu_addr);
+			/* Set mtgpu_obj type to use memory management function provided by kmd */
+			mtgpu_obj->type = 0;
+		} else if (chip->soc_mode) {
+			err = mtvpu_vram_alloc(drm, group_id - 1, size, &mtgpu_obj->dev_addr, &mtvpu_obj->virt_addr,
+						&mtvpu_obj->iova_addr, &mtgpu_obj->handle);
+		} else {
+			err = mtgpu_vram_alloc(drm, group_id, size, &mtgpu_obj->dev_addr, &mtgpu_obj->handle);
 		}
-		vpu_info("ioctl vpu smmu map dev addr %llx, iova addr %llx!\n", mtgpu_obj->dev_addr, mtgpu_obj->iova_addr);
-#endif
-#else
-		err = mtgpu_vram_alloc(drm, group_id, size, &mtgpu_obj->dev_addr, &mtgpu_obj->handle);
-#endif
 
 		set_mtgpu_obj_type(mtgpu_obj, group_id, 0);
 		set_mtgpu_obj_addr(mtgpu_obj, chip->bar_base, mtgpu_obj->dev_addr);
@@ -208,25 +316,37 @@ int vpu_vram_alloc(struct drm_device *drm, u32 group_id, u32 pool_id, u32 type, 
 
 void vpu_vram_free(struct mtgpu_gem_object *mtgpu_obj)
 {
-	if (mtgpu_obj) {
-		if (mtgpu_obj->private_data)
-			kfree((void *)mtgpu_obj->private_data);
+	struct mt_chip *chip;
+	struct mtvpu_gem_priv *priv;
+	struct mtvpu_gem_object *mtvpu_obj = (struct mtvpu_gem_object *)mtgpu_obj;
 
-		if (mtgpu_obj->handle)
-#ifdef SOC_MODE
-#ifdef SUPPORT_SMMU
-			vpu_smmu_unmap(to_chip(mtgpu_obj->obj->dev), mtgpu_obj->iova_addr);
-#endif
-			mtvpu_vram_free(mtgpu_obj->obj, mtgpu_obj->handle);
-#else
-			mtgpu_vram_free(mtgpu_obj->handle);
-#endif
+	if (mtgpu_obj) {
+		chip = to_chip(mtgpu_obj->obj->dev);
+
+		if (mtgpu_obj->handle) {
+			priv = (struct mtvpu_gem_priv *)mtgpu_obj->private_data;
+			if (priv && priv->mmu_ctx && priv->mmu_ctx->mmu_enable) {
+				mtvpu_vm_pmr_unmap_and_destroy(priv->mmu_ctx->vpu_ctx, mtgpu_obj->handle, mtgpu_obj->dev_addr, (void *)mtgpu_obj->cpu_addr);
+			} else if (chip->soc_mode) {
+				if (chip->io_domain)
+					vpu_smmu_unmap(chip, mtvpu_obj->iova_addr);
+				else if (!enable_reserved_memory)
+					os_dma_free_coherent(os_get_drm_device_base(mtgpu_obj->obj->dev),
+							  mtgpu_obj->obj->size,
+							  mtvpu_obj->virt_addr,
+							  mtgpu_obj->dev_addr);
+				mtgpu_vram_free(mtgpu_obj->handle);
+			} else {
+				mtgpu_vram_free(mtgpu_obj->handle);
+			}
+		}
 
 		if (mtgpu_obj->obj) {
 			os_drm_gem_object_release(mtgpu_obj->obj);
 			kfree(mtgpu_obj->obj);
 		}
-
+		if (mtgpu_obj->private_data)
+			kfree((void *)mtgpu_obj->private_data);
 		kfree(mtgpu_obj);
 	}
 }
@@ -277,31 +397,30 @@ bool vpu_drm_core_valid(struct mt_chip *chip, struct drm_device *drm, u32 core_i
 	return false;
 }
 
-#ifndef SOC_MODE
 void *vpu_get_pvr_node(struct drm_device *drm)
 {
 	struct mtgpu_drm_private *drm_private = drm->dev_private;
 
 	return drm_private->pvr_private.dev_node;
 }
-#endif
 
-static void copy_phys_addr(u64 dst, u64 src, u64 size)
+static void copy_phys_addr(u64 dst, u64 src, u64 size, bool soc_mode)
 {
 	void *datnew, *datold;
 
-#ifdef SOC_MODE
-	datnew = memremap(dst, size, os_memremap_wb());
-	datold = memremap(src, size, os_memremap_wb());
-#else
-	datnew = memremap(dst, size, MEMREMAP_WC);
-	datold = memremap(src, size, MEMREMAP_WC);
-#endif
+	if (soc_mode) {
+		datnew = (void *)dst;
+		datold = (void *)src;
+	} else {
+		datnew = memremap(dst, size, MEMREMAP_WC);
+		datold = memremap(src, size, MEMREMAP_WC);
+	}
 	if (datnew && datold)
 		memcpy(datnew, datold, size);
-#ifdef SOC_MODE
-	os_dcache_clean(datnew, size);
-#endif
+
+	if (soc_mode)
+		dcache_flush(datnew, size);
+
 	if (datnew)
 		memunmap(datnew);
 	if (datold)
@@ -312,7 +431,10 @@ int vpu_gem_modify(struct drm_device *drm, struct mtgpu_gem_object *mtgpu_obj, u
 {
 	struct mt_chip *chip = to_chip(drm);
 	struct mtgpu_gem_object *mtgpu_new = alloc_mtgpu_obj();
+	struct mtvpu_gem_object *mtvpu_obj = (struct mtvpu_gem_object *)mtgpu_obj;
+	struct mtvpu_gem_object *mtvpu_new = (struct mtvpu_gem_object *)mtgpu_new;
 	struct mtvpu_gem_priv *priv = (struct mtvpu_gem_priv *)mtgpu_obj->private_data;
+	struct mtvpu_mmu_ctx *mmu_ctx = priv->mmu_ctx;
 	struct vm_area_struct *vma;
 	u64 pfn;
 	int err;
@@ -320,11 +442,13 @@ int vpu_gem_modify(struct drm_device *drm, struct mtgpu_gem_object *mtgpu_obj, u
 	if (!mtgpu_new)
 		return -ENOMEM;
 
-#ifdef SOC_MODE
-	err = mtvpu_vram_alloc(drm, group_id, mtgpu_obj->obj->size + inc_size, &mtgpu_new->dev_addr, &mtgpu_new->handle);
-#else
-	err = mtgpu_vram_alloc(drm, group_id, mtgpu_obj->obj->size + inc_size, &mtgpu_new->dev_addr, &mtgpu_new->handle);
-#endif
+	if (mmu_ctx && mmu_ctx->mmu_enable) {
+		return -EPERM;
+	} else if (chip->soc_mode)
+		err = mtvpu_vram_alloc(drm, group_id - 1, mtgpu_obj->obj->size + inc_size, &mtgpu_new->dev_addr,
+					&mtvpu_new->virt_addr, &mtvpu_obj->iova_addr, &mtgpu_new->handle);
+	else
+		err = mtgpu_vram_alloc(drm, group_id, mtgpu_obj->obj->size + inc_size, &mtgpu_new->dev_addr, &mtgpu_new->handle);
 	if (err) {
 		kfree(mtgpu_new);
 		return -ENOMEM;
@@ -333,20 +457,32 @@ int vpu_gem_modify(struct drm_device *drm, struct mtgpu_gem_object *mtgpu_obj, u
 	set_mtgpu_obj_type(mtgpu_new, group_id, 0);
 	set_mtgpu_obj_addr(mtgpu_new, chip->bar_base, mtgpu_new->dev_addr);
 
-	if (copy)
-		copy_phys_addr(mtgpu_new->cpu_addr, mtgpu_obj->cpu_addr, mtgpu_obj->obj->size);
+	if (copy) {
+		if (chip->soc_mode)
+			copy_phys_addr((u64)mtvpu_new->virt_addr, (u64)mtvpu_obj->virt_addr, mtgpu_obj->obj->size, chip->soc_mode);
+		else
+			copy_phys_addr(mtgpu_new->cpu_addr, mtgpu_obj->cpu_addr, mtgpu_obj->obj->size, chip->soc_mode);
+	}
 
-#ifdef SOC_MODE
-	mtvpu_vram_free(mtgpu_obj->obj, mtgpu_obj->handle);
-#else
+	if (chip->soc_mode) {
+		if (chip->io_domain) {
+			vpu_smmu_unmap(chip, mtvpu_obj->iova_addr);
+		} else if (!enable_reserved_memory) {
+			os_dma_free_coherent(os_get_drm_device_base(mtgpu_obj->obj->dev),
+					mtgpu_obj->obj->size,
+					mtvpu_obj->virt_addr,
+					mtgpu_obj->dev_addr);
+		}
+	}
 	mtgpu_vram_free(mtgpu_obj->handle);
-#endif
 
 	/* obj copy */
 	mtgpu_obj->handle = mtgpu_new->handle;
 	mtgpu_obj->dev_addr = mtgpu_new->dev_addr;
 	mtgpu_obj->cpu_addr = mtgpu_new->cpu_addr;
 	mtgpu_obj->type = mtgpu_new->type;
+	if (chip->soc_mode && !chip->io_domain && !enable_reserved_memory)
+		mtvpu_obj->virt_addr = mtvpu_obj->virt_addr;
 
 	mtgpu_obj->obj->size += inc_size;
 
@@ -366,22 +502,6 @@ exit:
 	return 0;
 }
 
-int mtvpu_gem_mmap_obj(struct drm_gem_object *obj, struct vm_area_struct *vma)
-{
-	struct mtgpu_gem_object *mtgpu_obj = os_get_drm_gem_object_drvdata(obj);
-	struct mtvpu_gem_priv *priv = (struct mtvpu_gem_priv *)mtgpu_obj->private_data;
-	u64 pfn = PHYS_PFN(mtgpu_obj->cpu_addr);
-
-	if (priv)
-		priv->vma = vma;
-
-#ifndef SOC_MODE
-	vma->vm_page_prot = pgprot_writecombine(vm_get_page_prot(vma->vm_flags));
-#endif
-
-	return remap_pfn_range(vma, vma->vm_start, pfn, vma->vm_end - vma->vm_start, vma->vm_page_prot);
-}
-
 void mtvpu_gem_free_obj(struct drm_gem_object *obj)
 {
 	struct mtgpu_gem_object *mtgpu_obj = os_get_drm_gem_object_drvdata(obj);
@@ -389,3 +509,75 @@ void mtvpu_gem_free_obj(struct drm_gem_object *obj)
 	vpu_vram_free(mtgpu_obj);
 }
 
+int mtvpu_gem_mmap_obj(struct drm_gem_object *obj, struct vm_area_struct *vma)
+{
+	struct mt_chip *chip = to_chip(obj->dev);
+	struct mtgpu_gem_object *mtgpu_obj = os_get_drm_gem_object_drvdata(obj);
+	struct mtvpu_gem_priv *priv = (struct mtvpu_gem_priv *)mtgpu_obj->private_data;
+	u64 pfn;
+
+	if (chip->soc_mode && !chip->io_domain && !enable_reserved_memory) {
+		pfn = PHYS_PFN(mtgpu_obj->cpu_addr);
+		if (priv)
+			priv->vma = vma;
+		/* only do this in soc mode with CMA */
+		return remap_pfn_range(vma, vma->vm_start, pfn, vma->vm_end - vma->vm_start, vma->vm_page_prot);
+	}
+	return -1;
+}
+
+int mtvpu_gem_dmabuf_map(struct sg_table *sgt, struct mtgpu_gem_object *mtgpu_obj)
+{
+	struct mt_chip *chip;
+	if (!sgt || !mtgpu_obj)
+		return -1;
+
+	chip = to_chip(mtgpu_obj->obj->dev);
+	if (chip->soc_mode && !chip->io_domain && !enable_reserved_memory) {
+		if (os_sg_alloc_table(sgt, 1)) {
+			vpu_err("%s(): sgtable alloc sglist failed\n", __func__);
+			return -1;
+		}
+		os_set_sg_dma_address(OS_SG_TABLE_MEMBER(sgt, sgl), mtgpu_obj->dev_addr);
+		os_set_sg_dma_len(OS_SG_TABLE_MEMBER(sgt, sgl), os_get_drm_gem_object_size(mtgpu_obj->obj));
+
+		return 0;
+	}
+	return -1;
+}
+
+#ifdef __aarch64__
+u64 os_kernel_ds(void)
+{
+	return KERNEL_DS;
+}
+
+u64 os_get_fs(void)
+{
+	return get_fs();
+}
+
+void os_set_fs(u64 fs)
+{
+	set_fs(fs);
+}
+
+long os_vfs_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+{
+	return vfs_ioctl(file, cmd, arg);
+}
+#endif
+
+#ifdef __aarch64__
+void dcache_flush(void *addr, size_t len)
+{
+  char *base = (char *)addr;
+  int offset;
+  for (offset = 0; offset < len; offset += 64)
+    asm volatile ("dc civac, %0" :: "r" (base + offset));
+}
+#else
+void dcache_flush(void *addr, size_t len)
+{
+}
+#endif

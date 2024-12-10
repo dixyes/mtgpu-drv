@@ -13,7 +13,9 @@
 #include <linux/pci.h>
 #include <linux/version.h>
 #include <linux/moduleparam.h>
+#include <linux/dma-mapping.h>
 #include <drm/drm_gem.h>
+#include <drm/drm_drv.h>
 #if defined(OS_DRM_DRMP_H_EXIST)
 #include <drm/drmP.h>
 #else
@@ -22,16 +24,12 @@
 #include <drm/drm_file.h>
 #endif
 
-#ifndef SOC_MODE
 #include "mtgpu_drv.h"
 #include "mtgpu_drm_drv.h"
+#include "mtgpu_drm_internal.h"
+#include "mtgpu_module_param.h"
 #include "mtgpu_device.h"
 #include "mtgpu_smc.h"
-#else
-#include <linux/module.h>
-#include <linux/dma-mapping.h>
-#include <drm/drm_drv.h>
-#endif
 #include "os-interface.h"
 
 #include "mtvpu_drv.h"
@@ -51,31 +49,32 @@ module_param(enable_pm_mtvpu_backup_device_memory, int, 0444);
 MODULE_PARM_DESC(enable_pm_mtvpu_backup_device_memory,
 		 "mtgpu enable vpu component backup device memory in power manager");
 
+#ifdef DEBUG
+int mtvpu_log_level = MTDEBUG;
+#else
 int mtvpu_log_level = WARN;
+#endif
+
 module_param(mtvpu_log_level, int, 0444);
 MODULE_PARM_DESC(mtvpu_log_level,
 		 "mtgpu vpu component log level lower is important.");
 
-#ifdef SOC_MODE
-extern struct drm_driver mtvpu_drm_driver;
-#endif
 
-#ifndef SOC_MODE
+int get_mtvpu_log_level(){
+	return mtvpu_log_level;
+}
+void set_mtvpu_log_level(int log_level){
+	mtvpu_log_level = log_level;
+}
+
 static int vpu_component_bind(struct device *dev, struct device *master, void *data)
-#else
-static int vpu_component_bind(struct platform_device *pdev)
-#endif
 {
 	struct mt_chip *chip = NULL;
-#ifndef SOC_MODE
 	struct drm_device *drm = data;
 	struct mtgpu_drm_private *private = drm->dev_private;
 	struct platform_device *pdev = to_platform_device(dev);
-	struct pci_dev *pcid;
+	struct pci_dev *pcid = NULL;
 	struct mtgpu_device *mtdev;
-#else
-	struct drm_device *drm;
-#endif
 	ulong offset = 0;
 	char name[32];
 	u32 core_bits = 0;
@@ -85,32 +84,35 @@ static int vpu_component_bind(struct platform_device *pdev)
 	int i, j, ret;
 	int jpu_core_size = 0;
 	struct file_operations *vinfo, *fwinfo;
-#ifdef SOC_MODE
-	bool is_native = true;
-	bool is_host = false;
-	bool is_guest = false;
-#else
+	struct mt_node node;
+
 	bool is_host = mtgpu_get_driver_mode() == MTGPU_DRIVER_MODE_HOST;
 	bool is_guest = mtgpu_get_driver_mode() == MTGPU_DRIVER_MODE_GUEST;
 	bool is_native = mtgpu_get_driver_mode() == MTGPU_DRIVER_MODE_NATIVE;
-#endif
 
 	vpu_info("Init %s, Version %s\n", is_native ? "Native" : is_host ? "Host" : "Guest", MT_BUILD_VPU);
 	chip = kzalloc(sizeof(struct mt_chip), GFP_KERNEL);
 	if (!chip)
 		return -ENOMEM;
 
-#ifdef SOC_MODE
-	chip->dev = &pdev->dev;
-	if (vpu_init_conf(0x0A00, chip, false))
-		goto err_timer;
-
-#else
 	chip->inst_cnt = 0;
-	chip->parent = dev->parent->parent;
+	chip->parent = master->parent;
 	chip->dev = dev;
 	chip->drm_host = drm;
 	private->chip = chip;
+	chip->driver_mode = mtgpu_get_driver_mode();
+
+	if (os_dev_is_pci(chip->parent))
+		chip->soc_mode = false;
+	else
+		chip->soc_mode = true;
+
+	if (!chip->soc_mode) {
+		pcid = to_pci_dev(chip->parent);
+		chip->pdev = pcid;
+	} else {
+		chip->pdev = NULL;
+	}
 
 	mtdev = dev_get_drvdata(chip->parent);
 	if (unlikely(!mtdev)) {
@@ -118,12 +120,13 @@ static int vpu_component_bind(struct platform_device *pdev)
 		goto err_timer;
 	}
 
-	pcid = to_pci_dev(chip->parent);
-	chip->pdev = pcid;
-
-	if (vpu_init_conf(pcid->device, chip, is_guest))
-		goto err_timer;
-#endif
+	if (chip->soc_mode) {
+		if (vpu_init_conf(0x0A00, chip, false))
+			goto err_timer;
+	} else {
+		if (vpu_init_conf(pcid->device, chip, is_guest))
+			goto err_timer;
+	}
 
 	chip->timer = os_create_timer_list();
 	if (!chip->timer)
@@ -142,6 +145,10 @@ static int vpu_component_bind(struct platform_device *pdev)
 
 		INIT_LIST_HEAD(&chip->vm_heads[i]);
 	}
+
+	ret = vpu_mmu_context_create(drm, &chip->mmu_ctx);
+	if (ret)
+		goto err_create_mmu_ctx;
 
 	chip->shared_mem_lock = kzalloc(sizeof(*chip->shared_mem_lock), GFP_KERNEL);
 	if (!chip->shared_mem_lock)
@@ -235,27 +242,12 @@ static int vpu_component_bind(struct platform_device *pdev)
 					goto err_lock;
 				mutex_init(chip->core[i].inst_lock[j]);
 			}
+		if (chip->conf.type == TYPE_PIHU1) {
+			chip->core[i].mem_group_id = 1;
+			chip->core[i].mem_group_base = 0;
+		}
 	}
 
-#ifdef SOC_MODE
-	drm = drm_dev_alloc(&mtvpu_drm_driver, chip->dev);
-	if (!drm)
-		goto err_lock;
-
-	chip->drms[0] = drm;
-	chip->mpc_drm_cnt = 1;
-
-	dma_set_mask(chip->dev, DMA_BIT_MASK(40));
-	drm_mode_config_init(drm);
-	drm_mode_config_reset(drm);
-
-	ret = drm_dev_register(drm, 0);
-	if (ret)
-		goto err_lock;
-
-	drm->dev_private = chip;
-	core_bits = 0;
-#else
 	chip->mpc_drm_cnt = mtgpu_get_primary_core_count(mtdev);
 	chip->mem_group_cnt = mtdev->video_group_cnt;
 	for (i = 0, j = 0; i < MTGPU_CORE_COUNT_MAX; i++) {
@@ -278,7 +270,6 @@ static int vpu_component_bind(struct platform_device *pdev)
 	ret = mtgpu_smc_get_vpu_core_info(chip->parent, &core_bits);
 	if (ret)
 		core_bits = 0;
-#endif
 
 	for (i = 0; i < chip->conf.core_size; i++) {
 		if (chip->conf.product[i] == WAVE517_CODE) {
@@ -334,44 +325,51 @@ static int vpu_component_bind(struct platform_device *pdev)
 	sema_init(chip->jpu_core_sema, jpu_core_size);
 
 	if (is_native || is_host) {
-#ifdef SOC_MODE
-		chip->vaddr = ioremap(chip->conf.regs_base, chip->conf.regs_chip_size);
-#else
-		chip->vaddr = ioremap(pci_resource_start(pcid, 0) + chip->conf.regs_base, chip->conf.regs_chip_size);
-#endif
+		if (chip->soc_mode)
+			chip->vaddr = ioremap(chip->conf.regs_base, chip->conf.regs_chip_size);
+		else
+			chip->vaddr = ioremap(pci_resource_start(pcid, 0) + chip->conf.regs_base, chip->conf.regs_chip_size);
+
 		if (!chip->vaddr)
 			goto err_lock;
 
 		for (i = 0; i < chip->conf.core_size; i++) {
 			chip->core[i].regs = chip->vaddr + offset;
-			if (chip->conf.type == TYPE_QUYU2 && chip->core[i].product_id == CODAJ12_CODE)
-				offset += 0x1000;
-			else
-				offset += chip->conf.regs_core_size;
+			offset += chip->conf.regs_core_size[i];
 		}
 	}
 
-#ifdef SOC_MODE
-	chip->bar_base = 0;
-	chip->mem_group_cnt = 1;
-	for (i = 0; i < chip->conf.core_size; i++) {
-		chip->core[i].mem_group_id = chip->conf.core_group[chip->mem_group_cnt - 1][i];
-		// should be 0xFF00000000 if SMMU enabled
-		chip->core[i].mem_group_base = APOLLO_VPU_MEM_BASE & 0xFFFF00000000;
+	if (chip->soc_mode) {
+		/* No need to check ret value */
+		vpu_smmu_init(chip);
+
+		chip->bar_base = 0;
+		chip->mem_group_cnt = 1;
+		for (i = 0; i < chip->conf.core_size; i++) {
+			chip->core[i].mem_group_id = chip->conf.core_group[chip->mem_group_cnt - 1][i];
+
+			if (chip->io_domain) {
+				chip->core[i].mem_group_base = 0xFF00000000;
+			} else if (enable_reserved_memory) {
+				chip->core[i].mem_group_base = mtdev->gpu_mem.base & 0xFF00000000;
+			} else {
+				node.cpu_addr = dma_alloc_coherent(drm->dev, gpu_page_size * 2, &node.dev_phys_addr,
+					GFP_USER | __GFP_NOWARN | __GFP_NOMEMALLOC | __GFP_HIGHMEM);
+				chip->core[i].mem_group_base = node.dev_phys_addr & 0xFF00000000;
+				dma_free_coherent(drm->dev, gpu_page_size * 2, node.cpu_addr, node.dev_phys_addr);
+			}
+		}
+		vpu_info("enable reserved mem %d, mem base 0x%x\n", enable_reserved_memory,
+		 	  chip->core[0].mem_group_base >> 32);
+	} else {
+		chip->bar_base = pci_resource_start(pcid, 2);
+		ret = vpu_init_mpc(chip);
+		if (ret)
+			goto err_lock;
 	}
-	chip->mm = kzalloc(sizeof(struct drm_mm), GFP_KERNEL);
-	if (!chip->mm)
-		goto err_lock;
-	drm_mm_init(chip->mm, APOLLO_VPU_MEM_BASE, APOLLO_VPU_MEM_SIZE);
-#else
-	chip->bar_base = pci_resource_start(pcid, 2);
-	ret = vpu_init_mpc(chip);
-	if (ret)
-		goto err_lock;
-#endif
 
 	if (is_guest_cmds)
-		vpu_init_guest_info(chip);
+		vpu_init_guest_mem(chip);
 
 	ret = vpu_init_irq(chip, pdev);
 	if (ret)
@@ -379,11 +377,9 @@ static int vpu_component_bind(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, chip);
 
-#ifndef SOC_MODE
 	ret = vpu_fill_drm_ioctls(pvr_drm_ioctls, 128);
 	if (ret)
 		goto err_lock;
-#endif
 
 	sprintf(name, "mtvpu-sync/%d", chip->idx);
 	chip->sync_thread = kthread_create(vpu_sync_thread, chip, name);
@@ -401,7 +397,7 @@ static int vpu_component_bind(struct platform_device *pdev)
 	} else if (is_host) {
 		/* wake up the group1 thread, it is the main thread */
 		sprintf(name, "vpu-host-g1%d", chip->idx);
-		chip->host_threads[0] = kthread_create(vpu_host_thread_group1, chip, name);
+		chip->host_threads[0] = kthread_create(vpu_host_thread1, chip, name);
 		wake_up_process(chip->host_threads[0]);
 	}
 
@@ -410,7 +406,7 @@ static int vpu_component_bind(struct platform_device *pdev)
 	sprintf(name, "mtvpu%d", chip->idx);
 	chip->debugfs = debugfs_create_dir(name, NULL);
 	if (chip->debugfs) {
-		debugfs_create_file("info", 0444, chip->debugfs, chip, vinfo);
+		debugfs_create_file("info", 0666, chip->debugfs, chip, vinfo);
 		debugfs_create_file("fw", 0444, chip->debugfs, chip, fwinfo);
 	}
 
@@ -431,12 +427,6 @@ static int vpu_component_bind(struct platform_device *pdev)
 	}
 
 	vpu_report_power_state(chip, 0);
-
-#ifdef SUPPORT_SMMU
-	ret = vpu_smmu_init(chip);
-	if (ret)
-		goto err_lock;
-#endif
 
 	return 0;
 
@@ -497,7 +487,11 @@ err_intr_lock:
 err_mm_lock:
 	kfree(chip->shared_mem_lock);
 err_shared_mem_lock:
-err_host_init:
+	if (chip->mmu_ctx) {
+		vpu_mmu_context_destroy(chip->mmu_ctx);
+		chip->mmu_ctx = NULL;
+	}
+err_create_mmu_ctx:
 	for (i = 0; i < MAX_HOST_VPU_GROUPS_GEN1_GEN2; i++) {
 		if (chip->vm_locks[i]) {
 			mutex_destroy(chip->vm_locks[i]);
@@ -506,6 +500,7 @@ err_host_init:
 		if (chip->host_thread_semas[i])
 			kfree(chip->host_thread_semas[i]);
 	}
+err_host_init:
 	kfree(chip->timer);
 	vpu_deinit_conf(chip);
 err_timer:
@@ -514,30 +509,20 @@ err_timer:
 	return -ENODEV;
 }
 
-#ifdef SOC_MODE
-static void vpu_component_unbind(struct platform_device *pdev)
-#else
 static void vpu_component_unbind(struct device *dev, struct device *master, void *data)
-#endif
 {
 	struct mt_chip *chip;
 	struct mt_core *core;
 	int idx, i, j;
 
-#ifdef SOC_MODE
-	chip = os_platform_get_drvdata(pdev);
-	drm_dev_unregister(chip->drms[0]);
-	drm_dev_put(chip->drms[0]);
-#else
 	chip = dev_get_drvdata(dev);
-#endif
+
 	del_timer_sync(chip->timer);
 
 	kfree(chip->timer);
 
-#ifdef SUPPORT_SMMU
-	vpu_smmu_deinit(chip);
-#endif
+	if (chip->soc_mode)
+		vpu_smmu_deinit(chip);
 
 	if (chip->debugfs)
 		debugfs_remove_recursive(chip->debugfs);
@@ -557,7 +542,6 @@ static void vpu_component_unbind(struct device *dev, struct device *master, void
 			core->bak_addr = NULL;
 		}
 		if (core->fw) {
-			vpu_hw_reset(chip->conf.core_base + idx);
 			vpu_hw_deinit(chip->conf.core_base + idx);
 			release_firmware(core->fw);
 			core->inited = 0;
@@ -580,7 +564,7 @@ static void vpu_component_unbind(struct device *dev, struct device *master, void
 		vpu_destroy_mem_pool(chip, i + 1);
 
 	vpu_free_irq(chip);
-	vpu_free_mem(chip);
+	vpu_free_fw_mem(chip);
 	kfree(chip->jpu_core_sema);
 	kfree(chip->sync.sema);
 	kfree(chip->sync.sync_lock);
@@ -597,6 +581,7 @@ static void vpu_component_unbind(struct device *dev, struct device *master, void
 				kfree(chip->sync.inst_wait[i][j]);
 		}
 	}
+
 	for (i = 0; i < chip->conf.core_size; i++) {
 		if (chip->conf.product[i] == WAVE517_CODE
 		    || chip->conf.product[i] == WAVE627_CODE
@@ -609,6 +594,7 @@ static void vpu_component_unbind(struct device *dev, struct device *master, void
 			}
 		}
 	}
+
 	for (idx = 0; idx < CORE_MAX_SIZE; idx++)
 		if (chip->sync.core_lock[idx])
 			kfree(chip->sync.core_lock[idx]);
@@ -617,17 +603,22 @@ static void vpu_component_unbind(struct device *dev, struct device *master, void
 	kfree(chip->shared_mem_lock);
 	mutex_destroy(chip->mm_lock);
 	kfree(chip->mm_lock);
+
 	for (i = 0; i < MAX_HOST_VPU_GROUPS_GEN1_GEN2; i++) {
 		mutex_destroy(chip->vm_locks[i]);
 		kfree(chip->vm_locks[i]);
 		kfree(chip->host_thread_semas[i]);
 	}
 
+	if (chip->mmu_ctx) {
+		vpu_mmu_context_destroy(chip->mmu_ctx);
+		chip->mmu_ctx = NULL;
+	}
+
 	vpu_deinit_conf(chip);
 	kfree(chip);
 }
 
-#ifndef SOC_MODE
 static const struct component_ops mtvpu_component_ops = {
 	.bind   = vpu_component_bind,
 	.unbind = vpu_component_unbind,
@@ -637,7 +628,7 @@ static struct platform_device_id vpu_id_tbl[] = {
 	{ .name = "mtgpu_vde" },
 	{}
 };
-#else
+
 static struct of_device_id vpu_of_id_tbl[] = {
 	{ .compatible = "mthreads,apollo-vpu"}
 };
@@ -645,25 +636,15 @@ static struct of_device_id vpu_of_id_tbl[] = {
 static struct acpi_device_id vpu_acpi_id_tbl[] = {
 	{.id = "MVPU0001", .driver_data = 0}
 };
-#endif
 
 static int vpu_probe(struct platform_device *pdev)
 {
-#ifdef SOC_MODE
-	return vpu_component_bind(pdev);
-#else
 	return component_add(&pdev->dev, &mtvpu_component_ops);
-#endif
 }
 
 static int vpu_remove(struct platform_device *pdev)
 {
-#ifdef SOC_MODE
-	vpu_component_unbind(pdev);
-#else
 	component_del(&pdev->dev, &mtvpu_component_ops);
-#endif
-
 	return 0;
 }
 
@@ -678,39 +659,14 @@ struct platform_driver vpu_driver = {
 	.driver = {
 		.name = "mtgpu_vde",
 		.pm = &vpu_pm_ops,
-#ifdef SOC_MODE
 		.of_match_table = vpu_of_id_tbl,
 		.acpi_match_table = vpu_acpi_id_tbl,
-#endif
 	},
 	.probe = vpu_probe,
 	.remove = vpu_remove,
-#ifndef SOC_MODE
 	.id_table = vpu_id_tbl,
-#endif
 };
 
-#ifdef SOC_MODE
-static int __init vpu_init(void)
-{
-	int ret;
-	ret = platform_driver_register(&vpu_driver);
-
-	return ret;
-}
-
-static void __exit vpu_exit(void)
-{
-	platform_driver_unregister(&vpu_driver);
-	return;
-}
-
-module_init(vpu_init);
-module_exit(vpu_exit);
-
-MODULE_DESCRIPTION("MooreThreads mtvpu soc driver");
-MODULE_LICENSE("Dual MIT/GPL");
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 16, 0))
 MODULE_IMPORT_NS(DMA_BUF);
-#endif
 #endif

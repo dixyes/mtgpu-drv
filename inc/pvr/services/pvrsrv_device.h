@@ -232,8 +232,8 @@ typedef struct _PVRSRV_ROBUSTNESS_ERR_DATA_CHECKSUM_
 
 typedef struct _PVRSRV_ROBUSTNESS_NOTIFY_DATA_
 {
-	RGX_CONTEXT_RESET_REASON eResetReason; /*!< Reason for error/reset */
-	IMG_PID                  pid;          /*!< Pid of process which created the errored context */
+	IMG_UINT64 ui64ResetReason; /*!< Reason for error/reset */
+	IMG_PID    pid;             /*!< Pid of process which created the errored context */
 	union
 	{
 		PVRSRV_ROBUSTNESS_ERR_DATA_CHECKSUM sChecksumErrData; /*!< Data returned for checksum errors */
@@ -245,7 +245,8 @@ typedef struct _PVRSRV_ROBUSTNESS_NOTIFY_DATA_
 typedef void
 (*PFN_SYS_DEV_ERROR_NOTIFY)(IMG_HANDLE hSysData,
 			    PVRSRV_ROBUSTNESS_NOTIFY_DATA *psRobustnessErrorData,
-			    struct _PVRSRV_DEVICE_NODE_ *psDeviceNode);
+			    struct _PVRSRV_DEVICE_NODE_ *psDeviceNode,
+			    const IMG_CHAR *pszFuncName);
 struct ion_device;
 
 struct _PVRSRV_DEVICE_CONFIG_

@@ -175,14 +175,12 @@ typedef struct
 
 } RGX_META_LDR_L2_DATA_BLK;
 
-#if (RGX_NUM_OS_SUPPORTED > 1)
 /* High level data stream block header structure (only for windows fw) */
 typedef struct
 {
 	uint16_t ui16Tag;
 	uint16_t ui16Length;
 } RGX_META_LDR_L2_DATA_BLK_HDR;
-#endif
 
 /* Config command structure */
 typedef struct

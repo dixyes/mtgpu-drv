@@ -511,9 +511,9 @@ Frame buffer endianess
 @endverbatim
 */
     CbCrInterLeave  chromaInterleave;
-    BYTE            huffVal[8][256];     /**< A list of the 8-bit symbol values in Huffman tables. */
-    BYTE            huffBits[8][256];    /**< A 16-byte list giving number of codes for each code length from 1 to 16 in Huffman tables. */
-    short           qMatTab[4][64];      /**< Quantization tables */
+    BYTE            *huffVal[8];         /**< huffVal[8][256]: A list of the 8-bit symbol values in Huffman tables. */
+    BYTE            *huffBits[8];        /**< huffBits[8][256]: A 16-byte list giving number of codes for each code length from 1 to 16 in Huffman tables. */
+    short           *qMatTab[4];         /**< qMatTab[4][64]: Quantization tables */
     BOOL            jpg12bit;            /**< It enables 12bit encoding mode. */
     BOOL            q_prec0;             /**< Luma quantization tables for 12bit encoding mode */
     BOOL            q_prec1;             /**< Chroma quantization tables for 12bit encoding mode */

@@ -123,12 +123,13 @@ typedef struct _DEVMEM_HEAP_BLUEPRINT_
 	multiples of this page size.  Note that the page size is
 	specified as the log 2 relative to 1 byte (e.g. 12 indicates
 	4kB) */
-	IMG_UINT32 uiLog2DataPageSize;
+	IMG_UINT32 ui32PageShiftBitMask;
 
 	/* Import alignment.  Force imports to this heap to be
 	aligned to at least this value */
 	IMG_UINT32 uiLog2ImportAlignment;
 
+	IMG_BOOL bSupportMultiPgSize;
 } DEVMEM_HEAP_BLUEPRINT;
 
 void HeapCfgBlueprintInit(const IMG_UINT32	ui32HeapId,
@@ -136,7 +137,8 @@ void HeapCfgBlueprintInit(const IMG_UINT32	ui32HeapId,
 			  IMG_UINT64             ui64HeapBaseAddr,
 			  IMG_DEVMEM_SIZE_T      uiHeapLength,
 			  IMG_DEVMEM_SIZE_T      uiReservedRegionLength,
-			  IMG_UINT32             ui32Log2DataPageSize,
+			  IMG_UINT32             ui32PgShiftBitMask,
+			  IMG_BOOL               bSupportMultiPgSize,
 			  IMG_UINT32             uiLog2ImportAlignment,
 			  DEVMEM_HEAP_BLUEPRINT *psHeapBlueprint);
 
@@ -189,5 +191,27 @@ HeapCfgHeapDetails(struct _CONNECTION_DATA_ *psConnection,
 		   IMG_UINT32 *puiLog2DataPageSizeOut,
 		   IMG_UINT32 *puiLog2ImportAlignmentOut
 );
+
+PVRSRV_ERROR
+HeapCfgHeapDetails2(struct _CONNECTION_DATA_ *psConnection,
+		    const struct _PVRSRV_DEVICE_NODE_ *psDeviceNode,
+		    IMG_UINT32 uiHeapConfigIndex,
+		    IMG_UINT32 uiHeapIndex,
+		    IMG_UINT32 *puiHeapId,
+		    IMG_UINT32 uiHeapNameBufSz,
+		    IMG_CHAR *pszHeapNameOut,
+		    IMG_DEV_VIRTADDR *psDevVAddrBaseOut,
+		    IMG_DEVMEM_SIZE_T *puiHeapLengthOut,
+		    IMG_DEVMEM_SIZE_T *puiReservedRegionLengthOut,
+		    IMG_UINT32 *ui32PageShiftBitMask,
+		    IMG_UINT32 *puiLog2ImportAlignmentOut,
+		    IMG_BOOL *bSupportMultiPgSize
+);
+
+PVRSRV_ERROR
+HeapCfgHeapPageShift(const struct _PVRSRV_DEVICE_NODE_ *psDeviceNode,
+		     IMG_UINT32 uiHeapConfigIndex,
+		     IMG_UINT32 uiHeapIndex,
+		     IMG_UINT32 *puiLog2DataPageSizeOut);
 
 #endif

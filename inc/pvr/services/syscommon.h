@@ -138,12 +138,14 @@ PVRSRV_ERROR SysUninstallDeviceLISR(IMG_HANDLE hLISRData);
                 work should be performed by a worker queue/thread instead).
 @Input          hSysData      pointer to the system data of the device
 @Input          psDeviceNode  pointer to the info of device
+@Input          pszFuncName   the name of caller
 @Output         psErrorData   structure containing details of the reported error
 @Return         None.
 */ /***************************************************************************/
 void SysRGXErrorNotify(IMG_HANDLE hSysData,
 		       PVRSRV_ROBUSTNESS_NOTIFY_DATA *psErrorData,
-		       struct _PVRSRV_DEVICE_NODE_ *psDeviceNode);
+		       PVRSRV_DEVICE_NODE *psDeviceNode,
+		       const IMG_CHAR *pszFuncName);
 
 /*************************************************************************/ /*!
 @Description    Trye to conver GPA to IOVA.

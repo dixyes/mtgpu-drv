@@ -110,6 +110,23 @@ void *OSAllocMem(IMG_UINT32 ui32Size DEBUG_MEMSTATS_PARAMS);
 #endif
 
 /**************************************************************************/ /*!
+@Function       OSAllocMemNode
+@Description    Allocates CPU memory on the specified NUMA node.
+                Contents are uninitialized.
+                If passed a size of zero, function should not assert,
+                but just return a NULL pointer.
+@Input          ui32Size        Size of required allocation (in bytes)
+@Return         Pointer to allocated memory on success.
+                Otherwise NULL.
+ */ /**************************************************************************/
+#if defined(DOXYGEN)
+void *OSAllocMemNode(IMG_UINT32 ui32Size, IMG_UINT32 ui32Node);
+#else
+void *OSAllocMemNode(IMG_UINT32 ui32Size, IMG_UINT32 ui32Node DEBUG_MEMSTATS_PARAMS);
+#define OSAllocMemNode(_size, _node)	(OSAllocMemNode)((_size), (_node) DEBUG_MEMSTATS_VALUES)
+#endif
+
+/**************************************************************************/ /*!
 @Function       OSAllocZMem
 @Description    Allocates CPU memory and initializes the contents to zero.
                 If passed a size of zero, function should not assert,
@@ -124,7 +141,6 @@ void *OSAllocZMem(IMG_UINT32 ui32Size);
 void *OSAllocZMem(IMG_UINT32 ui32Size DEBUG_MEMSTATS_PARAMS);
 #define OSAllocZMem(_size)	(OSAllocZMem)((_size) DEBUG_MEMSTATS_VALUES)
 #endif
-
 
 /**************************************************************************/ /*!
 @Function       OSAllocMemNoStats

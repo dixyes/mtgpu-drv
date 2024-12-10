@@ -74,7 +74,7 @@ int mtsnd_mixer_switch_get(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_va
 
 	ucontrol->value.integer.value[0] = check_codec_state2(&chip->codec[codec_idx]);
 
-	SND_DEBUG("codec: %s get: %ld, comm:%s, pid:%d\n", kcontrol->id.name,
+	SND_DEBUG("codec:%s get:%ld, comm:%s, pid:%d\n", kcontrol->id.name,
 		 ucontrol->value.integer.value[0], current->comm, current->pid);
 	return 0;
 }
@@ -102,29 +102,38 @@ int mtsnd_mixer_switch_put(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_va
 		return changed;
 
 	if (check_codec_state2(codec)) {
+		int ret = -1;
 		/* if the IIS is not working, we can't enable the monitor audio
 		 * but save the status
 		 */
 		if (!chip->pcm[pcm_idx].pcm_running) {
-			SND_DEBUG("IIS not running, mark enabled\n");
+			SND_DEBUG("PCM%d switch put codec%d IIS not running, mark enabled\n", pcm_idx, codec_idx);
 			return changed;
 		}
 
 		if (check_codec_state3(codec) && codec->hcd->ops->hw_params) {
-			int ret = -1;
 
 			ret = codec->hcd->ops->hw_params(codec->dev, codec->hcd->data,
 							 codec->daifmt, codec->params);
 			update_codec_state3(codec, ret);
-		}
+			if (ret)
+				SND_DEBUG("PCM%d switch put codec%d hw_params failed %d\n", pcm_idx, codec_idx, ret);
+		} else
+			SND_DEBUG("PCM%d switch put codec%d hw_params not called\n", pcm_idx, codec_idx);
 
 		/* codec enable */
-		if (check_codec_start(chip, codec_idx) && codec->hcd->ops->audio_startup)
-			codec->hcd->ops->audio_startup(codec->dev, codec->hcd->data);
+		if (check_codec_start(chip, codec_idx) && codec->hcd->ops->audio_startup) {
+			ret = codec->hcd->ops->audio_startup(codec->dev, codec->hcd->data);
+			if (ret)
+				SND_DEBUG("PCM%d switch put codec%d audio_startup failed %d\n", pcm_idx, codec_idx, ret);
+		} else
+			SND_DEBUG("PCM%d switch put codec%d audio_startup not called\n", pcm_idx, codec_idx);
 	} else {
 		/* codec disable */
 		if (check_hw_status(chip, codec_idx) && codec->hcd->ops->audio_shutdown)
 			codec->hcd->ops->audio_shutdown(codec->dev, codec->hcd->data);
+		else
+			SND_DEBUG("PCM%d switch put codec%d audio_shutdown not called\n", pcm_idx, codec_idx);
 	}
 
 	return changed;
@@ -162,7 +171,7 @@ static void report_pnp_event(struct timer_list *t)
 	int codec_index = jack_timer->codec_index;
 	int jack_status = jack_timer->jack_status;
 	struct mtsnd_codec *codec = &chip->codec[codec_index];
-	SND_DEBUG("codec_index %d jack_status %d\n", codec_index, jack_status);
+	SND_DEBUG("%s codec%d jack_status%d\n", __func__, codec_index, jack_status);
 
 	if (jack_status == SND_JACK_AVOUT) {
 		SND_DEBUG("%s plug in\n", codec->eld->monitor_name);
@@ -170,17 +179,21 @@ static void report_pnp_event(struct timer_list *t)
 
 		/* enable the display audio when codec exits state4 */
 		if (check_codec_state2(codec)) {
+			int ret = -1;
 			/* set the audio config for display */
 			if (codec->hcd->ops->hw_params) {
-				int ret = -1;
-
 				ret = codec->hcd->ops->hw_params(codec->dev, codec->hcd->data,
 								codec->daifmt, codec->params);
 				update_codec_state3(codec, ret);
+				if (ret)
+					SND_DEBUG("PCM report pnp codec%d hw_params failed %d\n", codec_index, ret);
 			}
 			/* start the display audio */
-			if (codec_safety_check_start(chip, codec_index) && codec->hcd->ops->audio_startup)
-				codec->hcd->ops->audio_startup(codec->dev, codec->hcd->data);
+			if (codec_safety_check_start(chip, codec_index) && codec->hcd->ops->audio_startup) {
+				ret = codec->hcd->ops->audio_startup(codec->dev, codec->hcd->data);
+				if (ret)
+					SND_DEBUG("PCM report pnp codec%d audio_startup failed %d\n", codec_index, ret);
+			}
 		} else {
 			update_codec_state3(codec, 1);
 		}
@@ -281,6 +294,7 @@ int mtsnd_create_codec(struct mtsnd_chip *chip)
 	int i, count;
 
 	count = get_codec_count(chip);
+	SND_DEBUG("%s codec count:%d\n", __func__, count);
 
 	for (i = 0; i < count; i++) {
 		struct snd_jack *jack = NULL;
@@ -345,9 +359,11 @@ int mtsnd_create_codec(struct mtsnd_chip *chip)
 								     get_codec_cb(chip, i),
 								     chip->card->dev);
 					}
-				}
+				} else
+					SND_DEBUG("%s codec%d codec data ops null\n", __func__, i);
 			}
-		}
+		} else
+			SND_DEBUG("%s codec%d not found\n", __func__, i);
 	}
 
 	return 0;

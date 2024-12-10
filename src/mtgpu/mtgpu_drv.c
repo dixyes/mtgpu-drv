@@ -48,8 +48,8 @@
 #include "mtlink.h"
 #include "mtgpu_ob_res.h"
 #include "mtlink_procfs.h"
-#include "mtgpu_ipc.h"
 #include "mtgpu_event_report.h"
+#include "mtgpu_igpu.h"
 
 MODULE_DESCRIPTION("MooreThreads mtgpu drm driver");
 MODULE_AUTHOR("MooreThreads Corporation");
@@ -143,6 +143,14 @@ const struct proc_ops mtlink_monitor_counter_proc_ops = {
 	.proc_open = mtlink_monitor_counter_proc_open,
 	.proc_read = os_seq_read,
 	.proc_write = mtlink_monitor_counter_proc_write,
+	.proc_lseek = os_seq_lseek,
+	.proc_release = os_single_release,
+};
+
+const struct proc_ops mtlink_warm_rest_proc_ops = {
+	.proc_open = mtlink_warm_reset_proc_open,
+	.proc_read = os_seq_read,
+	.proc_write = mtlink_warm_reset_proc_write,
 	.proc_lseek = os_seq_lseek,
 	.proc_release = os_single_release,
 };
@@ -252,6 +260,14 @@ const struct file_operations mtlink_monitor_counter_proc_ops = {
 	.release = os_single_release,
 };
 
+const struct file_operations mtlink_warm_rest_proc_ops = {
+	.open = mtlink_warm_reset_proc_open,
+	.read = os_seq_read,
+	.write = mtlink_warm_reset_proc_write,
+	.llseek = os_seq_lseek,
+	.release = os_single_release,
+};
+
 const struct file_operations process_util_proc_ops = {
 	.open = mtgpu_proc_util_open,
 	.read = os_seq_read,
@@ -264,7 +280,7 @@ const struct file_operations event_message_proc_ops = {
 	.open = mtgpu_proc_event_msg_open,
 	.read = mtgpu_proc_event_msg_read,
 	.llseek = os_seq_lseek,
-	.release = os_single_release,
+	.release = mtgpu_proc_event_msg_release,
 	.poll = mtgpu_proc_event_msg_poll,
 };
 #endif
@@ -389,6 +405,10 @@ static struct pci_device_id mtgpu_pci_tbl[] = {
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan1_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S3000, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan1_drvdata},
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S3000E_8CORE, PCI_ANY_ID, PCI_ANY_ID,
+	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan1_drvdata},
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S3000E_7CORE, PCI_ANY_ID, PCI_ANY_ID,
+	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan1_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_X300, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan1_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_QUYUAN2, PCI_ANY_ID, PCI_ANY_ID,
@@ -396,6 +416,8 @@ static struct pci_device_id mtgpu_pci_tbl[] = {
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S90, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_G3D80, PCI_ANY_ID, PCI_ANY_ID,
+	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_X500, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S4000_8CORE, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
@@ -419,6 +441,10 @@ static struct pci_device_id mtgpu_pci_tbl[] = {
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan1_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S3000, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan1_drvdata},
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S3000E_8CORE, PCI_ANY_ID, PCI_ANY_ID,
+	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan1_drvdata},
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S3000E_7CORE, PCI_ANY_ID, PCI_ANY_ID,
+	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan1_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_X300, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan1_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_QUYUAN2, PCI_ANY_ID, PCI_ANY_ID,
@@ -426,6 +452,8 @@ static struct pci_device_id mtgpu_pci_tbl[] = {
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S90, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_G3D80, PCI_ANY_ID, PCI_ANY_ID,
+	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_X500, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S4000_8CORE, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
@@ -471,20 +499,20 @@ MODULE_DEVICE_TABLE(pci, mtgpu_pci_tbl);
 MODULE_INFO(build_version, MT_BUILD_TAG);
 
 static struct of_device_id mtgpu_of_tbl[] = {
-	{.compatible = "mthreads,i-gpu", .data = NULL},
+	{.compatible = "mthreads,i-gpu", .data = &apollo_drvdata},
 	{ }, /* end of all entries */
 };
 
 static const struct acpi_device_id mtgpu_acpi_table[] = {
-	{.id = "MGPU0001", .driver_data = 0},
+	{.id = "MGPU0001", .driver_data = (kernel_ulong_t)&apollo_drvdata},
 	{ }, /* end of all entries */
 };
 
 static struct platform_driver mtgpu_platform_driver = {
-	.probe = mtgpu_platform_probe,
-	.remove = mtgpu_platform_remove,
+	.probe = mtgpu_igpu_probe,
+	.remove = mtgpu_igpu_remove,
 	.driver = {
-		.name = "mt-igpu",
+		.name = DRIVER_NAME_IGPU,
 		.of_match_table = mtgpu_of_tbl,
 		.acpi_match_table = mtgpu_acpi_table,
 	},
@@ -595,6 +623,8 @@ static void __exit mtgpu_driver_exit(void)
 	mtgpu_misc_deinit();
 	mtgpu_proc_musa_dir_remove();
 	debugfs_remove_recursive(mtgpu_dentry);
+
+	os_destroy_ratelimit_state_all();
 }
 
 module_init(mtgpu_driver_init);

@@ -37,6 +37,7 @@ struct mtgpu_softirq_info;
 struct mtgpu_softirq_ctrl;
 struct mtgpu_vdma_buffer;
 struct wait_queue_head;
+struct mtgpu_fec_umd_init_info;
 
 #if defined(CONFIG_VPS)
 struct vps_dma;
@@ -57,6 +58,12 @@ struct mtgpu_irq_desc {
 	bool suspended;
 	void (*handler)(void *data);
 	void *handler_data;
+	u64 received_total;
+};
+
+struct mtgpu_int_mon_stat {
+	bool pending;
+	u64 intr_count;
 };
 
 struct mtgpu_irq_data {
@@ -75,10 +82,12 @@ struct mtgpu_irq_info {
 	u32 irq_type;
 	u32 irq_cnt;
 	u32 desc_cnt;
+	struct mtgpu_int_mon_stat *int_monitor_stat;
 	struct mtgpu_irq_desc **desc_table;
 	struct mtgpu_irq_data *irq_data;
 	spinlock_t *irq_handler_lock;
 	spinlock_t *irq_enable_lock;
+	struct timer_list *int_monitor_timer;
 };
 
 struct mtgpu_region {
@@ -140,6 +149,9 @@ struct mtgpu_int_ops {
 	int (*claim)(struct mtgpu_device *mtgpu, int target);
 	int (*complete)(struct mtgpu_device *mtgpu, int int_vec, int target);
 	void (*exit)(struct mtgpu_device *mtgpu);
+	bool (*pending)(struct mtgpu_device *mtgpu, int intc_id);
+	int (*mask)(struct mtgpu_device *mtgpu, u32 int_vec);
+	int (*unmask)(struct mtgpu_device *mtgpu, u32 int_vec);
 };
 
 struct mtgpu_pcie_local_mgmt_ops {
@@ -195,6 +207,8 @@ struct mtgpu_llc_ops {
 struct mtgpu_ob_ops {
 	int (*ob_map_cfg)(struct mtgpu_device *mtdev, struct mtgpu_ob_map_table *map_table);
 	int (*ob_max_win_num)(void);
+	int (*ob_reset_map_cfg)(struct mtgpu_device *mtdev);
+	void (*ob_dump_map_cfg)(struct mtgpu_device *mtdev);
 };
 
 struct mtgpu_gpu_ss_ops {
@@ -208,6 +222,9 @@ struct mtgpu_pfm_ops {
 	int (*mss_set)(struct mtgpu_device *mtdev, void *mss_cfg, void *pfm_mss_mmu);
 	void (*mss_clear)(struct mtgpu_device *mtdev);
 	void (*mss_dump)(struct mtgpu_device *mtdev, void *mss_dump_trig, void *pfm_mss_mmu);
+	void (*mss_get_wrap)(struct mtgpu_device *mtdev, void *buf_addr);
+	void (*mss_get_mmu)(struct mtgpu_device *mtdev, void *buf_addr);
+
 };
 
 struct pci_dev_config {
@@ -246,6 +263,8 @@ struct mtgpu_device {
 	struct mtgpu_io_region pfm_d2d_1_reg;
 	struct mtgpu_io_region pfm_d2d_0_reg;
 	struct mtgpu_io_region pfm_llc_reg;
+	struct mtgpu_io_region gpu_daa_reg;
+	struct mtgpu_io_region gpu_misc_reg;
 	int disp_cnt;
 	struct platform_device *disp_dev[MTGPU_DISP_DEV_NUM];
 	struct platform_device *drm_dev[MTGPU_CORE_COUNT_MAX];
@@ -309,13 +328,6 @@ struct mtgpu_device {
 	struct mtgpu_io_region vgpu_custom_reg;
 
 	void *mdev_device_state;
-
-	/*
-	 * host os reserved memory size
-	 * obtain: [ SMC | DMA | CURSOR | MPC 0,1,2.. FW and MMU memory |
-	 * don't contain vpu host memory.
-	 */
-	u32 host_reserved_mem_size;
 
 	/* struct mtgpu_sriov for sriov virtualization */
 	void *sriov;
@@ -391,6 +403,8 @@ struct mtgpu_device {
 	struct pci_dev_config *pci_dev_config_data;
 
 	bool pstate_supported;
+	u32 pstate_p0_count;
+	u32 pstate_p12_count;
 
 	struct mtgpu_pcie_perf_bw *pcie_perf_data;
 
@@ -401,6 +415,9 @@ struct mtgpu_device {
 #if defined(SUPPORT_VGPU_HWPERF)
 	void *vgpu_perf_data;
 #endif
+	struct mtgpu_fec_umd_init_info *fec_umd_init_info;
+
+	u64 hw_capability;
 };
 
 extern struct device_ops sudi_ops;

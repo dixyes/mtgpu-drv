@@ -1549,6 +1549,21 @@ typedef enum
 
 typedef struct
 {
+	IMG_BOOL bGetStat;
+	IMG_UINT64 ui64Offset;
+	IMG_UINT64 ui64BufSize;
+} RGX_HWPERF_PFM_GET_STAT_CTRL;
+
+typedef struct
+{
+	RGX_HWPERF_PFM_GET_STAT_CTRL sGetStatCtrlCMSS;
+	RGX_HWPERF_PFM_GET_STAT_CTRL sGetStatCtrlMSSMMU;
+	RGX_HWPERF_PFM_GET_STAT_CTRL sGetStatCtrlMSSWrap;
+	RGX_HWPERF_PFM_GET_STAT_CTRL sGetStatCtrlGPU;
+} RGX_HWPERF_PFM_GET_STAT;
+
+typedef struct
+{
 	IMG_UINT32 ui32CoreId;
 	IMG_UINT32 ui32WrapperSelc;
 	IMG_UINT32 ui32InstanceSelc;
@@ -1572,6 +1587,7 @@ typedef struct
 	IMG_UINT32 ui32PointerUpdateFreq;
 } RGX_HWPERF_PFM_GLOBAL_CONFIG_QY2;
 
+#define RGX_HWPERF_PFM_L2PU_DEST_ADDR_COUNT 12
 typedef struct
 {
 	IMG_UINT32 ui32Instance;
@@ -1581,6 +1597,7 @@ typedef struct
 	IMG_UINT64 ui64InstanceCtrl;
 	IMG_UINT64 ui64TriggerCtrl;
 	IMG_UINT32 aui32Group;
+	IMG_UINT64 aui64DestAddr[RGX_HWPERF_PFM_L2PU_DEST_ADDR_COUNT];
 } RGX_HWPERF_PFM_INSTANCE_CONFIG_PH1;
 
 #define RGX_PFM_MAX_WRAPPER_COUNT_PER_CORE_PH1 8

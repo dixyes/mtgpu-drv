@@ -58,7 +58,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PVRSRV_BRIDGE_RGXKICKSYNC_RGXDESTROYKICKSYNCCONTEXT			PVRSRV_BRIDGE_RGXKICKSYNC_CMD_FIRST+1
 #define PVRSRV_BRIDGE_RGXKICKSYNC_RGXKICKSYNC2			PVRSRV_BRIDGE_RGXKICKSYNC_CMD_FIRST+2
 #define PVRSRV_BRIDGE_RGXKICKSYNC_RGXSETKICKSYNCCONTEXTPROPERTY			PVRSRV_BRIDGE_RGXKICKSYNC_CMD_FIRST+3
-#define PVRSRV_BRIDGE_RGXKICKSYNC_CMD_LAST			(PVRSRV_BRIDGE_RGXKICKSYNC_CMD_FIRST+3)
+#define PVRSRV_BRIDGE_RGXKICKSYNC_RGXKICKSYNC3			PVRSRV_BRIDGE_RGXKICKSYNC_CMD_FIRST+4
+#define PVRSRV_BRIDGE_RGXKICKSYNC_CMD_LAST			(PVRSRV_BRIDGE_RGXKICKSYNC_CMD_FIRST+4)
 
 /*******************************************
             RGXCreateKickSyncContext
@@ -119,6 +120,35 @@ typedef struct PVRSRV_BRIDGE_OUT_RGXKICKSYNC2_TAG
 	PVRSRV_ERROR eError;
 	PVRSRV_FENCE hUpdateFenceFD;
 } __packed PVRSRV_BRIDGE_OUT_RGXKICKSYNC2;
+
+/*******************************************
+            RGXKickSync3
+ *******************************************/
+
+/* Bridge in structure for RGXKickSync3 */
+typedef struct PVRSRV_BRIDGE_IN_RGXKICKSYNC3_TAG
+{
+	IMG_HANDLE hKickSyncContext;
+	IMG_UINT32 *pui32CheckDevVarOffset;
+	IMG_UINT32 *pui32CheckValue;
+	IMG_HANDLE *phCheckUFODevVarBlock;
+	IMG_UINT32 ui32ClientCheckCount;
+	IMG_UINT32 *pui32UpdateDevVarOffset;
+	IMG_UINT32 *pui32UpdateValue;
+	IMG_HANDLE *phUpdateUFODevVarBlock;
+	IMG_UINT32 ui32ClientUpdateCount;
+	IMG_CHAR *puiUpdateFenceName;
+	PVRSRV_FENCE hCheckFenceFD;
+	PVRSRV_TIMELINE hTimelineFenceFD;
+	IMG_UINT32 ui32ExtJobRef;
+} __packed PVRSRV_BRIDGE_IN_RGXKICKSYNC3;
+
+/* Bridge out structure for RGXKickSync3 */
+typedef struct PVRSRV_BRIDGE_OUT_RGXKICKSYNC3_TAG
+{
+	PVRSRV_ERROR eError;
+	PVRSRV_FENCE hUpdateFenceFD;
+} __packed PVRSRV_BRIDGE_OUT_RGXKICKSYNC3;
 
 /*******************************************
             RGXSetKickSyncContextProperty

@@ -7,9 +7,16 @@
 #define __MTGPU_DRV_COMMON_H__
 
 struct pci_device_id;
+struct mtgpu_device;
+struct mtgpu_driver_data;
 
 extern struct device_attribute dev_attr_mtgpu_info;
 
+bool mtgpu_llc_is_supported(struct mtgpu_device *mtdev);
+bool mtgpu_ce_is_supported(struct mtgpu_device *mtdev);
+bool mtgpu_dma_is_supported(struct mtgpu_device *mtdev);
+int mtgpu_get_core_cfg(struct mtgpu_device *mtdev);
+int mtgpu_driver_data_init(struct mtgpu_device *mtdev, struct mtgpu_driver_data *drvdata);
 bool mtgpu_pstate_is_enabled(void);
 bool mtgpu_display_is_dummy(void);
 bool mtgpu_display_is_none(void);
@@ -26,7 +33,5 @@ int mtgpu_pm_suspend_late(struct device *dev);
 int mtgpu_probe(struct pci_dev *pdev, const struct pci_device_id *id);
 void mtgpu_remove(struct pci_dev *pdev);
 void mtgpu_shutdown(struct pci_dev *pdev);
-int mtgpu_platform_probe(struct platform_device *pdev);
-int mtgpu_platform_remove(struct platform_device *pdev);
 
 #endif /*__MTGPU_DRV_COMMON_H__*/

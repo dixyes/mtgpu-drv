@@ -6,9 +6,21 @@
 #ifndef __MTGPU_DRM_H__
 #define __MTGPU_DRM_H__
 
+#ifdef __KERNEL__
 #include "linux-types.h"
+#else
+#include "drm.h"
+#if defined(__cplusplus)
+extern "C" {
+#endif
+#endif	/* __KERNEL__ */
 
-#define MTGPU_IOCTL_VERSION			(18)
+#ifndef BIT
+#define BIT(nr)	(1ul << (nr))
+#endif
+
+#define MTGPU_API_MAJOR_VERSION			(0)
+#define MTGPU_IOCTL_VERSION			(22)
 
 #define DRM_MTGPU_DEVICE_INIT			0x10
 #define DRM_MTGPU_QUERY_INFO			0x11
@@ -41,11 +53,20 @@
 #define DRM_MTGPU_HWPERF			0x2C
 #define DRM_MTGPU_CACHE_OP			0x2D
 #define DRM_MTGPU_NOTIFY_QUEUE_UPDATE		0x2E
+#define DRM_MTGPU_ALIGN_CHECK			0x2F
 
 /* used by ddk2.0 temporarily */
 #define DRM_MTGPU_JOB_CONTEXT_CREATE		0x30
-#define DRM_MTGPU_JOB_SUBMIT_V3			0x31
-#define DRM_MTGPU_JOB_APPEND			0x32
+#define DRM_MTGPU_JOB_CONTEXT_DESTROY		0x31
+#define DRM_MTGPU_JOB_SUBMIT_V3			0x32
+#define DRM_MTGPU_JOB_APPEND			0x33
+
+/* used by vpu */
+#define DRM_MTGPU_CODEC_WAIT			0x34
+
+#define DRM_MTGPU_VERSION_CHECK			0x35
+#define DRM_MTGPU_SEMAPHORE_FROM_FD		0x36
+#define DRM_MTGPU_SEMAPHORE_WAIT		0x37
 
 #define DRM_IOCTL_MTGPU_DEVICE_INIT \
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_DEVICE_INIT, \
@@ -79,7 +100,7 @@
 		 struct drm_mtgpu_vm_map)
 #define DRM_IOCTL_MTGPU_VM_UNMAP \
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_VM_UNMAP, \
-		 struct drm_mtgpu_vm_map)
+		 struct drm_mtgpu_vm_unmap)
 #define DRM_IOCTL_MTGPU_TIMELINE_CREATE \
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_TIMELINE_CREATE, \
 		 struct drm_mtgpu_timeline_create)
@@ -140,17 +161,38 @@
 #define DRM_IOCTL_MTGPU_NOTIFY_QUEUE_UPDATE \
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_NOTIFY_QUEUE_UPDATE, \
 		 struct drm_mtgpu_notify_queue_update)
+#define DRM_IOCTL_MTGPU_ALIGN_CHECK \
+	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_ALIGN_CHECK, \
+		 struct drm_mtgpu_align_check)
 
 /* used by ddk2.0 temporarily */
 #define DRM_IOCTL_MTGPU_JOB_CONTEXT_CREATE \
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_JOB_CONTEXT_CREATE, \
 		 struct drm_mtgpu_job_context_create)
+#define DRM_IOCTL_MTGPU_JOB_CONTEXT_DESTROY \
+	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_JOB_CONTEXT_DESTROY, \
+		 struct drm_mtgpu_job_context_destroy)
 #define DRM_IOCTL_MTGPU_JOB_SUBMIT_V3 \
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_JOB_SUBMIT_V3, \
 		 struct drm_mtgpu_job_submit_v3)
 #define DRM_IOCTL_MTGPU_JOB_APPEND \
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_JOB_APPEND, \
 		 struct drm_mtgpu_job_append)
+
+/* used by vpu */
+#define DRM_IOCTL_MTGPU_CODEC_WAIT \
+	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_CODEC_WAIT, \
+		 struct drm_mtgpu_codec_wait)
+
+#define DRM_IOCTL_MTGPU_VERSION_CHECK \
+	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_VERSION_CHECK, \
+		 struct drm_mtgpu_version_check)
+#define DRM_IOCTL_MTGPU_SEMAPHORE_FROM_FD \
+	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_SEMAPHORE_FROM_FD, \
+		 struct drm_mtgpu_semaphore_from_fd)
+#define DRM_IOCTL_MTGPU_SEMAPHORE_WAIT \
+	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_SEMAPHORE_WAIT, \
+		 struct drm_mtgpu_semaphore_wait)
 
 /*
  *  **********************************************************
@@ -166,51 +208,191 @@
 					 MTGPU_BO_DOMAIN_GTT | \
 					 MTGPU_BO_DOMAIN_VRAM)
 
-/*
- *  **********************************************************
- *  *                                                        *
- *  *                        CPU domain                      *
- *  *                                                        *
- *  **********************************************************
- */
-/* Which corresponds to PVRSRV_MEMALLOCFLAG_CPU_UNCACHED_WC in pvr */
-#define MTGPU_BO_FLAGS_CPU_UNCACHED_WC			BIT(0)
-/* Which corresponds to PVRSRV_MEMALLOCFLAG_CPU_CACHED in pvr */
-#define MTGPU_BO_FLAGS_CPU_CACHED			BIT(1)
-/* Which corresponds to PVRSRV_MEMALLOCFLAG_CPU_READABLE |
- * PVRSRV_MEMALLOCFLAG_CPU_WRITEABLE in pvr
- */
-#define MTGPU_BO_FLAGS_CPU_MAPPABLE			BIT(2)
 
 /*
  *  **********************************************************
  *  *                                                        *
- *  *                        GPU domain                      *
+ *  *              ACCESS PERMISSION FLAGS                   *
  *  *                                                        *
  *  **********************************************************
  */
-/* Which corresponds to PVRSRV_MEMALLOCFLAG_GPU_UNCACHED in pvr*/
-#define MTGPU_BO_FLAGS_VRAM_UNCACHED			BIT(8)
-/* Which corresponds to PVRSRV_MEMALLOCFLAG_GPU_UNCACHED_WC in pvr*/
-#define MTGPU_BO_FLAGS_VRAM_UNCACHED_WC			BIT(9)
-/* Which corresponds to PVRSRV_MEMALLOCFLAG_GPU_CACHED in pvr*/
-#define MTGPU_BO_FLAGS_VRAM_CACHED			BIT(10)
+
+/*!
+ * This flag affects the device MMU protection flags, and specifies
+ * that the memory may be read by the GPU.
+ */
+#define MTGPU_BO_FLAGS_GPU_READABLE			BIT(0)
+
+/*!
+ * This flag affects the device MMU protection flags, and specifies
+ * that the memory may be written by the GPU.
+ */
+#define MTGPU_BO_FLAGS_GPU_WRITEABLE			BIT(1)
+
+/*!
+ * This flag indicates that the memory may be read and written by the GPU.
+ */
+#define MTGPU_BO_FLAGS_GPU_READ_WRITE			(MTGPU_BO_FLAGS_GPU_READABLE | MTGPU_BO_FLAGS_GPU_WRITEABLE)
+
+/*!
+ * This flag indicates that an allocation is mapped as readable to the CPU.
+ */
+#define MTGPU_BO_FLAGS_CPU_READABLE			BIT(2)
+
+/*!
+ * This flag indicates that an allocation is mapped as writable to the CPU.
+ */
+#define MTGPU_BO_FLAGS_CPU_WRITEABLE			BIT(3)
+
+/*!
+ * This flag indicates that the memory may be read and written by the CPU.
+ */
+#define MTGPU_BO_FLAGS_CPU_READ_WRITE			(MTGPU_BO_FLAGS_CPU_READABLE | MTGPU_BO_FLAGS_CPU_WRITEABLE)
 
 /*
  *  **********************************************************
  *  *                                                        *
- *  *                          Others                        *
+ *  *                   CACHE CONTROL FLAGS                  *
  *  *                                                        *
  *  **********************************************************
  */
-/* Which corresponds to PVRSRV_MEMALLOCFLAG_KERNEL_CPU_MAPPABLE |
- * PVRSRV_MEMALLOCFLAG_ZERO_ON_ALLOC in pvr
+
+/*
+ * GPU domain
+ * ==========
+ * The following defines are used to control the GPU cache bit field.
  */
-#define MTGPU_BO_FLAGS_CLEARED				BIT(16)
+/*!
+ * This flag is for internal use only and is used to indicate
+ * that the underlying allocation should be cached on the GPU after all
+ * the snooping and coherent checks have been done.
+ */
+#define MTGPU_BO_FLAGS_GPU_CACHED			BIT(4)
+
+/*!
+ * This flag indicates uncached memory. This means that any writes to memory
+ * allocated with this flag are written straight to memory and thus are
+ * coherent for any device in the system.
+ */
+#define MTGPU_BO_FLAGS_GPU_UNCACHED			BIT(5)
+
+/*!
+ * This flag indicates uncached write-combining (WC) memory. This means that
+ * sequential writes to memory allocated with this flag are combined to
+ * reduce memory access and perform burst writes, potentially improving
+ * performance for certain workloads.
+ */
+#define MTGPU_BO_FLAGS_GPU_UNCACHED_WC			BIT(6)
+
+/*!
+ * This flag affects the GPU MMU protection flags.
+ * The allocation will be cached.
+ * Services will try to set the coherent bit in the GPU MMU tables so the
+ * GPU cache is snooping the CPU cache. If coherency is not supported the
+ * caller is responsible to ensure the caches are up to date.
+ */
+#define MTGPU_BO_FLAGS_GPU_CACHE_COHERENT		BIT(7)
+
+/*
+ * CPU domain
+ * ==========
+ * The following defines are used to control the CPU cache bit field.
+ */
+
+/*!
+ * This flag is for internal use only and is used to indicate
+ * that the underlying allocation should be cached on the CPU
+ * after all the snooping and coherent checks have been done.
+ */
+#define MTGPU_BO_FLAGS_CPU_CACHED			BIT(8)
+
+/*!
+ * This flag indicates uncached memory. This means that any writes to memory
+ * allocated with this flag are written straight to memory and thus are
+ * coherent for any device in the system.
+ */
+#define MTGPU_BO_FLAGS_CPU_UNCACHED			BIT(9)
+
+/*!
+ * This flag indicates uncached write-combining (WC) memory(if supported). This means that
+ * sequential writes to memory allocated with this flag are combined to
+ * reduce memory access and perform burst writes, potentially improving
+ * performance for certain workloads.
+ */
+#define MTGPU_BO_FLAGS_CPU_UNCACHED_WC			BIT(10)
+
+/*!
+ * This flag affects the CPU MMU protection flags.
+ * The allocation will be cached.
+ * Services will try to set the coherent bit in the CPU MMU tables so the
+ * CPU cache is snooping the GPU cache. If coherency is not supported the
+ * caller is responsible to ensure the caches are up to date.
+ */
+#define MTGPU_BO_FLAGS_CPU_CACHE_COHERENT		BIT(11)
+
+
+/*
+ *  **********************************************************
+ *  *                                                        *
+ *  *                   MEMORY ALLOC FLAGS                   *
+ *  *                                                        *
+ *  **********************************************************
+ */
+
+/*!
+ * This flag indicates that non-contiguous VRAM can be allocated.
+ */
+#define MTGPU_BO_FLAGS_NON_CONTIGUOUS			BIT(12)
+
+/*!
+ * This flag indicates that memory is allocated only on VRAM.
+ */
+#define MTGPU_BO_FLAGS_VARM_ONLY			BIT(13)
+
+/*!
+ * This flag indicates that the memory allocated is initialized with zeroes.
+ */
+#define MTGPU_BO_FLAGS_ZERO_ON_ALLOC			BIT(14)
+
+/*!
+ * This flag indicates that the allocated memory is scribbled over with a poison value.
+ *
+ * Not compatible with ZERO_ON_ALLOC
+ *
+ */
+#define MTGPU_BO_FLAGS_POISON_ON_ALLOC			BIT(15)
+
+/*!
+ * This flag indicates that the memory is trashed when freed, used when debugging only,
+ * not to be used as a security measure.
+ */
+#define MTGPU_BO_FLAGS_POISON_ON_FREE			BIT(16)
+
+
+/*!
+ * This flag indicates that the memory allocated on gpu affinitive numa node.
+ */
+#define MTGPU_BO_FLAGS_NUMA_ENABLE			BIT(17)
+
+/*
+ *  **********************************************************
+ *  *                                                        *
+ *  *                        USAGE FLAGS                     *
+ *  *                                                        *
+ *  **********************************************************
+ */
+
+/*!
+ * This flag indicates that memory is allocated for display.
+ */
+#define MTGPU_BO_USAGE_DISPLAY				BIT(32)
+
+#define MTGPU_BUFFER_ACCESS_FLAG_READ			0x0
+#define MTGPU_BUFFER_ACCESS_FLAG_WRITE			0x1
 
 struct drm_mtgpu_device_init {
 	__u32 ioctl_version;
-	__u32 pad;
+	__u32 pad;	/* IGNORE ALIGN CHECK */
 };
 
 /* Query information about device: rev id, family, etc. */
@@ -222,12 +404,13 @@ enum {
 	MTGPU_INFO_TYPE_DEV,
 	MTGPU_INFO_TYPE_PCI,
 	MTGPU_INFO_TYPE_PLATFORM,
+	MTGPU_INFO_TYPE_CAPABILITY,
 	MTGPU_INFO_TYPE_INVALID,
 };
 
 #define MTGPU_HEAPNAME_MAXLENGTH (128)
 
-struct mtgpu_heap_info {
+struct drm_mtgpu_heap_info {
 	/* ID of this heap */
 	__u32 id;
 
@@ -264,7 +447,7 @@ struct mtgpu_heap_detail_in {
 };
 
 struct mtgpu_heap_detail_out {
-	struct mtgpu_heap_info info;
+	struct drm_mtgpu_heap_info info;
 };
 
 struct mtgpu_mem_info {
@@ -285,7 +468,7 @@ struct drm_mtgpu_device_info {
 
 struct mtgpu_bo_info_in {
 	__u32 bo_handle;
-	__u32 pad;
+	__u32 pad;	/* IGNORE ALIGN CHECK */
 };
 
 struct mtgpu_bo_info {
@@ -356,7 +539,7 @@ struct mtgpu_pci_info {
 	/**
 	 * @pad: [IN] for padding
 	 */
-	__u32 pad;
+	__u32 pad;	/* IGNORE ALIGN CHECK */
 };
 
 struct mtgpu_platform_info {
@@ -372,10 +555,29 @@ struct mtgpu_platform_info {
 	__u32 iommu_enable;
 };
 
+struct mtgpu_hw_capability { /* IGNORE STRUCT */
+	/**
+	 * @llc: [OUT] Status of llc operation support.
+	 * unsupport: 0 support: 1
+	 */
+	__u64 support_llc : 1;
+
+	/**
+	 * @llc: [OUT] Status of copy engine support.
+	 * unsupport: 0 support: 1
+	 */
+	__u64 support_ce : 1;
+
+	/**
+	 * @reserved: [IN] reserved for future
+	 */
+	__u64 reserved : 62;
+};
+
 struct drm_mtgpu_query_info {
 	struct {
 		__u32 type;
-		__u32 pad;
+		__u32 pad;	/* IGNORE ALIGN CHECK */
 		__u64 data;
 	} in;
 
@@ -395,7 +597,7 @@ struct drm_mtgpu_bo_create {
 
 	struct {
 		__u32 bo_handle;
-		__u32 pad;
+		__u32 pad;	/* IGNORE ALIGN CHECK */
 	} out;
 };
 
@@ -404,19 +606,19 @@ struct drm_mtgpu_bo_from_userptr {
 		__u64 userptr;
 		__u64 size;
 		__u32 flags;
-		__u32 pad;
+		__u32 pad;	/* IGNORE ALIGN CHECK */
 	} in;
 
 	struct {
 		__u32 bo_handle;
-		__u32 pad;
+		__u32 pad;	/* IGNORE ALIGN CHECK */
 	} out;
 };
 
 struct drm_mtgpu_bo_get_mmap_offset {
 	struct {
 		__u32 bo_handle;
-		__u32 pad;
+		__u32 pad;	/* IGNORE ALIGN CHECK */
 	} in;
 
 	struct {
@@ -433,7 +635,7 @@ struct drm_mtgpu_bo_global_handle_export {
 		/**
 		 * @pad: [IN] for padding
 		 */
-		__u32 pad;
+		__u32 pad;	/* IGNORE ALIGN CHECK */
 	} in;
 
 	struct {
@@ -464,7 +666,7 @@ struct drm_mtgpu_bo_global_handle_import {
 		/**
 		 * @pad: [OUT] for padding
 		 */
-		__u32 pad;
+		__u32 pad;	/* IGNORE ALIGN CHECK */
 	} out;
 };
 
@@ -505,7 +707,7 @@ struct drm_mtgpu_vm_map {
 	/**
 	 * @pad: [IN] for padding
 	 */
-	__u32 pad;
+	__u32 pad;	/* IGNORE ALIGN CHECK */
 	/**
 	 * @size: [IN] Size of the requested mapping. Must be aligned to
 	 * the device page size for the heap containing the requested address,
@@ -595,7 +797,7 @@ struct drm_mtgpu_fence_wait {
 		 * @first_signaled: [OUT] Index of first signaled fence in fences[]
 		 */
 		__u32 first_signaled;
-		__u32 pad;
+		__u32 pad;	/* IGNORE ALIGN CHECK */
 	} out;
 };
 
@@ -610,7 +812,7 @@ struct drm_mtgpu_context_create {
 		__u32 type;
 
 		/**
-		 * @type: [IN] Flags of the context to be created
+		 * @flags: [IN] Flags of the context to be created
 		 */
 		__u32 flags;
 
@@ -654,7 +856,7 @@ struct drm_mtgpu_context_destroy {
 	/**
 	 * @pad: [IN] for padding
 	 */
-	__u32 pad;
+	__u32 pad;	/* IGNORE ALIGN CHECK */
 
 	/** @ctx_handle: [IN] handle of job context. */
 	__u64 ctx_handle;
@@ -666,7 +868,7 @@ struct drm_mtgpu_job_context_create {
 		/**
 		 * @type: [IN] Type of the context to be created
 		 *
-		 * This must be one of the values defined by &enum drm_mtgpu_job_type.
+		 * This must be one of the values defined by &enum drm_mtgpu_job_submission_type.
 		 */
 		__u32 type;
 
@@ -689,20 +891,17 @@ struct drm_mtgpu_job_context_create {
 	} out;
 };
 
+struct drm_mtgpu_job_context_destroy {
+	/** @ctx_handle: [IN] handle of job context. */
+	__u64 ctx_handle;
+};
+
 struct drm_mtgpu_tq_context_data {
 	/** @robustness_addr: [IN] GPU VA which describe context reset reason. */
 	__u64 robustness_addr;
 };
 
 struct drm_mtgpu_render_context_data {
-	/** @static_context_state: [IN] Context static register controls for context switch. */
-	__u64 static_context_state;
-	/** @static_context_state: [IN] Length of context static register controls. */
-	__u32 static_context_state_len;
-	/** @framework_cmd: [IN] Framework command. */
-	__u64 framework_cmd;
-	/** @framework_cmd: [IN] Framework command size. */
-	__u32 framework_cmd_size;
 	/** @robustness_addr: [IN] GPU VA which describe context reset reason. */
 	__u64 robustness_addr;
 	/** @max_3d_deadline_ms: [IN] Max 3D deadline limit in MS. */
@@ -712,6 +911,7 @@ struct drm_mtgpu_render_context_data {
 };
 
 struct drm_mtgpu_compute_context_data {
+
 	/** @robustness_address: [IN] GPU VA which describe context reset reason. */
 	__u64 robustness_addr;
 	/** @robustness_address: [IN] Max deadline limit in MS. */
@@ -727,12 +927,18 @@ struct drm_mtgpu_ce_context_data {
 	__u64 robustness_addr;
 };
 
+struct drm_mtgpu_dma_context_data {
+	 /** @robustness_address: [IN] GPU VA which describe context reset reason. */
+	__u64 robustness_addr;
+};
+
 enum drm_mtgpu_job_type {
 	MTGPU_JOB_NOP = 0,
 	MTGPU_JOB_TQ,
 	MTGPU_JOB_CE,
 	MTGPU_JOB_RENDER,
 	MTGPU_JOB_COMPUTE,
+	MTGPU_JOB_DMA,
 	MTGPU_JOB_INVALID,
 };
 
@@ -751,50 +957,106 @@ struct drm_mtgpu_ce_job_data {
 	__u32 characteristic2;
 };
 
+enum drm_mtgpu_dma_addr_type  {
+	MTGPU_DMA_ADDR_TYPE_USER_PTR = 0,
+	MTGPU_DMA_ADDR_TYPE_BO_HANDLE,
+};
+
+struct drm_mtgpu_dma_cmd {
+	/** @src_type: [IN] Src data type of DMA transfer. */
+	enum drm_mtgpu_dma_addr_type src_type;
+	/** @dst_type: [IN] Dst data type of DMA transfer. */
+	enum drm_mtgpu_dma_addr_type dst_type;
+	/** @src_addr: [IN] Src data addr of DMA transfer. */
+	__u64 src_addr;
+	/** @dst_addr: [IN] Dst data addr of DMA transfer. */
+	__u64 dst_addr;
+	/** @src_offset: [IN] Src data address offset of DMA transfer. */
+	__u64 src_offset;
+	/** @dst_offset: [IN] Dst data address offset of DMA transfer. */
+	__u64 dst_offset;
+	/** @xfer_size: [IN] Size of DMA transfer. */
+	__u64 xfer_size;
+};
+
+struct drm_mtgpu_codec_data {
+	/**
+	 * @type: [IN] type of codec cmd.
+	 */
+	__u32 type;
+
+	/**
+	 * @length: [IN] length of codec cmd.
+	 */
+	__u32 length;
+
+	/**
+	 * @pad0: [IN] reserved for feature.
+	 */
+	__u32 pad0;
+
+	/**
+	 * @pad1: [IN] reserved for feature.
+	 */
+	__u32 pad1;
+
+	/**
+	 * @data: [IN] data addr of codec cmd.
+	 */
+	__u64 data;
+};
+
 struct drm_mtgpu_render_job_data {
 	/**
 	 * @frag_check_semaphores: [IN] check semaphore array for 3D
 	 */
 	__u64 frag_check_semaphores;
+
 	/**
 	 * @frag_check_semaphore_count: [IN] check semaphore count for 3D
 	 */
 	__u32 frag_check_semaphore_count;
+
 	/**
 	 * @pad: [IN] just for padding
 	 */
-	__u32 pad1;
+	__u32 pad1;	/* IGNORE ALIGN CHECK */
 
 	/**
 	 * @frag_update_semaphores: [IN] update semaphore array for 3D
 	 */
 	__u64 frag_update_semaphores;
+
 	/**
 	 * @frag_update_semaphore_count: [IN] update semaphore count for 3D
 	 */
 	__u32 frag_update_semaphore_count;
+
 	/**
 	 * @pad: [IN] just for padding
 	 */
-	__u32 pad2;
+	__u32 pad2;	/* IGNORE ALIGN CHECK */
 
 	/**
 	 * @frag_foreign_fence_fd: [IN] the fd of 3D foreign fence
 	 */
 	__s32 frag_foreign_fence_fd;
+
 	/**
 	 * @pad: [IN] just for padding
 	 */
-	__u32 pad3;
+	__u32 pad3;	/* IGNORE ALIGN CHECK */
 
 	/**
 	 * @frag_cmd_array: [IN] 3D dm command buffer array
 	 */
 	__u8 *frag_cmd_array;
+
 	/**
 	 * @frag_cmd_size: [IN] 3D dm command size
 	 */
 	__u32 frag_cmd_size;
+
 	/**
 	 * @frag_cmd_count: [IN] the count of 3D dm command
 	 */
@@ -804,47 +1066,71 @@ struct drm_mtgpu_render_job_data {
 	 * @frag_pr_cmd_array: [IN] 3D PR dm command buffer array
 	 */
 	__u8 *frag_pr_cmd_array;
+
 	/**
 	 * @frag_pr_cmd_size: [IN] 3D PR dm command size
 	 */
 	__u32 frag_pr_cmd_size;
+
 	/**
 	 * @pad: [IN] just for padding
 	 */
-	__u32 pad4;
+	__u32 pad4;	/* IGNORE ALIGN CHECK */
 
 	/**
 	 * @hwrt_dataset_handle: [IN] the handle of hardware render target
 	 */
 	__u64 hwrt_dataset_handle;
+
 	/**
 	 * @msaa_scratch_buffer_handle: [IN] the handle of msaa scratch buffer
 	 */
 	__u64 msaa_scratch_buffer_handle;
+
 	/**
 	 * @zs_buffer_handle: [IN] the handle of zs buffer
 	 */
 	__u64 zs_buffer_handle;
+
 	/**
 	 * @draw_calls_number: [IN] the count of draw call
 	 */
 	__u32 draw_calls_number;
+
 	/**
 	 * @indices_number: [IN] the count of index
 	 */
 	__u32 indices_number;
+
 	/**
 	 * @mrts_number: [IN] the count of mrts
 	 */
 	__u32 mrts_number;
+
 	/**
 	 * @render_target_size: [IN] the size of hardware render target
 	 */
 	__u32 render_target_size;
 
+	/**
+	 * @kick_geom: [IN] whether kick geometry
+	 */
 	__u32 kick_geom;
+
+	/**
+	 * @kick_pr: [IN] whether partial render
+	 * 		actually, if kick_frag is true, kick_pr will be true. 
+	 */
 	__u32 kick_pr;
+
+	/**
+	 * @kick_geom: [IN] whether kick geometry
+	 */
 	__u32 kick_frag;
+
+	/**
+	 * @abort: [IN] app uses it to destroy this surface when some config is wrong.
+	 */
 	__u32 abort;
 };
 
@@ -858,7 +1144,7 @@ struct drm_mtgpu_job_submit {
 		/**
 		 * @pad: [IN] just for padding
 		 */
-		__u32 pad1;
+		__u32 pad1;	/* IGNORE ALIGN CHECK */
 
 		/**
 		 * @ctx_handle: [IN] handle of job context.
@@ -876,7 +1162,7 @@ struct drm_mtgpu_job_submit {
 		/**
 		 * @pad: [IN] just for padding
 		 */
-		__u32 pad2;
+		__u32 pad2;	/* IGNORE ALIGN CHECK */
 
 		/**
 		 * @update_semaphores: [IN] update semaphore array
@@ -889,7 +1175,7 @@ struct drm_mtgpu_job_submit {
 		/**
 		 * @pad: [IN] just for padding
 		 */
-		__u32 pad3;
+		__u32 pad3;	/* IGNORE ALIGN CHECK */
 
 		/**
 		 * @check_fences: [IN] check fence array
@@ -919,7 +1205,7 @@ struct drm_mtgpu_job_submit {
 		/**
 		 * @pad: [IN] just for padding
 		 */
-		__u32 pad4;
+		__u32 pad4;	/* IGNORE ALIGN CHECK */
 
 		/**
 		 * @update_fence: [IN] update fence
@@ -928,7 +1214,7 @@ struct drm_mtgpu_job_submit {
 		/**
 		 * @update_fence_name: [IN] update fence name
 		 */
-		char *update_fence_name;
+		const char *update_fence_name;
 
 		/**
 		 * @dm_cmd_array: [IN] dm command buffer array
@@ -973,52 +1259,13 @@ enum drm_mtgpu_job_submission_type {
 	MTGPU_SUBMISSION_GPU_COMPUTE_STREAM,
 	MTGPU_SUBMISSION_GPU_UNIVERSAL,
 	MTGPU_SUBMISSION_DMA,
+	MTGPU_SUBMISSION_CODEC,
 	MTGPU_SUBMISSION_INVALID,
 };
 
-enum drm_mtgpu_job_append_type {
-	MTGPU_APPEND_TQ,
-	MTGPU_APPEND_CE,
-	MTGPU_APPEND_COMPUTE,
-	MTGPU_APPEND_INVALID,
-};
-
-struct drm_mtgpu_job_append {
-	/**
-	 * @ctx_handle: [IN] handle of job context.
-	 */
-	__u64 job_ctx_handle;
-
-	/**
-	 * @submission_uid: [IN] uniqueu id of stream submission
-	 */
-	__u64 submission_uid;
-
-	/**
-	 * @type: [IN] Type of the append job
-	 * This must be one of the values defined by &enum drm_mtgpu_job_append_type
-	 */
-	__u32 type;
-
-	/**
-	 * @submission_queue_id: [IN] id of submission queue
-	 */
-	__u32 submission_queue_id;
-};
-
 /* definition of drm_mtgpu_job_submit for ddk2.0 */
-struct drm_mtgpu_job_submit_v3 {
+struct drm_mtgpu_job_submit_v3 {	/* IGNORE STRUCT */
 	struct {
-		/**
-		 * @type: [IN] Type of the job submission
-		 * This must be one of the values defined by &enum drm_mtgpu_job_submission_type
-		 */
-		__u32 type;
-		/**
-		 * @pad: [IN] just for padding
-		 */
-		__u32 pad1;
-
 		/**
 		 * @ctx_handle: [IN] handle of job context.
 		 */
@@ -1033,9 +1280,9 @@ struct drm_mtgpu_job_submit_v3 {
 		 */
 		__u32 check_semaphore_count;
 		/**
-		 * @pad: [IN] just for padding
+		 * @pad: just for padding
 		 */
-		__u32 pad2;
+		__u32 pad1;	/* IGNORE ALIGN CHECK */
 
 		/**
 		 * @update_semaphores: [IN] handle array of update semaphores
@@ -1046,9 +1293,9 @@ struct drm_mtgpu_job_submit_v3 {
 		 */
 		__u32 update_semaphore_count;
 		/**
-		 * @pad: [IN] just for padding
+		 * @pad: just for padding
 		 */
-		__u32 pad3;
+		__u32 pad2;	/* IGNORE ALIGN CHECK */
 
 		/**
 		 * @submissions: [IN] va of this submission
@@ -1060,20 +1307,36 @@ struct drm_mtgpu_job_submit_v3 {
 		 */
 		__u32 submission_size;
 		/**
-		 * @submission_queue_id: [IN] id of submission queue
+		 * @pad: just for padding
 		 */
-		__u32 submission_queue_id;
+		__u32 pad3;	/* IGNORE ALIGN CHECK */
 	} in;
 
 	struct {
 		/**
-		 * @submission_uid: [OUT] unique id for this submission.
+		 * @data: [OUT] private data of the specific job type.
 		 */
-		__u64 submission_uid;
+		__u64 data;
 	} out;
 };
 
+struct drm_mtgpu_job_append { /* IGNORE STRUCT */
+	/**
+	 * @ctx_handle: [IN] handle of job context.
+	 */
+	__u64 job_ctx_handle;
+
+	/**
+	 * @stream_uid: [IN] uniqueu id of stream submission
+	 */
+	__u64 stream_uid;
+};
+
 #define MTGPU_DMA_TRANSFER_DIR BIT(0)
+#define MTGPU_DMA_TRANSFER_DEVICE_TO_HOST	0x0
+#define MTGPU_DMA_TRANSFER_HOST_TO_DEVICE	0x1
+#define MTGPU_DMA_TRANSFER_LOCAL_TO_PEER	0x4
+#define MTGPU_DMA_TRANSFER_PEER_TO_LOCAL	0x5
 
 struct drm_mtgpu_dma_transfer {
 	struct {
@@ -1127,7 +1390,7 @@ struct drm_mtgpu_object_destroy {
 	/**
 	 * @pad: [IN] just for padding
 	 */
-	__u32 pad;
+	__u32 pad;	/* IGNORE ALIGN CHECK */
 
 	/**
 	 * @handle: [IN] Handle for freelist to be destroyed.
@@ -1197,7 +1460,7 @@ struct drm_mtgpu_free_list_create_args {
 	__u64 free_list_state_dev_vaddr;
 
 	/**
-	 * @mem_ctx_handle: [IN] private data
+	 * @mem_ctx_handle: [IN] vm context handle
 	 */
 	__u64 mem_ctx_handle;
 
@@ -1275,7 +1538,6 @@ enum drm_mtgpu_object_type {
 	 * @DRM_MTGPU_OBJECT_TYPE_FREE_LIST: Free list object. Use &struct
 	 * drm_mtgpu_free_list_create_args for object creation arguments.
 	 */
-
 	DRM_MTGPU_OBJECT_TYPE_FREE_LIST = 0,
 	/**
 	 * @DRM_MTGPU_OBJECT_TYPE_HWRT_DATASET: HWRT data set. Use &struct
@@ -1311,7 +1573,7 @@ struct drm_mtgpu_object_create {
 		/**
 		 * @pad: [IN] just for padding
 		 */
-		__u32 pad;
+		__u32 pad;	/* IGNORE ALIGN CHECK */
 
 		/** @data: [IN] User pointer to arguments for specific object type . */
 		__u64 data;
@@ -1347,7 +1609,7 @@ struct drm_mtgpu_fence_to_fd {
 		/**
 		 * @pad: [IN] just for padding
 		 */
-		__u32 pad;
+		__u32 pad;	/* IGNORE ALIGN CHECK */
 	} out;
 };
 
@@ -1381,7 +1643,7 @@ struct drm_mtgpu_semaphore_create {
 		__u64 value_offset;
 
 		/**
-		 * @gpu_address: [OUT] gpu/firmware address of semaphore
+		 * @gpu_address: [OUT] gpu/firmware virtual address of semaphore
 		 */
 		__u64 gpu_address;
 	} out;
@@ -1413,9 +1675,9 @@ struct drm_mtgpu_semaphore_submit {
 	__u32 job_type;
 
 	/**
-	 * @sema_type: [IN] type of the task.
+	 * @sem_type: [IN] type of the task.
 	 */
-	__u32 sema_type;
+	__u32 sem_type;
 
 	/**
 	 * @semaphore: [IN] drm mtgpu semaphore.
@@ -1424,6 +1686,10 @@ struct drm_mtgpu_semaphore_submit {
 };
 
 struct drm_mtgpu_semaphore_cpu_signal {
+	/**
+	 * @vm_ctx_handle: [IN] handle of vm context.
+	 */
+	__u64 vm_ctx_handle;
 	/**
 	 * @semaphore: [IN] drm mtgpu semaphore.
 	 */
@@ -1447,9 +1713,69 @@ struct drm_mtgpu_semaphore_to_fd {
 		/**
 		 * @pad: [IN] just for padding
 		 */
-		__u32 pad;
+		__u32 pad;	/* IGNORE ALIGN CHECK */
 	} out;
 };
+
+struct drm_mtgpu_semaphore_from_fd {
+	struct {
+		/**
+		 * @fd: [IN] fd
+		 */
+		__s32 fd;
+
+		/**
+		 * @pad: [IN] just for padding
+		 */
+		__u32 pad;	/* IGNORE ALIGN CHECK */
+
+		/** @vm_ctx_handle: [IN] Handle of VM context. */
+		__u64 vm_ctx_handle;
+	} in;
+
+	struct {
+		/**
+		 * @semaphore: [OUT] drm mtgpu semaphore.
+		 */
+		struct drm_mtgpu_semaphore semaphore;
+
+		/**
+		 * @bo_handle: [OUT] bo handle of semaphore
+		 */
+		__u64 bo_handle;
+
+		/**
+		 * @value_offset: [OUT] value offset of semaphore
+		 */
+		__u64 value_offset;
+	} out;
+};
+
+struct drm_mtgpu_semaphore_wait {
+	struct {
+		/**
+		 * @semaphore: [IN] drm_mtgpu_semaphore array.
+		 */
+		__u64 semaphores;
+
+		/**
+		 * @semaphore_count: [IN] semaphore count
+		 */
+		__u32 count;
+
+		/**
+		 * @pad: [IN] just for padding
+		 */
+		__u32 pad;	/* IGNORE ALIGN CHECK */
+
+		/**
+		* @timeout_ns: [IN] maximum waiting time
+		*/
+		__u64 timeout_ns;
+	} in;
+};
+
+
 
 enum drm_mtgpu_cache_op_type {
 	DRM_MTGPU_CACHE_OP_LLC_PERSISTENCE_GET = 0,
@@ -1499,7 +1825,7 @@ struct drm_mtgpu_cache_op {
 		/**
 		 * @pad: [IN] just for padding
 		 */
-		__u32 pad;
+		__u32 pad;	/* IGNORE ALIGN CHECK */
 
 		/**
 		 * @data: [IN] User pointer to arguments for specific cache type
@@ -1532,7 +1858,7 @@ struct drm_mtgpu_transport_layer {
 		 */
 		__u32 type;
 
-		__u32 pad;
+		__u32 pad;	/* IGNORE ALIGN CHECK */
 
 		/** @data: [IN] Handle for tl stream descriptor . */
 		__u64 sd_handle;
@@ -1598,7 +1924,7 @@ struct drm_mtgpu_hwperf {
 		__u32 type;
 		__u32 toggle;
 		__u32 stream_id;
-		__u32 pad;
+		__u32 pad;	/* IGNORE ALIGN CHECK */
 		__u64 mask;
 	} in;
 
@@ -1617,14 +1943,105 @@ struct drm_mtgpu_notify_queue_update {
 	 * @type: [IN] Type of the job
 	 */
 	__u32 type;
+
 	/**
-	 * @pad: [IN] just for padding
+	 * @pad: just for padding
 	 */
-	__u32 pad;
+	__u32 pad;	/* IGNORE ALIGN CHECK */
 	/**
 	 * @ctx_handle: [IN] handle of job context.
 	 */
 	__u64 ctx_handle;
 };
 
+struct drm_mtgpu_codec_wait {
+	/**
+	* @bo_handle: [IN] bo handle of codec job buffer
+	*/
+	__u64 bo_handle;
+
+	/**
+	* @offset: [IN] offset of bo_handle addr
+	*/
+	__u32 offset;
+
+	/**
+	* @flag: [IN] flag for feature
+	*/
+	__u32 flag;
+
+	/**
+	* @timeout_ns: [IN] maximum waiting time
+	*/
+	__u64 timeout_ns;
+};
+
+struct drm_mtgpu_align_check {
+	/**
+	 * @check_data: [IN] address of data
+	 */
+	__u64 check_data;
+
+	/**
+	 * @check_size: [IN] size of check data.
+	 */
+	__u32 check_size;
+
+	/**
+	 * @pad: [IN] just for padding
+	 */
+	__u32 pad;	/* IGNORE ALIGN CHECK */
+};
+#include "mtgpu_aligncheck.h"
+
+struct drm_mtgpu_version_check {
+	struct {
+		/**
+		 * @version: [IN] major version of api
+		 */
+		__u32 api_major_version;
+
+		/**
+		 * @pad: [IN] count of the api that needs to be checked
+		 */
+		__u32 check_api_count;
+
+		/**
+		 * @check_data: [IN] version list in umd
+		 */
+		__u64 check_data;
+	} in;
+
+	struct {
+		/**
+		 * @result_data: [OUT] subset of version list
+		 */
+		__u64 result_data;
+
+		/**
+		 * @num_ioctls: [OUT] supporting api count
+		 */
+		__u32 supported_api_count;
+
+		/**
+		 * @pad: [OUT] just for padding
+		 */
+		__u32 pad;	/* IGNORE ALIGN CHECK */
+	} out;
+};
+
+#define MTGPU_API_NAME_LENGTH 64
+
+struct mtgpu_api_version {
+	char name[MTGPU_API_NAME_LENGTH];
+	int version_range[2];
+};
+
+#ifndef __KERNEL__
+#if defined(__cplusplus)
+}
+#endif
+#endif	/* __KERNEL__ */
+
 #endif /* __MTGPU_DRM_H__ */
+

@@ -19,6 +19,7 @@
 #include <drm/drm_edid.h>
 
 #include "mtgpu_drv.h"
+#include "mtgpu_dummy_common.h"
 
 static struct dummy_display_mode {
 	int hdisplay;
@@ -42,18 +43,23 @@ static struct dummy_display_mode {
 	{ 3840, 2160, 144 },
 };
 
-static int dummy_connector_add_extra_modes(struct drm_connector *connector)
+static int dummy_connector_add_extra_modes(struct drm_connector *connector,
+					   uint32_t max_hres,
+					   uint32_t max_vres)
 {
 	struct drm_device *dev = connector->dev;
 	struct drm_display_mode *mode;
 	int i, count = 0;
 
 	for (i = 0; i < ARRAY_SIZE(extra_modes); i++) {
-		mode = drm_cvt_mode(dev, extra_modes[i].hdisplay, extra_modes[i].vdisplay,
-				    extra_modes[i].vrefresh, false, false, false);
-		drm_mode_probed_add(connector, mode);
+		if ((max_hres >= extra_modes[i].hdisplay || max_vres >= extra_modes[i].vdisplay) &&
+		    ((max_hres * max_vres) >= (extra_modes[i].hdisplay * extra_modes[i].vdisplay))) {
+			mode = drm_cvt_mode(dev, extra_modes[i].hdisplay, extra_modes[i].vdisplay,
+					    extra_modes[i].vrefresh, false, false, false);
+			drm_mode_probed_add(connector, mode);
 
-		count++;
+			count++;
+		}
 	}
 
 	return count;
@@ -79,12 +85,24 @@ static void dummy_connector_set_preferred_mode(struct drm_connector *connector,
 	}
 }
 
+static int dummmy_connector_get_max_resolution(struct drm_connector *connector,
+						  uint32_t *max_hres,
+						  uint32_t *max_vres)
+{
+	struct mtgpu_dummy *dummy = connector_to_mtgpu_dummy(connector);
+
+	*max_hres = dummy->ctx.max_hres;
+	*max_vres = dummy->ctx.max_vres;
+	return 0;
+}
+
 static int dummy_connector_get_modes(struct drm_connector *connector)
 {
-	int count;
+	int count, max_hres, max_vres;
 
-	count = drm_add_modes_noedid(connector, 4096, 2160);
-	count += dummy_connector_add_extra_modes(connector);
+	dummmy_connector_get_max_resolution(connector, &max_hres, &max_vres);
+	count = drm_add_modes_noedid(connector, max_hres, max_vres);
+	count += dummy_connector_add_extra_modes(connector, max_hres, max_vres);
 
 	/* set dmt mode 1920x1080@60 preferred */
 	dummy_connector_set_preferred_mode(connector, 1920, 1080, 60);
@@ -94,13 +112,13 @@ static int dummy_connector_get_modes(struct drm_connector *connector)
 static void dummy_connector_destroy(struct drm_connector *connector)
 {
 	drm_connector_cleanup(connector);
-	kfree(connector);
+	os_destroy_drm_connector(connector);
 }
 
 static void dummy_encoder_destroy(struct drm_encoder *encoder)
 {
 	drm_encoder_cleanup(encoder);
-	kfree(encoder);
+	os_destroy_drm_encoder(encoder);
 }
 
 static enum drm_connector_status
@@ -135,21 +153,31 @@ static int dummy_connector_component_bind(struct device *dev,
 	struct drm_device *drm = data;
 	struct drm_connector *connector;
 	struct drm_encoder *encoder;
+	struct mtgpu_dummy_platform_data *pdata = dev_get_platdata(dev);
+	struct mtgpu_dummy *dummy;
 	int err;
 
-	encoder = kzalloc(sizeof(*encoder), GFP_KERNEL);
-	if (!encoder)
+	dummy = kzalloc(sizeof(*dummy), GFP_KERNEL);
+	if (!dummy)
 		return -ENOMEM;
+
+	dummy->dev = dev;
+
+	encoder = os_create_drm_encoder();
+	if (!encoder) {
+		err = -ENOMEM;
+		goto err_alloc_encoder;
+	}
 
 	err = drm_encoder_init(drm, encoder, &dummy_encoder_funcs,
 			       DRM_MODE_ENCODER_VIRTUAL, NULL);
 	if (err) {
 		DRM_ERROR("failed to init encoder\n");
-		goto err_encoder;
+		goto err_encoder_init;
 	}
 	encoder->possible_crtcs = 0x1;
 
-	connector = kzalloc(sizeof(*connector), GFP_KERNEL);
+	connector = os_create_drm_connector();
 	if (!connector) {
 		err = -ENOMEM;
 		goto err_alloc_connector;
@@ -166,16 +194,26 @@ static int dummy_connector_component_bind(struct device *dev,
 	}
 
 	DRM_INFO("dummy connector driver loaded successfully\n");
+	dummy->ctx.id = pdata->id;
+	dummy->ctx.max_hres = pdata->max_hres;
+	dummy->ctx.max_vres = pdata->max_vres;
+	dummy->connector = connector;
+	dummy->encoder = encoder;
+	os_set_drm_encoder_drvdata(dummy->encoder, dummy);
+	os_set_drm_connector_drvdata(dummy->connector, dummy);
+	dev_set_drvdata(dev, dummy);
 
 	return 0;
 
 err_attach:
 	drm_connector_cleanup(connector);
-	kfree(connector);
+	os_destroy_drm_connector(connector);
 err_alloc_connector:
 	drm_encoder_cleanup(encoder);
-err_encoder:
-	kfree(encoder);
+err_encoder_init:
+	os_destroy_drm_encoder(encoder);
+err_alloc_encoder:
+	kfree(dummy);
 
 	return err;
 }
@@ -183,7 +221,11 @@ err_encoder:
 static void dummy_connector_component_unbind(struct device *dev,
 					     struct device *master, void *data)
 {
+	struct mtgpu_dummy *dummy = dev_get_drvdata(dev);
 	DRM_INFO("unload dummy connector driver\n");
+	
+	if (dummy)
+		kfree(dummy);	
 }
 
 static const struct component_ops dummy_connector_component_ops = {

@@ -29,23 +29,14 @@ typedef struct wait_queue_head wait_queue_head_t;
 
 struct hdmi_codec_params;
 
-enum dpcd_phy_test_pattern {
-	PHY_TEST_PATTERN_NONE = 0,
-	PHY_TEST_PATTERN_D10_2,
-	PHY_TEST_PATTERN_SYMBOL_ERROR,
-	PHY_TEST_PATTERN_PRBS7,
-	PHY_TEST_PATTERN_80BIT_CUSTOM,/* For DP1.2 only */
-	PHY_TEST_PATTERN_CP2520_1,
-	PHY_TEST_PATTERN_CP2520_2,
-	PHY_TEST_PATTERN_CP2520_3, /* same as TPS4 */
-};
-
 /* the monitors which need patch like skip TPS4
  * as sudi do not support it when use DP1.4;
  * we can expand these array for other patchs.
  */
 enum monitor_patch_type {
-	PATCH_SKIP_TPS4_FOR_TRAINING = 0x01,
+	PATCH_TYPE_INVALID = 0x00,
+	PATCH_SKIP_TPS4_FOR_TRAINING,
+	PATCH_FORCE_TRAINING,
 };
 
 struct monitor_patch {
@@ -61,10 +52,13 @@ struct mtgpu_dp_debugfs {
 };
 
 struct mtgpu_dp_dsc_param {
-	u8 dsc_dpcd[DP_DSC_RECEIVER_CAP_SIZE];
 	bool dsc_capable;
 	bool sink_dsc_support;
 	bool dsc_en;
+	bool block_pred_enable;
+	u8 version_major;
+	u8 version_minor;
+	u8 line_buf_depth;
 	u32 compressed_bpp;
 	u32 slice_width;
 	u32 slice_height;
@@ -93,6 +87,7 @@ struct mtgpu_dp_ctx {
 	u8 bpp;
 	u32 event_flags;
 	u32 pixel_mode;
+	u32 aud_config1;
 	wait_queue_head_t *waitq;
 	void *private;
 	struct mtgpu_dp_dsc_param dsc_param;
@@ -107,7 +102,7 @@ struct mtgpu_dp_ops {
 	u32 (*isr)(struct mtgpu_dp_ctx *ctx);
 	void (*training_pattern)(struct mtgpu_dp_ctx *ctx, u8 patten);
 	void (*power_up)(struct mtgpu_dp_ctx *ctx);
-	void (*qual_pattern)(struct mtgpu_dp_ctx *ctx, u8 pattern, u8 *data);
+	void (*qual_pattern)(struct mtgpu_dp_ctx *ctx, u8 pattern, u8 *data, u8 size);
 	void (*vswing_preemph)(struct mtgpu_dp_ctx *ctx, u8 vswing, u8 preemph);
 	void (*enhanced_frame)(struct mtgpu_dp_ctx *ctx, bool enable);
 	void (*stream_config)(struct mtgpu_dp_ctx *ctx);
@@ -127,12 +122,13 @@ struct mtgpu_dp_ops {
 	void (*dsc_pps_set)(struct mtgpu_dp_ctx *ctx);
 	void (*dsc_disable)(struct mtgpu_dp_ctx *ctx);
 	void (*dsc_config)(struct mtgpu_dp_ctx *ctx);
+	void (*hpd_enable)(struct mtgpu_dp_ctx *ctx, bool enable);
 };
 
 struct mtgpu_dp_glb_ops {
 	void (*init)(struct mtgpu_dp_ctx *ctx);
 	void (*reset)(struct mtgpu_dp_ctx *ctx);
-	bool (*monitor_patch_check)(u8 *vendor, u32 product, u32 type);
+	u32 (*get_monitor_patch)(struct monitor_patch **patches);
 };
 
 struct mtgpu_dp_chip {
@@ -168,6 +164,10 @@ struct mtgpu_dp {
 	bool audio_enabled;
 	bool encoder_enable_failed;
 
+	struct drm_property *prop_fixed_edid;
+	bool fixed_edid;
+	u8 fixed_inited;
+
 	/* dp debugfs */
 	struct mtgpu_dp_debugfs debugfs;
 };
@@ -178,7 +178,7 @@ void dptx_reg_write(struct mtgpu_dp_ctx *ctx, int offset, u32 val)
 	os_writel(val, ctx->regs + offset);
 	/* dummy read to make post write take effect */
 	os_readl(ctx->regs + offset);
-	DP_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
+	DP_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
 }
 
 static inline
@@ -186,7 +186,7 @@ u32 dptx_reg_read(struct mtgpu_dp_ctx *ctx, int offset)
 {
 	u32 val = os_readl(ctx->regs + offset);
 
-	DP_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
+	DP_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
 	return val;
 }
 
@@ -196,7 +196,7 @@ void dptx_tzc_reg_write(struct mtgpu_dp_ctx *ctx, int offset, u32 val)
 	os_writel(val, ctx->tzc_regs + offset);
 	/* dummy read to make post write take effect */
 	os_readl(ctx->tzc_regs + offset);
-	DP_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
+	DP_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
 }
 
 static inline
@@ -205,7 +205,7 @@ void dptx_amt_reg_write(struct mtgpu_dp_ctx *ctx, int offset, u32 val)
 	os_writel(val, ctx->amt_regs + offset);
 	/* dummy read to make post write take effect */
 	os_readl(ctx->amt_regs + offset);
-	DP_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
+	DP_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
 }
 
 static inline
@@ -214,7 +214,7 @@ void dptx_glb_reg_write(struct mtgpu_dp_ctx *ctx, int offset, u32 val)
 	os_writel(val, ctx->glb_regs + offset);
 	/* dummy read to make post write take effect */
 	os_readl(ctx->glb_regs + offset);
-	GLB_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
+	GLB_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
 }
 
 static inline
@@ -222,7 +222,7 @@ u32 dptx_glb_reg_read(struct mtgpu_dp_ctx *ctx, int offset)
 {
 	u32 val = os_readl(ctx->glb_regs + offset);
 
-	GLB_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
+	GLB_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
 	return val;
 }
 
@@ -231,7 +231,7 @@ static inline void dptx_cust_reg_write(struct mtgpu_dp_ctx *ctx, int offset, u32
 	os_writel(val, ctx->cust_regs + offset);
 	os_readl(ctx->cust_regs + offset);
 
-	DP_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
+	DP_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
 }
 
 static inline u32 dptx_cust_reg_read(struct mtgpu_dp_ctx *ctx, int offset)
@@ -240,7 +240,7 @@ static inline u32 dptx_cust_reg_read(struct mtgpu_dp_ctx *ctx, int offset)
 
 	val = os_readl(ctx->cust_regs + offset);
 
-	DP_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
+	DP_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
 
 	return val;
 }
@@ -248,6 +248,7 @@ static inline u32 dptx_cust_reg_read(struct mtgpu_dp_ctx *ctx, int offset)
 extern struct mtgpu_dp_chip mtgpu_dp_chip_sudi;
 extern struct mtgpu_dp_chip mtgpu_dp_chip_qy1;
 extern struct mtgpu_dp_chip mtgpu_dp_chip_qy2;
+extern struct mtgpu_dp_ops  mtgpu_dp_fec;
 
 static inline
 struct mtgpu_dp *encoder_to_mtgpu_dp(struct drm_encoder *encoder)
@@ -295,5 +296,6 @@ int  mtgpu_dp_kernel_struct_create(struct mtgpu_dp *dp);
 void mtgpu_dp_kernel_struct_destroy(struct mtgpu_dp *dp);
 void mtgpu_dp_dsc_discover(struct mtgpu_dp *dp);
 void mtgpu_dp_dsp_pps_pack(struct mtgpu_dp *dp, u32 *pps_data);
+int mtgpu_dp_update_fixed_edid_flag(struct mtgpu_dp *dp, bool enable);
 
 #endif /* _MTGPU_DP_COMMON_H_ */

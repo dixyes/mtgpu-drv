@@ -11,6 +11,7 @@
 #include "mtgpu_irq.h"
 
 #define DRIVER_NAME		"mtgpu"
+#define DRIVER_NAME_IGPU	"mt-igpu"
 #define DEV_UUID_LEN		16
 
 #define GPU_SOC_GEN1		1
@@ -112,6 +113,12 @@ struct mtgpu_dispc_platform_data {
 	u8 soc_gen;
 };
 
+struct mtgpu_dummy_platform_data {
+	u8 id;
+	u16 max_hres;
+	u16 max_vres;
+};
+
 struct mtgpu_dp_platform_data {
 	u8 id;
 	u16 max_hres;
@@ -157,6 +164,7 @@ extern const struct proc_ops mtlink_irqcounter_enable_proc_ops;
 extern const struct proc_ops mtlink_irqcounter_counter_proc_ops;
 extern const struct proc_ops mtlink_monitor_start_proc_ops;
 extern const struct proc_ops mtlink_monitor_counter_proc_ops;
+extern const struct proc_ops mtlink_warm_rest_proc_ops;
 extern const struct proc_ops process_util_proc_ops;
 extern const struct proc_ops event_message_proc_ops;
 #else
@@ -171,6 +179,7 @@ extern const struct file_operations mtlink_irqcounter_enable_proc_ops;
 extern const struct file_operations mtlink_irqcounter_counter_proc_ops;
 extern const struct file_operations mtlink_monitor_start_proc_ops;
 extern const struct file_operations mtlink_monitor_counter_proc_ops;
+extern const struct file_operations mtlink_warm_rest_proc_ops;
 extern const struct file_operations process_util_proc_ops;
 extern const struct file_operations event_message_proc_ops;
 #endif
@@ -185,5 +194,7 @@ u64 mtgpu_get_vram_size(struct mtgpu_device *mtdev);
 bool mtgpu_sriov_is_supported(struct pci_dev *pdev);
 bool mtgpu_sriov_enabled(struct pci_dev *pdev);
 bool mtgpu_pstate_is_enabled(void);
+int mtgpu_ipc_init(void);
+void mtgpu_ipc_exit(void);
 
 #endif /* __MTGPU_DRV_H__ */

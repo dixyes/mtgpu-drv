@@ -67,6 +67,7 @@ typedef struct _PVRSRV_POWER_DEV_TAG_ *PPVRSRV_POWER_DEV;
 struct SYNC_RECORD;
 
 struct _CONNECTION_DATA_;
+struct mtgpu_syncobj_context;
 
 /*************************************************************************/ /*!
  @Function      AllocUFOBlockCallback
@@ -196,11 +197,13 @@ struct _pvr_ion_stats_state_;
 typedef struct _PVRSRV_DEVICE_DEBUG_INFO_
 {
 	DI_GROUP *psGroup;
+	DI_ENTRY *psAPMEnableEntry;
 	DI_ENTRY *psDumpDebugEntry;
 	DI_ENTRY *psPowerModeEntry;
 	DI_ENTRY *psHardwareResetEntry;
 #ifdef SUPPORT_RGX
 	DI_ENTRY *psFWTraceEntry;
+	DI_ENTRY *psFWFECTraceEntry;
 	DI_ENTRY *psFWTraceStreamingEntry;
 #ifdef SUPPORT_FIRMWARE_GCOV
 	DI_ENTRY *psFWGCOVEntry;
@@ -469,8 +472,9 @@ typedef struct _PVRSRV_DEVICE_NODE_
 	POS_SPINLOCK			hSyncCheckpointListLock; /*!< Protects sSyncCheckpointSyncsList */
 	DLLIST_NODE				sSyncCheckpointSyncsList;
 
-	PSYNC_CHECKPOINT_CONTEXT hSyncCheckpointContext;
-	PSYNC_PRIM_CONTEXT		hSyncPrimContext;
+	PSYNC_CHECKPOINT_CONTEXT		hSyncCheckpointContext;
+	PSYNC_PRIM_CONTEXT			hSyncPrimContext;
+	struct mtgpu_syncobj_context		*hSyncObjContext;
 
 	/* With this sync-prim we make sure the MMU cache is flushed
 	 * before we free the page table memory */
@@ -557,9 +561,15 @@ typedef struct _PVRSRV_DEVICE_NODE_
 	IMG_UINT32 ui32OldTracePtr[RGXFW_THREAD_NUM];
 #endif
 
-	IMG_UINT64 ui64IovaAllocatedSize;
-	IMG_UINT32 ui32DmaMapTimes;
-	IMG_UINT32 ui32DmaUnmapTimes;
+	ATOMIC64_T iIovaAllocatedSize;
+	ATOMIC64_T iDmaMapTimes;
+	ATOMIC64_T iDmaUnmapTimes;
+
+	/* Only used for linux guest hwr */
+	IMG_UINT32 ui32GuestInHwr;
+
+	/* Only for mtgpu-next */
+	PMR *psYuvCscTable;
 } PVRSRV_DEVICE_NODE;
 
 /*

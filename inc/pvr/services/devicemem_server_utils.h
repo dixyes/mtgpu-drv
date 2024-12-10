@@ -144,6 +144,12 @@ static INLINE PVRSRV_ERROR DevmemDeviceCacheMode(PVRSRV_DEVICE_NODE *psDeviceNod
 			{
 				ui32Ret = PVRSRV_MEMALLOCFLAG_GPU_UNCACHED_WC;
 			}
+			else if (PVRSRVSystemSnoopingOfCPUCache(psDeviceNode->psDevConfig) &&
+				 !PVRSRVSystemSnoopingOfDeviceCache(psDeviceNode->psDevConfig))
+			{
+				/* The system just supports gpu to snoop cpu cache. */
+				ui32Ret = PVRSRV_MEMALLOCFLAG_GPU_UNCACHED_WC;
+			}
 			else
 			{
 				ui32Ret = PVRSRV_MEMALLOCFLAG_GPU_CACHED;

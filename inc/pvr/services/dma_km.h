@@ -54,6 +54,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pmr.h"
 #include "pvrsrv_sync_km.h"
 #include "connection_server.h"
+#include "mtgpu_dma.h"
 
 struct PageArrayPAInfo {
 	IMG_UINT64 *pui64PageDevPAddr;
@@ -107,5 +108,7 @@ PVRSRV_ERROR MTDmaTransferP2P(CONNECTION_DATA *psConnection,
 
 PVRSRV_ERROR PVRSRVInitialiseDMA(PVRSRV_DEVICE_NODE *psDeviceNode);
 void PVRSRVDeInitialiseDMA(PVRSRV_DEVICE_NODE *psDeviceNode);
+IMG_BOOL DmaXferBlockCanMerge(struct dma_xfer_block *psPreBlock,
+			      struct dma_xfer_block *psBlock);
 
 #endif /* DMA_KM_H */

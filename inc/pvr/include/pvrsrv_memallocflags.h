@@ -84,6 +84,10 @@ typedef IMG_UINT64 PVRSRV_MEMALLOCFLAGS_T;
  * | 15    | 17  | 18                | 19              | 20               |
  * | Defer | SVM | Sparse-Dummy-Page | CPU-Cache-Clean | Sparse-Zero-Page |
  *
+ * --- Memory Alloc FLAGS 21 (1-bits) ---
+ * | 21                              |
+ * | Alloc non-contiguous Vram flags |
+ *
  * --- DEV CONTROL FLAGS  26..27 (2-bits) ---
  * | 26-27        |
  * | Device-Flags |
@@ -101,8 +105,8 @@ typedef IMG_UINT64 PVRSRV_MEMALLOCFLAGS_T;
  * | Shared-buffer  |
  *
  * --- Memory Alloc FLAGS ---
- * | 36             | 37                | 38                |
- * | Vram Only      | No MT-Link Access | Append Dummy Page |
+ * | 36             | 37                | 38                | 39          |
+ * | Vram Only      | No MT-Link Access | Append Dummy Page | Numa Enable |
  *
  * --- SEGMENT HINTS ---
  * |  53 54 55  |
@@ -603,6 +607,12 @@ typedef IMG_UINT64 PVRSRV_MEMALLOCFLAGS_T;
 #define PVRSRV_IS_SPARSE_ZERO_BACKING_REQUIRED(uiFlags)		(((uiFlags) & \
 			PVRSRV_MEMALLOCFLAG_SPARSE_ZERO_BACKING) == PVRSRV_MEMALLOCFLAG_SPARSE_ZERO_BACKING)
 
+
+/*!
+  The falg indicates that non-contiguous VRAM can be allocated
+ */
+#define PVRSRV_MEMALLOCFLAG_NO_CONTIGUOUS           (1ULL << 21)
+
 /*!
   @Description    Macro extracting the OS id from a variable containing memalloc flags
   @Input uiFlags  Allocation flags
@@ -665,6 +675,14 @@ typedef IMG_UINT64 PVRSRV_MEMALLOCFLAGS_T;
 
 #define PVRSRV_CHECK_APPEND_DUMMY_PAGE_REQUIRED(uiFlags) \
 	(((uiFlags) & PVRSRV_MEMALLOCFLAG_APPEND_DUMMY_PAGE) != 0U)
+
+/*!
+  @Description Flag to alloc mem on nearby numa node.
+ */
+#define PVRSRV_MEMALLOCFLAG_NUMA_ENABLE				(1ULL<<39)
+
+#define PVRSRV_CHECK_NUMA_ENABLE(uiFlags) \
+  (((uiFlags) & PVRSRV_MEMALLOCFLAG_NUMA_ENABLE) != 0U)
 
 /*
  *
@@ -806,6 +824,24 @@ typedef IMG_UINT64 PVRSRV_MEMALLOCFLAGS_T;
 
 #define PVRSRV_MEMALLOCFLAG_VAL_SHARED_BUFFER           (1ULL<<35)
 #define PVRSRV_CHECK_SHARED_BUFFER(uiFlags)             (((uiFlags) & PVRSRV_MEMALLOCFLAG_VAL_SHARED_BUFFER) != 0U)
+
+/*
+ *
+ *  **********************************************************
+ *  *                                                        *
+ *  *                     Usage flags                        *
+ *  *                                                        *
+ *  **********************************************************
+ *
+ * (Bit 40)
+ *
+ */
+
+/*!
+    PVRSRV_USAGE_DISPLAY
+ */
+
+#define PVRSRV_USAGE_DISPLAY                            (1ULL<<40)
 
 /*
  *

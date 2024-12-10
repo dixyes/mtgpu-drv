@@ -43,6 +43,8 @@ struct wait_queue_head;
 struct mtgpu_device;
 struct mutex;
 struct mtgpu_event_report;
+struct file;
+struct list_head;
 
 enum error_report_index {
 	ERROR_REPORT_NO_ERROR,
@@ -112,6 +114,13 @@ enum mtgpu_module_id {
 	MTGPU_MODULE_META,
 	MTGPU_MODULE_DM,
 	MTGPU_MODULE_DDR,
+	MTGPU_MODULE_DMA,
+	MTGPU_MODULE_CE,
+	MTGPU_MODULE_SMC,
+	MTGPU_MODULE_FEC,
+	MTGPU_MODULE_GPU,
+	MTGPU_MODULE_VPU,
+	MTGPU_MODULE_DISPLAY,
 
 	MTGPU_MODULE_MMU,
 	MTGPU_MODULE_RESOURCE,
@@ -121,6 +130,11 @@ enum mtgpu_module_id {
 	MTGPU_MODULE_GP_CMD,
 	MTGPU_MODULE_KCCB,
 	MTGPU_MODULE_CLEANUP_THREAD,
+};
+
+struct mtgpu_file_node {
+	struct file *file;
+	struct list_head node;
 };
 
 /* Records the relationship between the specified module_id, error_report_tag,
@@ -167,8 +181,10 @@ struct mtgpu_event_report {
 	/* the index represents the next index of mtgpu_event to be written */
 	atomic_t index;
 	struct mtgpu_event_report *next;
-	struct mutex *event_msg_lock;
 	event_notify event_notify;
+	/* Chain link to access all files for this device event_report */
+	struct list_head file_list;
+	struct mutex *file_lock;
 };
 
 /**************************************************************************/ /*!

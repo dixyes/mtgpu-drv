@@ -20,7 +20,6 @@
 #include "mtsnd_debug.h"
 #include "mtsnd_codec.h"
 #include "mtsnd_pcm_hw.h"
-#include "mtgpu_ipc.h"
 #include "eld.h"
 
 #define MT_HW_BUFBYTE_MAX	(48 << 10)
@@ -226,7 +225,10 @@ static int mtsnd_pcm_prepare(struct snd_pcm_substream *substream)
 				ret = codec->hcd->ops->hw_params(codec->dev, codec->hcd->data,
 								codec->daifmt, codec->params);
 				update_codec_state3(codec, ret);
-			}
+				if (ret)
+					SND_DEBUG("PCM%d prepare codec%d hw_params failed %d\n", pcm_idx, i, ret);
+			} else
+				SND_DEBUG("PCM%d prepare codec%d hw_params not called\n", pcm_idx, i);
 		}
 	}
 
@@ -245,10 +247,16 @@ static int mtsnd_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 		mtsnd_snd_start(chip, pcm_idx);
 		/* enable the monitor audio */
 		for (i = 0; i < get_codec_count(chip); i++) {
+			int ret = -1;
 			struct mtsnd_codec *codec = chip->pcm[pcm_idx].codec[i];
 
-			if (codec && codec_safety_check_start(chip, i) && codec->hcd->ops->audio_startup)
-				codec->hcd->ops->audio_startup(codec->dev, codec->hcd->data);
+			if (codec && codec_safety_check_start(chip, i) && codec->hcd->ops->audio_startup) {
+				ret = codec->hcd->ops->audio_startup(codec->dev, codec->hcd->data);
+				if (ret)
+					SND_DEBUG("PCM%d trigger start codec%d audio_startup failed %d\n", pcm_idx, i, ret);
+			}
+			else
+				SND_DEBUG("PCM%d trigger start codec%d audio_startup not called\n", pcm_idx, i);
 		}
 		dev_info(chip->card->dev, "PCM%d trigger start\n", pcm_idx);
 		break;
@@ -265,6 +273,8 @@ static int mtsnd_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 			if (codec && codec_safety_check_stop(chip, i) &&
 			    codec->hcd->ops->audio_shutdown)
 				codec->hcd->ops->audio_shutdown(codec->dev, codec->hcd->data);
+			else
+				SND_DEBUG("PCM%d trigger stop codec%d audio_shutdown not called\n", pcm_idx, i);
 		}
 		mtsnd_snd_stop(chip, pcm_idx);
 		dev_info(chip->card->dev, "PCM%d trigger stop/suspend %d\n", pcm_idx, cmd);
@@ -332,8 +342,7 @@ int mtsnd_create_pcm(struct mtsnd_chip *chip)
 			dev_err(chip->card->dev, "Error snd_pcm_new\n");
 			return err;
 		}
-		chip->pcm[i].index = i;
-		chip->pcm[i].private_data = chip;
+
 		strcpy(pcm->name, "Display");
 		pcm->private_data = &chip->pcm[i];
 
@@ -363,10 +372,20 @@ int mtsnd_create_pcm(struct mtsnd_chip *chip)
 
 void mtsnd_handle_pcm(struct mtsnd_pcm *pcm)
 {
-	u32 pcm_idx = snd_pcm_substream_get_index(pcm->substream);
-	struct mtsnd_chip *chip = snd_pcm_substream_get_chip(pcm->substream);
-	u32 handle = mtsnd_snd_irq_handle(chip, pcm_idx);
+	u32 pcm_idx;
+	struct mtsnd_chip *chip;
+	u32 handle;
 
+	if (!pcm)
+		pr_err("mtsnd irq pcm NULL");
+
+	pcm_idx = pcm->index;
+	chip = (struct mtsnd_chip *)pcm->private_data;
+
+	if (!chip)
+		pr_err("mtsnd irq chip NULL, pcm:%llx", (u64)pcm);
+
+	handle = mtsnd_snd_irq_handle(chip, pcm_idx);
 	if (!chip->pcm[pcm_idx].pcm_running)
 		return;
 

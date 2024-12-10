@@ -201,7 +201,7 @@ void mtgpu_unregister_video_device(struct mtgpu_device *mtdev);
 int mtgpu_register_gpu_device_with_coreid(struct mtgpu_device *mtdev, int logic_core_id,
 					  int physical_core_id);
 void mtgpu_unregister_gpu_device(struct mtgpu_device *mtdev);
-void mtgpu_register_dummy_device_with_core_id(struct mtgpu_device *mtdev, u8 coreid);
+int mtgpu_register_dummy_device_with_core_id(struct mtgpu_device *mtdev, u8 coreid);
 void mtgpu_register_drm_device_with_core_id(struct mtgpu_device *mtdev, u8 coreid);
 void mtgpu_unregister_drm_device(struct mtgpu_device *mtdev);
 void mtgpu_unregister_display_device(struct mtgpu_device *mtdev);
@@ -217,5 +217,7 @@ void mtgpu_gpu_timer_disable(struct mtgpu_device *mtdev);
 int mtgpu_guest_get_vpu_info(struct mtgpu_device *mtdev, struct mtgpu_mdev_vpu_info *vpu_info);
 int mtgpu_guest_notify_host_vpu(struct device *dev);
 struct platform_device *mtgpu_get_first_valid_drm_device(struct mtgpu_device *mtdev);
-
+void mtgpu_set_gpu_page_size(struct device *dev, u32 page_size);
+void mtgpu_host_notify_linux_guest_start_hwr(struct device *dev, u32 mpc_id);
+void mtgpu_host_notify_linux_guest_end_hwr(struct device *dev, u32 mpc_id);
 #endif /* __MTGPU_DEVICE_H__ */

@@ -42,6 +42,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
 #include <linux/sched.h>
+#include <linux/pid.h>
 #include <linux/moduleparam.h>
 
 #include "img_types.h"
@@ -99,7 +100,7 @@ AddToBufferCCB(const IMG_CHAR *pszFileName, IMG_UINT32 ui32Line,
 
 	do_gettimeofday(&gsDebugCCB[giOffset].sTimeVal);
 
-	OSStringLCopy(gsDebugCCB[giOffset].pcMesg, szBuffer,
+	OSStringSCopy(gsDebugCCB[giOffset].pcMesg, szBuffer,
 	              PVRSRV_DEBUG_CCB_MESG_MAX);
 
 	giOffset = (giOffset + 1) % PVRSRV_DEBUG_CCB_MAX;
@@ -372,34 +373,34 @@ void PVRSRVDebugPrintf(IMG_UINT32 ui32DebugLevel,
 	{
 		case DBGPRIV_FATAL:
 		{
-			OSStringLCopy(pszBuf, "MTGPU:(Fatal): ", ui32BufSiz);
+			OSStringSCopy(pszBuf, "MTGPU:(Fatal): ", ui32BufSiz);
 			PVRSRV_REPORT_ERROR();
 			break;
 		}
 		case DBGPRIV_ERROR:
 		{
-			OSStringLCopy(pszBuf, "MTGPU:(Error): ", ui32BufSiz);
+			OSStringSCopy(pszBuf, "MTGPU:(Error): ", ui32BufSiz);
 			PVRSRV_REPORT_ERROR();
 			break;
 		}
 		case DBGPRIV_WARNING:
 		{
-			OSStringLCopy(pszBuf, "MTGPU:(Warn):  ", ui32BufSiz);
+			OSStringSCopy(pszBuf, "MTGPU:(Warn):  ", ui32BufSiz);
 			break;
 		}
 		case DBGPRIV_MESSAGE:
 		{
-			OSStringLCopy(pszBuf, "MTGPU:(Mesg):  ", ui32BufSiz);
+			OSStringSCopy(pszBuf, "MTGPU:(Mesg):  ", ui32BufSiz);
 			break;
 		}
 		case DBGPRIV_VERBOSE:
 		{
-			OSStringLCopy(pszBuf, "MTGPU:(Verb):  ", ui32BufSiz);
+			OSStringSCopy(pszBuf, "MTGPU:(Verb):  ", ui32BufSiz);
 			break;
 		}
 		case DBGPRIV_DEBUG:
 		{
-			OSStringLCopy(pszBuf, "MTGPU:(Debug): ", ui32BufSiz);
+			OSStringSCopy(pszBuf, "MTGPU:(Debug): ", ui32BufSiz);
 			break;
 		}
 		case DBGPRIV_CALLTRACE:
@@ -407,7 +408,7 @@ void PVRSRVDebugPrintf(IMG_UINT32 ui32DebugLevel,
 		case DBGPRIV_BUFFERED:
 		default:
 		{
-			OSStringLCopy(pszBuf, "MTGPU: ", ui32BufSiz);
+			OSStringSCopy(pszBuf, "MTGPU: ", ui32BufSiz);
 			break;
 		}
 	}

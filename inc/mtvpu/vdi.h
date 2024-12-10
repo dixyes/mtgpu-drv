@@ -15,13 +15,19 @@
 
 #include "vputypes.h"
 #include "vpuconfig.h"
-
+#include "vpudbg.h"
 /************************************************************************/
 /* COMMON REGISTERS                                                     */
 /************************************************************************/
 #define VPU_PRODUCT_NAME_REGISTER                 (0x1040)
 #define VPU_PRODUCT_CODE_REGISTER                 (0x1044)
+#define VPU_PRODUCT_NAME                          (0x090)
+#define VPU_PRODUCT_VERSION                       (0x094)
 #define VDI_128BIT_ENDIAN_MASK                    (0xf)
+#define VDI_LOW_16BIT_MASK                        (0xFFFF)
+#define VDI_HIGH_16BIT_MASK                       (0xFFFF0000)
+#define VDI_LOW_32BIT_MASK                        (0xFFFFFFFFULL)
+#define VDI_HIGH_32BIT_MASK                       (0xFFFFFFFF00000000ULL)
 
 #define VpuWriteReg(CORE, ADDR, DATA)              vdi_write_register(CORE, (Uint32)(ADDR), (Uint32)(DATA))
 #define VpuReadReg(CORE, ADDR)                     vdi_read_register(CORE, (Uint32)(ADDR))
@@ -29,6 +35,10 @@
         vdi_write_memory(CORE, VPU_BUFFER, OFFSET, DATA, LEN, ENDIAN)
 #define VpuReadMem(CORE, VPU_BUFFER, OFFSET, DATA, LEN, ENDIAN)     \
         vdi_read_memory(CORE, VPU_BUFFER, OFFSET, DATA, LEN, ENDIAN)
+
+#define GET_HIGH_16BITS(addr) ((unsigned short)(((unsigned int)(addr) >> 16) & 0xFFFF))
+#define GET_LOW_16BITS(addr) ((unsigned short)((unsigned int)(addr) & 0xFFFF))
+#define ABS_DIFF(x, y) ((x) > (y) ? (x) - (y) : (y) - (x))
 
 typedef enum {
     VDI_LITTLE_ENDIAN = 0,      /* 64bit LE */
@@ -77,8 +87,20 @@ typedef enum {
     ENC_DEF_CDF   = 58,
     ENC_SUBSAMBUF = 59,
     ENC_ETC       = 60,
+    FW_BUFFER     = 61,
     MEM_TYPE_MAX
 } MemTypes;
+
+enum {
+	VDI_TYPE_SUDI,
+	VDI_TYPE_QUYU1,
+	VDI_TYPE_QUYU2,
+	VDI_TYPE_QUYU1_GUEST,
+	VDI_TYPE_QUYU2_GUEST,
+	VDI_TYPE_APOLLO,
+	VDI_TYPE_PIHU1,
+	VDI_TYPE_PIHU2,
+};
 
 typedef struct vpu_buffer {
     Uint32 size;
@@ -101,7 +123,8 @@ typedef struct vpu_instance_pool {
 #if defined (__cplusplus)
 extern "C" {
 #endif
-void vdi_open_prepare(Uint32 coreIdx, Uint32 instIdx, int drm_id, int pool_id);
+void vdi_open_prepare(Uint32 coreIdx, Uint32 instIdx, int drm_id, int pool_id, int vcore_base,
+        		      void *mmu_ctx);
 int vdi_init(Uint32 coreIdx);
 int vdi_release(Uint32 coreIdx);
 
@@ -117,6 +140,8 @@ vpu_instance_pool_t *vdi_get_instance_pool(Uint32 coreIdx);
 int vdi_open_instance(Uint32 coreIdx, Uint32 instIdx);
 int vdi_close_instance(Uint32 coreIdx, Uint32 instIdx);
 
+Uint32 vdi_get_chip_type(Uint32 coreIdx);
+
 void vdi_write_register(Uint32 coreIdx, Uint32 addr, Uint32 data);
 Uint32 vdi_read_register(Uint32 coreIdx, Uint32 addr);
 void vdi_fio_write_register(Uint32 coreIdx, Uint32 addr, Uint32 data);
@@ -126,7 +151,7 @@ int vdi_convert_endian(Uint32 coreIdx, int endian);
 int vdi_write_memory(Uint32 coreIdx, vpu_buffer_t *vb, Uint32 offset,  Uint8 *data, int len, int endian);
 int vdi_read_memory(Uint32 coreIdx, vpu_buffer_t *vb, Uint32 offset, Uint8 *data, int len, int endian);
 int vdi_clear_memory(Uint32 coreIdx, vpu_buffer_t *vb);
-void vdi_reset_memory(vpu_buffer_t *vb);
+void vdi_reset_memory(Uint32 coreIdx, vpu_buffer_t *vb);
 
 int vdi_get_common_memory(Uint32 coreIdx, vpu_buffer_t *vb);
 int vdi_allocate_dma_memory(Uint32 coreIdx, vpu_buffer_t *vb, int memTypes, Uint32 instIdx);
@@ -151,6 +176,14 @@ int vdi_wait_bus_busy(Uint32 coreIdx, int timeout, Uint32 busy_flag);
 int vdi_wait_vcpu_bus_busy(Uint32 coreIdx, int timeout, Uint32 busy_flag);
 
 void vdi_log(Uint32 coreIdx, Uint32 instIdx, int cmd, int step);
+int vdi_check_inst_idx_valid(Uint32 coreIdx, Uint32 instIdx);
+
+void vdi_byte_swap(unsigned char *data, int len);
+void vdi_word_swap(unsigned char *data, int len);
+void vdi_dword_swap(unsigned char* data, int len);
+void vdi_lword_swap(unsigned char *data, int len);
+
+void vdi_memset(void *addr, Uint8 data, Uint32 size);
 
 #if defined(_MSC_VER)
 /* todo: remove these APIs for windows internal use */

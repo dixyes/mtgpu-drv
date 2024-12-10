@@ -207,6 +207,8 @@ static int mtsnd_create(struct snd_card *card, struct pci_dev *pci,
 			goto errirq;
 		}
 
+		chip->pcm[i].index = i;
+		chip->pcm[i].private_data = chip;
 		err = mtgpu_set_interrupt_handler(pdev->dev.parent, res[i]->start, mtsnd_irq_handle, &chip->pcm[i]);
 		if (err < 0) {
 			dev_err(chip->card->dev, "Error mtgpu_set_interrupt_handler\n");

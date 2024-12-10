@@ -90,6 +90,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <linux/err.h>
 #include <linux/verification.h>
 #include <crypto/public_key.h>
+#include <linux/sync_file.h>
 
 #if defined(OS_LINUX_MODULE_SIGNATURE_H_EXIST)
 #include <linux/module_signature.h>
@@ -131,6 +132,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #if !defined(NO_HARDWARE)
 #include "mtgpu.h"
 #endif
+#include "mtgpu_drm_drv.h"
 #include "physmem_osmem_linux.h"
 #include "dma_support.h"
 #include "kernel_compatibility.h"
@@ -515,14 +517,19 @@ void *OSMemSet(void *pvBuf, IMG_INT ui32Str, size_t uiLen)
 	return memset(pvBuf, ui32Str, uiLen);
 }
 
+void OSMemSetIO(void *pvBuf, IMG_INT ui32Str, size_t uiLen)
+{
+	return memset_io(pvBuf, ui32Str, uiLen);
+}
+
 void *OSMemCopy(void *pvDest, const void *pvSrc, size_t uiLen)
 {
 	return memcpy(pvDest, pvSrc, uiLen);
 }
 
-size_t OSStringLCpy(IMG_CHAR *pszDest, const IMG_CHAR *pszSrc, size_t uDstSize)
+size_t OSStringSCpy(IMG_CHAR *pszDest, const IMG_CHAR *pszSrc, size_t uDstSize)
 {
-	return strlcpy(pszDest, pszSrc, uDstSize);
+	return strscpy(pszDest, pszSrc, uDstSize);
 }
 
 size_t OSStringLCat(IMG_CHAR *pszDest, const IMG_CHAR *pszSrc, size_t uDstSize)
@@ -2926,6 +2933,11 @@ bool OSDeviceIsPCI(struct device *psDev)
 	return dev_is_pci(psDev);
 }
 
+bool OSDevToNode(struct device *psDev)
+{
+	return dev_to_node(psDev);
+}
+
 struct device *OSGetOSDeviceFromDeviceNode(PVRSRV_DEVICE_NODE *psDevNode)
 {
 	PVR_ASSERT(psDevNode);
@@ -2957,19 +2969,19 @@ IMG_PID HostPid2ContainerPID(IMG_PID hostPid)
 
 	cur_task_pid = get_task_pid(current, PIDTYPE_PID);
 	if (!cur_task_pid) {
-		PVR_DPF((PVR_DBG_ERROR, "Get current task_pid failed, pid:%d", hostPid));
+		PVR_DPF((PVR_DBG_WARNING, "Get current task_pid failed, pid:%d", hostPid));
 		return 0;
 	}
 
 	cur_task = get_pid_task(find_pid_ns(hostPid, &init_pid_ns), PIDTYPE_PID);
 	if (!cur_task) {
-		PVR_DPF((PVR_DBG_ERROR, "Find task for pid:%d failed", hostPid));
+		PVR_DPF((PVR_DBG_WARNING, "Find task for pid:%d failed", hostPid));
 		return 0;
 	}
 
 	cur_pid_ns = task_active_pid_ns(current);
 	if (!cur_pid_ns) {
-		PVR_DPF((PVR_DBG_ERROR, "Get current pid ns failed host pid:%d", hostPid));
+		PVR_DPF((PVR_DBG_WARNING, "Get current pid ns failed host pid:%d", hostPid));
 		return 0;
 	}
 
@@ -3183,6 +3195,31 @@ void OSSpinLockRelease(POS_SPINLOCK _pLock, unsigned long _flags)
 	spin_unlock_irqrestore(_pLock, _flags);
 }
 
+void OSSpinLock(POS_SPINLOCK _pLock)
+{
+	spin_lock(_pLock);
+}
+
+void OSSpinUnlock(POS_SPINLOCK _pLock)
+{
+	spin_unlock(_pLock);
+}
+
+void OSBitmapSet(unsigned long *map, IMG_UINT uiStart, IMG_UINT uiNbits)
+{
+	bitmap_set(map, uiStart, uiNbits);
+}
+
+void OSBitmapClear(unsigned long *map, IMG_UINT start, IMG_UINT nbits)
+{
+        bitmap_clear(map, start, nbits);
+}
+
+unsigned long OSFindFirstZeroBit(const unsigned long *addr, unsigned long size)
+{
+	return find_first_zero_bit(addr, size);
+}
+
 IMG_INT OSAtomicRead(const ATOMIC_T *pCounter)
 {
 	return atomic_read(pCounter);
@@ -3201,6 +3238,36 @@ IMG_INT OSAtomicIncrement(ATOMIC_T *pCounter)
 IMG_INT OSAtomicDecrement(ATOMIC_T *pCounter)
 {
 	return atomic_dec_return(pCounter);
+}
+
+IMG_INT64 OSAtomic64Read(const ATOMIC64_T *pCounter)
+{
+	return atomic64_read(pCounter);
+}
+
+void OSAtomic64Write(ATOMIC64_T *pCounter, IMG_INT64 iVal)
+{
+	atomic64_set(pCounter, iVal);
+}
+
+IMG_INT64 OSAtomic64Increment(ATOMIC64_T *pCounter)
+{
+	return atomic64_inc_return(pCounter);
+}
+
+IMG_INT64 OSAtomic64Decrement(ATOMIC64_T *pCounter)
+{
+	return atomic64_dec_return(pCounter);
+}
+
+IMG_INT64 OSAtomic64Add(ATOMIC64_T *pCounter, IMG_INT64 iVal)
+{
+	return atomic64_add_return(iVal, pCounter);
+}
+
+IMG_INT64 OSAtomic64Subtract(ATOMIC64_T *pCounter, IMG_INT64 iVal)
+{
+	return atomic64_add_return(-iVal, pCounter);
 }
 
 IMG_INT OSAtomicCompareExchange(ATOMIC_T *pCounter, IMG_INT iOldVal, IMG_INT iNewVal)
@@ -3416,14 +3483,14 @@ struct pvr_drm_private *OSGetPrivateDataFromDrm(struct drm_device *psDrmDevice)
 
 PVRSRV_DEVICE_NODE *OSGetDeviceNodeFromDrm(struct drm_device *psDrmDevice)
 {
-	struct pvr_drm_private *priv = psDrmDevice->dev_private;
+	struct mtgpu_drm_private *priv = psDrmDevice->dev_private;
 
 	if (!priv) {
-		PVR_DPF((PVR_DBG_ERROR, "%s failed\n", __func__));
+		PVR_DPF((PVR_DBG_ERROR, "%s: no private in drm_devive\n", __func__));
 		return NULL;
 	}
 
-	return priv->dev_node;
+	return priv->pvr_private.dev_node;
 }
 
 struct drm_device *OSGetDrmFromDeviceNode(PVRSRV_DEVICE_NODE *psDevNode)
@@ -3812,6 +3879,11 @@ void *OSKMalloc(size_t size)
 	return kmalloc(size, GFP_KERNEL);
 }
 
+void *OSKMallocNode(size_t size, int node)
+{
+	return kmalloc_node(size, GFP_KERNEL, node);
+}
+
 void *OSKZalloc(size_t size)
 {
 	return kzalloc(size, GFP_KERNEL);
@@ -3820,6 +3892,11 @@ void *OSKZalloc(size_t size)
 void *OSVMalloc(unsigned long size)
 {
 	return vmalloc(size);
+}
+
+void *OSVMallocNode(unsigned long size, int node)
+{
+	return vmalloc_node(size, node);
 }
 
 void *OSVZalloc(unsigned long size)
@@ -4449,4 +4526,223 @@ void *OSGetWorkDrvdata(struct work_struct *psWork)
 	struct mt_work_struct *mt_work = container_of(psWork, struct mt_work_struct, work);
 
 	return mt_work->pvData;
+}
+
+struct workqueue_struct *OSCreateFreezableWorkqueue(char *name)
+{
+	return create_freezable_workqueue(name);
+}
+
+void *OSCreateDelayedWork(void)
+{
+	return kzalloc(sizeof(struct delayed_work), GFP_KERNEL);
+}
+
+void OSDestroyDelayedWork(struct delayed_work *dwork)
+{
+	kfree(dwork);
+}
+
+void OSInitDelayedWork(struct delayed_work *dwork, work_func_t func)
+{
+	INIT_DELAYED_WORK(dwork, func);
+}
+
+bool OSQueueDelayedWork(struct workqueue_struct *wq,
+			struct delayed_work *dwork,
+			unsigned long delay)
+{
+	return queue_delayed_work(wq, dwork, delay);
+}
+
+bool OSCancelDelayedWorkSync(struct delayed_work *dwork)
+{
+	return cancel_delayed_work_sync(dwork);
+}
+
+struct delayed_work *OSToDelayedWork(struct work_struct *work)
+{
+	return to_delayed_work(work);
+}
+
+struct mt_dma_fence {
+	struct dma_fence dma_fence;
+	void *data;
+};
+
+void *OSCreateDmaFence(void)
+{
+	return kzalloc(sizeof(struct mt_dma_fence), GFP_KERNEL);
+}
+
+void OSDestroyDmaFence(struct dma_fence *dma_fence)
+{
+	kfree(dma_fence);
+}
+
+static struct mt_dma_fence *OSGetMtDmaFence(struct dma_fence *dma_fence)
+{
+	return container_of(dma_fence, struct mt_dma_fence, dma_fence);
+}
+
+void OSSetDmaFenceDrvdata(struct dma_fence *dma_fence, void *data)
+{
+	struct mt_dma_fence *mt_dma_fence = OSGetMtDmaFence(dma_fence);
+
+	mt_dma_fence->data = data;
+}
+
+void *OSGetDmaFenceDrvdata(struct dma_fence *dma_fence)
+{
+	struct mt_dma_fence *mt_dma_fence = OSGetMtDmaFence(dma_fence);
+
+	return mt_dma_fence->data;
+}
+
+struct mt_dma_fence_cb {
+	struct dma_fence_cb dma_fenc_cb;
+	void *data;
+};
+
+void *OSCreateDmaFenceCB(void)
+{
+	return kzalloc(sizeof(struct dma_fence_cb), GFP_KERNEL);
+}
+
+void OSDestroyDmaFenceCB(struct dma_fence_cb *dma_fence_cb)
+{
+	kfree(dma_fence_cb);
+}
+
+static struct mt_dma_fence_cb *OSGetMtDmaFenceCB(struct dma_fence_cb *dma_fence_cb)
+{
+	return container_of(dma_fence_cb, struct mt_dma_fence_cb, dma_fenc_cb);
+}
+
+void OSSetDmaFenceCBDrvdata(struct dma_fence_cb *dma_fence_cb, void *data)
+{
+	struct mt_dma_fence_cb *mt_dma_fence_cb = OSGetMtDmaFenceCB(dma_fence_cb);
+
+	mt_dma_fence_cb->data = data;
+}
+
+void *OSGetDmaFenceCBDrvdata(struct dma_fence_cb *dma_fence_cb)
+{
+	struct mt_dma_fence_cb *mt_dma_fence_cb = OSGetMtDmaFenceCB(dma_fence_cb);
+
+	return mt_dma_fence_cb->data;
+}
+
+IMG_UINT64 OSDmaFenceOpsInit(struct dma_fence_ops **ops,
+                             const struct MTDmaFenceOps *mt_ops)
+{
+	struct dma_fence_ops *dma_ops;
+
+	dma_ops = kzalloc(sizeof(**ops), GFP_KERNEL);
+	if (!dma_ops)
+		return -ENOMEM;
+
+	dma_ops->get_driver_name = mt_ops->get_driver_name;
+	dma_ops->get_timeline_name = mt_ops->get_timeline_name;
+	dma_ops->enable_signaling = mt_ops->enable_signaling;
+	dma_ops->signaled = mt_ops->signaled;
+	dma_ops->wait = mt_ops->wait;
+	dma_ops->release = mt_ops->release;
+	dma_ops->fence_value_str = mt_ops->fence_value_str;
+	dma_ops->timeline_value_str = mt_ops->timeline_value_str;
+
+	*ops = dma_ops;
+
+	return 0;
+}
+
+void OSDmaFenceInit(struct dma_fence *fence,
+                    const struct dma_fence_ops *ops,
+                    spinlock_t *lock, u64 context, u64 seqno)
+{
+	dma_fence_init(fence, ops, lock, context, seqno);
+}
+
+IMG_UINT64 OSDmaFenceContextAlloc(IMG_UINT32 num)
+{
+	return dma_fence_context_alloc(num);
+}
+
+#if !defined(OS_FUNC_DMA_FENCE_GET_STUB_EXIST)
+static const char *os_dma_fence_stub_get_name(struct dma_fence *fence)
+{
+	return "stub";
+}
+#endif
+
+struct dma_fence *OSDmaFenceGetStub(void)
+{
+#if defined(OS_FUNC_DMA_FENCE_GET_STUB_EXIST)
+	return dma_fence_get_stub();
+#else
+	static struct dma_fence dma_fence_stub;
+	static DEFINE_SPINLOCK(dma_fence_stub_lock);
+	static const struct dma_fence_ops dma_fence_stub_ops = {
+                .get_driver_name = os_dma_fence_stub_get_name,
+		.get_timeline_name = os_dma_fence_stub_get_name,
+	};
+
+	spin_lock(&dma_fence_stub_lock);
+	if (!dma_fence_stub.ops) {
+		dma_fence_init(&dma_fence_stub,
+                               &dma_fence_stub_ops,
+                               &dma_fence_stub_lock,
+                               0, 0);
+		dma_fence_signal_locked(&dma_fence_stub);
+	}
+	spin_unlock(&dma_fence_stub_lock);
+
+        return dma_fence_get(&dma_fence_stub);
+#endif
+}
+
+struct dma_fence *OSDmaFenceGet(struct dma_fence *fence)
+{
+	return dma_fence_get(fence);
+}
+
+void OSDmaFenSignal(struct dma_fence *fence)
+{
+	dma_fence_signal(fence);
+}
+
+void OSDmaFencePut(struct dma_fence *fence)
+{
+	dma_fence_put(fence);
+}
+
+bool OSDmaFenceIsSignaled(struct dma_fence *fence)
+{
+	return dma_fence_is_signaled(fence);
+}
+
+int OSDmaFenceAddCallback(struct dma_fence *fence, struct dma_fence_cb *cb,
+			      dma_fence_func_t func)
+{
+	return dma_fence_add_callback(fence, cb, func);
+}
+
+struct sync_file *OSSyncFileCreate(struct dma_fence *fence)
+{
+	return sync_file_create(fence);
+}
+
+int OSGetUnusedFDFlags(unsigned flag)
+{
+	return get_unused_fd_flags(flag);
+}
+
+void OSFDInstallSyncFile(int fd, struct sync_file *sync_file)
+{
+	fd_install(fd, sync_file->file);
+}
+
+struct dma_fence *OSSyncFileGetFence(int fd)
+{
+	return sync_file_get_fence(fd);
 }

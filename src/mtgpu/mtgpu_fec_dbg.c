@@ -10,6 +10,7 @@
 #include <linux/platform_device.h>
 #include <linux/uaccess.h>
 #include <linux/delay.h>
+#include <linux/time.h>
 
 #include "mtgpu.h"
 #include "mtgpu_fec_dbg.h"
@@ -17,8 +18,9 @@
 #define FEC_FW_CTRL_REBOOT	((__force int __bitwise)0)	/* fec only warm reboot */
 #define FEC_FW_CTRL_STANDBY	((__force int __bitwise)1)	/* fec suspend to ram */
 #define FEC_FW_CTRL_L_IDLE	((__force int __bitwise)2)	/* fec long idle */
+#define FEC_FW_CTRL_WAKEUP	((__force int __bitwise)3)	/* fec wake from suspend/idle */
 #define FEC_FW_CTRL_MIN		FEC_FW_CTRL_REBOOT
-#define FEC_FW_CTRL_MAX		((__force int __bitwise)3)
+#define FEC_FW_CTRL_MAX		((__force int __bitwise)4)
 
 struct mtgpu_ipc_info;
 
@@ -26,7 +28,9 @@ static const char * const fec_ctrl_labels[] = {
 	[FEC_FW_CTRL_REBOOT] = "reboot",
 	[FEC_FW_CTRL_STANDBY] = "standby",
 	[FEC_FW_CTRL_L_IDLE] = "idle",
+	[FEC_FW_CTRL_WAKEUP] = "wakeup",
 };
+#define FEC_FW_CTRL_DEFAULT_STATE	FEC_FW_CTRL_WAKEUP
 
 void mtgpu_fec_dump_handler(struct device *dev, struct fec_dbg_info *dbg_info, void *data)
 {
@@ -138,13 +142,19 @@ static const struct file_operations debugfs_fec_dump_en_ops = {
 static ssize_t debugfs_fec_fw_ctrl_read(struct file *file, char __user *buf,
 					size_t size, loff_t *offset)
 {
+	struct fec_dbg_info *dbg_info = file->private_data;
 	int __bitwise i;
 	char s[64];
 	int len;
 
+	/* use "[]" to mark the current fw_ctrl status */
 	for (i = FEC_FW_CTRL_MIN, len = 0; i < FEC_FW_CTRL_MAX; i++) {
-		if (fec_ctrl_labels[i])
-			len += snprintf(s + len, sizeof(s) - len, "%s ", fec_ctrl_labels[i]);
+		if (fec_ctrl_labels[i]) {
+			if (i == dbg_info->current_fw_ctrl_state)
+				len += snprintf(s + len, sizeof(s) - len, "[%s] ", fec_ctrl_labels[i]);
+			else
+				len += snprintf(s + len, sizeof(s) - len, "%s ", fec_ctrl_labels[i]);
+		}
 	}
 
 	if (len <= *offset)
@@ -166,6 +176,7 @@ static ssize_t debugfs_fec_fw_ctrl_write(struct file *file, const char __user *b
 	struct fec_dbg_info *dbg_info = file->private_data;
 	char s[64] = {0};
 	int __bitwise i, event;
+	int ret;
 
 	if (size >= sizeof(s) || copy_from_user(s, buf, size))
 		return -EFAULT;
@@ -180,15 +191,37 @@ static ssize_t debugfs_fec_fw_ctrl_write(struct file *file, const char __user *b
 		}
 	}
 
+	if (event == dbg_info->current_fw_ctrl_state)
+		return -EINVAL;
+
 	switch (event) {
 	case FEC_FW_CTRL_REBOOT:
-		mtgpu_fec_do_warm_reboot(dbg_info->dev);
+		ret = mtgpu_fec_warm_reboot(dbg_info->dev);
+		/* If reboot success, put label as wakeup */
+		if (!ret)
+			event = FEC_FW_CTRL_WAKEUP;
 		break;
 	case FEC_FW_CTRL_STANDBY:
+		ret = mtgpu_fec_request_standby(dbg_info->dev);
+		break;
 	case FEC_FW_CTRL_L_IDLE:
+		ret = mtgpu_fec_request_idle(dbg_info->dev);
+		break;
+	case FEC_FW_CTRL_WAKEUP:
+		if (dbg_info->current_fw_ctrl_state == FEC_FW_CTRL_STANDBY)
+			ret = mtgpu_fec_request_wakeup(dbg_info->dev, false);
+		else if (dbg_info->current_fw_ctrl_state == FEC_FW_CTRL_L_IDLE)
+			ret = mtgpu_fec_request_wakeup(dbg_info->dev, true);
+		else
+			ret = -EINVAL;
+		break;
 	default:
+		ret = -EINVAL;
 		break;
 	}
+
+	if (!ret)
+		dbg_info->current_fw_ctrl_state = event;
 
 	return size;
 }
@@ -199,6 +232,55 @@ static const struct file_operations debugfs_fec_pwr_ctrl_ops = {
 	.read = debugfs_fec_fw_ctrl_read,
 	.write = debugfs_fec_fw_ctrl_write,
 };
+
+static void mtgpu_fec_dbg_get_timeofday(char *utc_time)
+{
+	struct tm tm;
+
+	time64_to_tm(ktime_get_real_seconds(), 0, &tm);
+	sprintf(utc_time, "%04ld-%02d-%02d-%02d:%02d:%02d",
+		tm.tm_year+1900,
+		tm.tm_mon+1,
+		tm.tm_mday,
+		tm.tm_hour,
+		tm.tm_min,
+		tm.tm_sec);
+}
+
+void mtgpu_fec_dbg_write_umd_log(struct device *dev, int size, u8 *data)
+{
+	struct mtgpu_device *mtdev = dev_get_drvdata(dev);
+	struct fec_dbg_info *dbg_info = mtgpu_fec_get_dbg_info_from_mtdev(mtdev);
+	char utc_time[32], fname[128], buffer[512];
+	int len, ret;
+	loff_t pos;
+	int open_flags = O_CREAT | O_RDWR | O_NOFOLLOW | O_LARGEFILE| O_APPEND;
+
+	mtgpu_fec_dbg_get_timeofday(utc_time);
+
+	if (dbg_info->umd_log_file && dbg_info->umd_log_file->f_inode->i_size < 0x100000) {
+		len = sprintf(buffer, "[%s]: %s\n", utc_time, data);
+		if (len < 0)
+			return;
+
+		kernel_write(dbg_info->umd_log_file, buffer, len, &pos);
+	} else {
+		if (dbg_info->umd_log_file)
+			filp_close(dbg_info->umd_log_file, 0);
+
+		ret = sprintf(fname, "/var/log/mtgpu-fec-%s-%s.log",
+			      dev_name(dev), utc_time);
+		if (ret < 0)
+			return;
+
+		dbg_info->umd_log_file = filp_open(fname, open_flags, 0644);
+		if (IS_ERR_OR_NULL(dbg_info->umd_log_file)) {
+			dbg_info->umd_log_file = NULL;
+			dev_err(dev, "open fec log file failed!\n");
+			return;
+		}
+	}
+}
 
 int mtgpu_fec_dbg_init(struct device *dev, struct fec_dbg_info **dbg_info)
 {
@@ -217,6 +299,7 @@ int mtgpu_fec_dbg_init(struct device *dev, struct fec_dbg_info **dbg_info)
 						 tmp, &debugfs_fec_dump_en_ops);
 	tmp->d_fw_ctrl = debugfs_create_file("fw_ctrl", 0644, tmp->d_fec_root,
 					     tmp, &debugfs_fec_pwr_ctrl_ops);
+	tmp->current_fw_ctrl_state = FEC_FW_CTRL_DEFAULT_STATE;
 
 	*dbg_info = tmp;
 
@@ -225,4 +308,6 @@ int mtgpu_fec_dbg_init(struct device *dev, struct fec_dbg_info **dbg_info)
 
 void mtgpu_fec_dbg_deinit(struct device *dev, struct fec_dbg_info *dbg_info)
 {
+	if (dbg_info->umd_log_file)
+		filp_close(dbg_info->umd_log_file, 0);
 }

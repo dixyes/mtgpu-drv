@@ -64,7 +64,6 @@ typedef struct {
 	DEVMEM_MEMDESC		*psFWFrameworkMemDesc;
 } RGX_COMMON_CONTEXT_INFO;
 
-
 /*!
  ******************************************************************************
  * Device state flags
@@ -374,6 +373,13 @@ typedef struct _PVRSRV_RGXDEV_ERROR_COUNTS_
 	IMG_UINT32 ui32TRPErrorCount;		/*!< count of the number of TRP checksum errors */
 } PVRSRV_RGXDEV_ERROR_COUNTS;
 
+
+typedef struct _PB_DATA_
+{
+	PMR *psPbPMR;
+	PMR *psFreelistPMR;
+} PB_DATA;
+
 /*!
  ******************************************************************************
  * RGX Device info
@@ -450,6 +456,12 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 	RGXFWIF_CCB_CTL			*psWorkEstFirmwareCCBCtl;          /*!< kernel mapping for Workload Estimation Firmware CCB control */
 	DEVMEM_MEMDESC			*psWorkEstFirmwareCCBMemDesc;      /*!< memdesc for Workload Estimation Firmware CCB */
 	IMG_UINT8				*psWorkEstFirmwareCCB;             /*!< kernel mapping for Workload Estimation Firmware CCB */
+
+	/* DDK2.0 */
+	DEVMEM_MEMDESC			*psFWIFMemDesc;         /*!< memdesc for mtfw_fwif */
+	struct MTFW_FWIF_TAG		*psFWIF;                /*!< kernel mapping for mtfw_fwif */
+	POS_LOCK			hLockFWIF;
+	/* DDK2.0 */
 
 	PVRSRV_MEMALLOCFLAGS_T  uiFWPoisonOnFreeFlag;           /*!< Flag for poisoning FW allocations when freed */
 
@@ -652,6 +664,7 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 	void					*pvMISRData;
 	void					*pvAPMISRData;
 	RGX_ACTIVEPM_CONF		eActivePMConf;
+	IMG_BOOL				bAPMEnabled;
 
 	volatile IMG_UINT32		aui32SampleIRQCount[RGXFW_THREAD_NUM];
 
@@ -824,7 +837,7 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 
 	IMG_UINT32				ui32HostSafetyEventMask;/*!< mask of the safety events handled by the driver */
 
-	RGX_CONTEXT_RESET_REASON	eLastDeviceError;	/*!< device error reported to client */
+	IMG_UINT64				ui64LastDeviceError;	/*!< device error reported to client */
 
 	IMG_UINT32              ui32Log2Non4KPgSize; /* Page size of Non4k heap in log2 form */
 
@@ -832,6 +845,7 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 
 #if (RGX_NUM_OS_SUPPORTED > 1)
 	u32					mpc_id;
+	void                                    *psLinuxFwInfo;
 	void					*psWinFwInfo;
 	void					(*vgpu_int_cb)(u32 int_id, bool is_osid0,
 							       void *priv_data, u32 mpc_id);
@@ -842,9 +856,29 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 	IMG_UINT64			ui64DummyDmaAddr;
 
 	PFM_CONTEXT			*psPFMContext;
+
+	PB_DATA                         sGlobalPBData;
+
+	/* DDK2.0 */
+	struct mtgpu_fw_info		*psMTFwInfo;
+	struct mtgpu_fec_work_data	*psFecWorkData;
+
+	/* RGXHWReset reset time of the last reset */
+	IMG_UINT64                      ui64OldTime;
 } PVRSRV_RGXDEV_INFO;
 
 
+#if (RGX_NUM_OS_SUPPORTED > 1)
+/* For vGPU FW */
+typedef struct _LINUX_FW_INFO_
+{
+	PVRSRV_RGXDEV_INFO    *psDevInfo;
+	IMG_UINT64             fw_heap_dpa_base[PVRSRV_VZ_NUM_OSID];
+	void                  *fw_heap_vaddr[PVRSRV_VZ_NUM_OSID];
+	IMG_UINT32             ui32KCCBCtlOffset;
+	IMG_UINT32             ui32FwOsDataOffset;
+} LINUX_FW_INFO;
+#endif
 
 typedef struct _RGX_TIMING_INFORMATION_
 {
@@ -867,7 +901,6 @@ typedef struct _RGX_DATA_
 	/*! Timing information */
 	RGX_TIMING_INFORMATION	*psRGXTimingInfo;
 } RGX_DATA;
-
 
 /*
 	RGX PDUMP register bank name (prefix)

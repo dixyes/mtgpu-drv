@@ -66,6 +66,8 @@ PVRSRV_ERROR OSSpinLockCreate(POS_SPINLOCK *_ppsLock);
 void OSSpinLockDestroy(POS_SPINLOCK _psLock);
 void OSSpinLockAcquire(POS_SPINLOCK _pLock, unsigned long *_flags);
 void OSSpinLockRelease(POS_SPINLOCK _pLock, unsigned long _flags);
+void OSSpinLock(POS_SPINLOCK _pLock);
+void OSSpinUnlock(POS_SPINLOCK _pLock);
 typedef unsigned long OS_SPINLOCK_FLAGS;
 
 /* These _may_ be reordered or optimized away entirely by the compiler/hw */
@@ -101,6 +103,13 @@ IMG_BOOL OSAtomicAddUnless(ATOMIC_T *pCounter, IMG_INT iVal, IMG_INT iTest);
 
 IMG_INT OSAtomicSubtract(ATOMIC_T *pCounter, IMG_INT iVal);
 #define OSAtomicSubtractUnless(pCounter, incr, test) OSAtomicAddUnless(pCounter, -(incr), (test))
+
+IMG_INT64 OSAtomic64Read(const ATOMIC64_T *pCounter);
+void OSAtomic64Write(ATOMIC64_T *pCounter, IMG_INT64 iVal);
+IMG_INT64 OSAtomic64Increment(ATOMIC64_T *pCounter);
+IMG_INT64 OSAtomic64Decrement(ATOMIC64_T *pCounter);
+IMG_INT64 OSAtomic64Add(ATOMIC64_T *pCounter, IMG_INT64 iVal);
+IMG_INT64 OSAtomic64Subtract(ATOMIC64_T *pCounter, IMG_INT64 iVal);
 
 #else /* defined(__linux__) && defined(__KERNEL__) */
 
@@ -234,6 +243,13 @@ static inline IMG_UINT32 OSAtomicExchange(ATOMIC_T *pCounter, IMG_UINT32 iNewVal
 
 #define OSAtomicSubtract(pCounter, incr) OSAtomicAdd(pCounter, -(incr))
 #define OSAtomicSubtractUnless(pCounter, incr, test) OSAtomicAddUnless(pCounter, -(incr), test)
+
+#define OSAtomic64Read(pCounter) (*(volatile IMG_INT64 *)&(pCounter)->counter)
+#define OSAtomic64Write(pCounter, i) ((pCounter)->counter = (IMG_INT64) i)
+#define OSAtomic64Increment(pCounter) __sync_add_and_fetch((&(pCounter)->counter), 1)
+#define OSAtomic64Decrement(pCounter) __sync_sub_and_fetch((&(pCounter)->counter), 1)
+#define OSAtomic64Add(pCounter, incr) __sync_add_and_fetch((&(pCounter)->counter), incr)
+#define OSAtomic64Subtract(pCounter, incr) OSAtomic64Add(pCounter, -(incr))
 
 #else
 
@@ -392,6 +408,13 @@ IMG_INT32 OSAtomicExchange(ATOMIC_T *pCounter, IMG_INT32 iNewVal);
 */ /**************************************************************************/
 IMG_INTERNAL
 IMG_INT32 OSAtomicOr(ATOMIC_T *pCounter, IMG_INT32 iVal);
+
+IMG_INT64 OSAtomic64Read(const ATOMIC64_T *pCounter);
+void OSAtomic64Write(ATOMIC64_T *pCounter, IMG_INT64 iVal);
+IMG_INT64 OSAtomic64Increment(ATOMIC64_T *pCounter);
+IMG_INT64 OSAtomic64Decrement(ATOMIC64_T *pCounter);
+IMG_INT64 OSAtomic64Add(ATOMIC64_T *pCounter, IMG_INT64 iVal);
+IMG_INT64 OSAtomic64Subtract(ATOMIC64_T *pCounter, IMG_INT64 iVal);
 
 /* For now, spin-locks are required on Linux only, so other platforms fake
  * spinlocks with normal mutex locks */

@@ -6,9 +6,7 @@
 #ifndef _MTVPU_DRV_H_
 #define _MTVPU_DRV_H_
 
-#ifndef SOC_MODE
 #include "mtgpu_defs.h"
-#endif
 #include "vpuapi.h"
 #include "jdi.h"
 
@@ -24,7 +22,6 @@
 #define SYNC_INTR_SIZE (WAV5_MAX_CORE * INST_MAX_SIZE)
 #define SYNC_ADDR_SIZE (WAV5_MAX_CORE * INST_MAX_SIZE * INST_Q_DEPTH)
 
-#define FW_LOG_BUFFER_SIZE	(16 << 10) //Currently 16k, if not enough enlarge the size
 
 #define MTVPU_SEGMENT_NUM       16
 #define MTVPU_SEGMENT_VM       -1
@@ -33,15 +30,8 @@
 #define ion_phys_addr_t phys_addr_t
 #endif
 
-#ifdef SOC_MODE
-#define APOLLO_VPU_MEM_BASE 0xB08000000
-#define APOLLO_VPU_MEM_SIZE 0xc0000000
-#define MTGPU_CORE_COUNT_MAX 32
-#define gpu_page_size 0x1000
-#else
 extern u32 gpu_page_size;
 extern u32 gpu_page_shift;
-#endif
 
 struct file_operations;
 struct platform_device;
@@ -102,18 +92,38 @@ struct mt_sync {
 
 struct mt_node {
 	struct drm_gem_object *obj;
+	struct mtvpu_mmu_ctx *mmu_ctx;
 	struct list_head list;
-	u64 dev_addr;
+	u64 dev_phys_addr;
+	u64 dev_virt_addr;
 	u64 size;
-	void *vir_addr;
-	void *bak_addr;
+	void *cpu_addr;
+	void *bak_cpu_addr;
 	void *handle;
+	void *mem_desc;
+	void *pmr;
 #ifdef SUPPORT_ION
 	struct dma_buf *ion_buf;
 #endif
 	u32 pool_id;
+	int vram_belonger;
 	dma_addr_t iova_addr;
+	u64 *cpu_pa_array;
+	u64 private_data;
 };
+
+struct umd_alloc_buffer_single {
+	u64 dev_addr;
+	u64 size;
+	bool used;
+};
+
+struct umd_alloc_buffer_union{
+	u64 start_pa;
+	u32 total_size;
+	u32 used_size;
+};
+
 
 struct mt_core {
 	int idx;
@@ -153,6 +163,7 @@ struct mt_core {
 
 	int drm_ids[INST_MAX_SIZE];
 	u32 pool_ids[INST_MAX_SIZE];
+	struct mtvpu_mmu_ctx *mmu_ctx[INST_MAX_SIZE];
 
 	struct mt_chip *priv;
 	void *bak_addr;
@@ -164,8 +175,18 @@ struct mt_core {
 	u64 core_drm_cycle[MTGPU_CORE_COUNT_MAX];
 
 	u32 inst_cnt;
+	u32 fbc_used_count[INST_MAX_SIZE];
+	u32 open_vram[INST_MAX_SIZE];	//calculate the vram size in open cmd
 	struct mt_inst_info inst_info[INST_MAX_SIZE];
 	struct mt_inst_extra inst_extra[INST_MAX_SIZE];
+	/* these handles are alloced from guest, fbctbl + fbc buffers */
+	struct umd_alloc_buffer_union fbc_tbl[INST_MAX_SIZE];
+	struct umd_alloc_buffer_single fbc_buffers[INST_MAX_SIZE][FBC_COUNT_MAX];
+	struct umd_alloc_buffer_single work_buffers[INST_MAX_SIZE];
+	struct umd_alloc_buffer_union mv_buffers[INST_MAX_SIZE];
+	struct umd_alloc_buffer_single task_buffers[INST_MAX_SIZE];
+	struct umd_alloc_buffer_single etc_buffers[INST_MAX_SIZE][DEC_ETC_NUM];
+	struct umd_alloc_buffer_single def_cdf_buffers[INST_MAX_SIZE];
 
 	struct mt_node *fwlog_node;
 	struct mutex *inst_lock[INST_MAX_SIZE];
@@ -174,6 +195,7 @@ struct mt_core {
 struct mt_file {
 	struct list_head head; /* opened list */
 	struct mutex *file_lock;
+	struct mtvpu_mmu_ctx *mmu_ctx;
 };
 
 struct mt_host_pool {
@@ -184,10 +206,13 @@ struct mt_host_pool {
 #define HOST_OSID_SIZE 64
 #define HOST_POOL_SIZE 8
 
-struct mt_host_mdev {
-	u64 mem_group_base;
-	int mem_group_id;
+#define VDI_MAX_VM_NUM_GEN1	16
+#define VDI_MAX_VM_NUM_GEN2	32
+#define SAFE_INST_RESERVE	4
+#define BASIC_DEC_CNT		6
+#define BASIC_ENC_CNT		6
 
+struct mt_host_mdev {
 	struct mt_host_pool dec_map[HOST_POOL_SIZE];
 	struct mt_host_pool enc_map[HOST_POOL_SIZE];
 };
@@ -200,23 +225,30 @@ struct mt_codec_limit {
 };
 
 struct mt_virm {
-	int osid;
-	int sched;
-
-	u64 mem_group_base;
-	int mem_group_id;
+	int vm_id;
+	u32 scheduled_cap;	/* represents the scheduled codec capacity for this VM */
+	u32 max_schedule_cap;	/* represents the total available schedule codec capacity for this VM */
 
 	u32 dec_index;
 	u32 enc_index;
 
 	struct vm_shared_mem *mem;
+	bool is_share_mem_vram;
+	u32 share_mem_size;
+
 	struct mt_file file;
 
 	RenderTargetInfo render;
 	struct list_head list;
 
-	struct mt_host_pool dec_map[HOST_POOL_SIZE];
-	struct mt_host_pool enc_map[HOST_POOL_SIZE];
+	u32 vm_group;
+
+	u64 vcore_base;
+	u32 vcpu_multiplier;
+
+	u32 used_dec_cnt;
+	u32 used_enc_cnt;
+	u32 used_vcpu_buffer;
 };
 
 struct mt_chip {
@@ -228,12 +260,13 @@ struct mt_chip {
 
 	struct drm_device *drm_host; /* for host use */
 
+	int driver_mode;
+
 	u32 inst_cnt;
 	struct mutex *inst_cnt_lock;
 
-#ifdef SOC_MODE
-	struct drm_mm *mm;
-#endif
+	bool soc_mode;
+
 	int mem_group_id[MTVPU_SEGMENT_NUM];
 	u64 mem_group_base[MTVPU_SEGMENT_NUM];
 	u64 mem_group_size[MTVPU_SEGMENT_NUM];
@@ -267,8 +300,15 @@ struct mt_chip {
 	struct task_struct *sync_thread;
 
 	struct list_head vm_heads[MAX_HOST_VPU_GROUPS_GEN1_GEN2]; /* vm list */
-	struct mt_host_mdev mdev[HOST_OSID_SIZE];
-	int mdev_count;
+	int vm_count;
+
+	bool host_vcpu_inited;
+	u32 limit_dec_cnt;
+	u32 limit_enc_cnt;
+	u32 shared_dec_cnt;
+	u32 shared_enc_cnt;
+	u64 limit_vcpu_size;
+	u64 shared_vcpu_size;
 
 	struct mt_virm vm;
 	struct mutex *vm_locks[MAX_HOST_VPU_GROUPS_GEN1_GEN2];
@@ -280,6 +320,8 @@ struct mt_chip {
 	struct timer_list *timer;
 
 	struct semaphore *jpu_core_sema;
+
+	struct mtvpu_mmu_ctx *mmu_ctx;	/* mmu context for PH codec cores, all cores share the same context */
 
 	struct iommu_group *io_group;
 	struct iommu_domain *io_domain;
@@ -296,14 +338,19 @@ struct mt_open {
 };
 
 struct mtvpu_gem_priv {
-	FBCInfo fbc;
 	struct vm_area_struct *vma;
+	struct mtvpu_mmu_ctx *mmu_ctx;
+	u64 dev_phy_addr;
+	void *pmr;
 };
 
+int get_mtvpu_log_level(void);
+void set_mtvpu_log_level(int log_level);
+
 void vpu_ref_core_nolock(struct mt_chip *chip, int idx, struct mt_virm *vm);
-void vpu_ref_core_lock(struct mt_chip *chip, int idx, struct mt_virm *vm);
+void vpu_ref_core_lock(struct mt_chip *chip, int idx, struct mt_virm *vm, bool is_enc);
 void vpu_unref_core_nolock(struct mt_chip *chip, int idx, struct mt_virm *vm);
-void vpu_unref_core_lock(struct mt_chip *chip, int idx, struct mt_virm *vm);
+void vpu_unref_core_lock(struct mt_chip *chip, int idx, struct mt_virm *vm, bool is_enc);
 
 int vpu_init_irq(struct mt_chip *chip, struct platform_device *pdev);
 int vpu_init_mpc(struct mt_chip *chip);
@@ -311,9 +358,9 @@ void vpu_free_irq(struct mt_chip *chip);
 int vpu_load_firmware(struct mt_chip *chip, int idx, struct mt_virm *vm);
 void vpu_report_power_state(struct mt_chip *chip, int inst_cnt_change);
 int vpu_check_fw_version(struct mt_chip *chip, int idx);
-int vpu_host_thread_group1(void *arg);
-int vpu_host_thread_group2(void *arg);
-int vpu_host_thread_group3(void *arg);
+int vpu_host_thread1(void *arg);
+int vpu_host_thread2(void *arg);
+int vpu_host_thread3(void *arg);
 int vpu_sync_thread(void *arg);
 int vpu_fill_drm_ioctls(struct drm_ioctl_desc *dst, int num);
 int vpu_host_run_ioctl(int ioctl, struct drm_device *drm, void *data, struct mt_virm *vm);
@@ -331,5 +378,6 @@ int jpu_request_core(struct drm_device *drm);
 void jpu_release_core(struct drm_device *drm, int idx);
 
 extern int enable_pm_mtvpu_backup_device_memory;
+extern int is_vcore_mem(u32 chip_gen, u32 mem_type);
 
 #endif /* _MTVPU_DRV_H_ */

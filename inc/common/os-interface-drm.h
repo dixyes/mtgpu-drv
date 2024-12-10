@@ -32,6 +32,7 @@ DECLARE_OS_STRUCT_COMMON_FUNCS(drm_gem_object);
 
 struct mutex *os_get_drm_device_mutex(struct drm_device *dev);
 struct device *os_get_drm_device_base(struct drm_device *drm);
+bool os_drm_is_registered(struct drm_device *dev);
 int os_drm_get_card_index(struct drm_device *dev);
 int os_drm_get_render_index(struct drm_device *dev);
 int os_drm_gem_handle_create(struct drm_file *file_priv,
@@ -99,8 +100,6 @@ void os_drm_dp_aux_unregister(struct drm_dp_aux *aux);
 void os_drm_connector_set_status(struct drm_connector *connector, int status);
 int os_drm_connector_get_status(struct drm_connector *connector);
 struct drm_device *os_drm_connector_get_dev(struct drm_connector *connector);
-void os_get_edid_vendor(const struct edid *edid, char *edid_vendor);
-u32 os_get_edid_productid(const struct edid *edid);
 void os_drm_edid_get_monitor_name(struct edid *edid, char *name, int bufsize);
 
 /**

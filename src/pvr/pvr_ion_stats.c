@@ -109,7 +109,7 @@ static IMG_UINT32 pvr_ion_stats_query_heaps(struct ion_device *dev, PVR_ION_STAT
 	numHeapsData = ion_query_heaps_kernel(dev, sDefaultIonHeapsData,
 					      ARRAY_SIZE(sDefaultIonHeapsData));
 	for (i = 0; i < numHeapsData; i++) {
-		strlcpy(heaps[i].szName, sDefaultIonHeapsData[i].name, 32);
+		strscpy(heaps[i].szName, sDefaultIonHeapsData[i].name, 32);
 		heaps[i].ui32HashKey = pfnHashKey(sDefaultIonHeapsData[i].heap_id);
 	}
 

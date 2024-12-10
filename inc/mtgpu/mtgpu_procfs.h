@@ -27,7 +27,7 @@ ssize_t mtgpu_proc_mpc_enable_write(struct file *file, const char __user *user_b
 int mtgpu_proc_util_open(struct inode *inode, struct file *file);
 ssize_t mtgpu_proc_util_write(struct file *file, const char __user *user_buf,
 			      size_t nbytes, loff_t *ppos);
-
+int mtgpu_proc_event_msg_release(struct inode *inode, struct file *file);
 int mtgpu_proc_event_msg_open(struct inode *inode, struct file *file);
 ssize_t mtgpu_proc_event_msg_read(struct file *file, char __user *buf,
 				  size_t count, loff_t *offset);

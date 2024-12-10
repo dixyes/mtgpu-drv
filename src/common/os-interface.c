@@ -13,6 +13,8 @@
 #include <asm/ptrace.h>
 #include <drm/drm_modes.h>
 #include <drm/drm_print.h>
+#include <linux/bits.h>
+#include <linux/bitops.h>
 #include <linux/suspend.h>
 #include <linux/aer.h>
 #include <linux/delay.h>
@@ -45,6 +47,8 @@
 #include <linux/dma-mapping.h>
 #include <linux/dma-fence.h>
 #include <linux/dma-fence-array.h>
+#include <linux/of_device.h>
+#include <linux/of.h>
 #include <linux/log2.h>
 #include <linux/poll.h>
 #include <linux/kref.h>
@@ -58,6 +62,7 @@
 #include <linux/rbtree.h>
 #include <linux/interval_tree.h>
 #include <linux/iommu.h>
+#include <linux/iova.h>
 #include <linux/random.h>
 #include <linux/device.h>
 #include <linux/ktime.h>
@@ -76,11 +81,24 @@
 #include <linux/file.h>
 #include <linux/anon_inodes.h>
 #include <linux/sync_file.h>
+#include <linux/of.h>
+#include <linux/of_address.h>
+#include <linux/acpi.h>
+#include <acpi/acpixf.h>
+#include <asm-generic/bitsperlong.h>
+#if defined(OS_LINUX_FIND_H_EXIST)
+#include <linux/find.h>
+#else
+#include <asm-generic/bitops/find.h>
+#endif
 #if defined(OS_LINUX_DMA_RESV_H_EXIST)
 #include <linux/dma-resv.h>
 #else
 #include <linux/reservation.h>
 #endif
+#include <linux/genalloc.h>
+#include <linux/netlink.h>
+#include <net/sock.h>
 
 #include "mtgpu_device.h"
 #include "os-interface.h"
@@ -89,6 +107,10 @@
 #include "ion_lma_heap.h"
 #endif
 #include "ion/ion_uapi.h"
+
+#ifdef CONFIG_X86
+#include <asm/cpufeature.h>
+#endif
 
 #ifndef OS_FUNC_PCI_STATUS_GET_AND_CLEAR_ERRORS_EXIST
 
@@ -372,6 +394,11 @@ int os_device_attach(struct device *dev)
 	return device_attach(dev);
 }
 
+const void *os_device_get_match_data(struct device *dev)
+{
+	return device_get_match_data(dev);
+}
+
 struct kobject *os_get_device_kobj(struct device *dev)
 {
 	return &dev->kobj;
@@ -585,6 +612,12 @@ void os_set_sg_dma_address(struct scatterlist *sg, dma_addr_t dev_addr)
 void os_set_sg_dma_len(struct scatterlist *sg, unsigned int dma_len)
 {
 	sg_dma_len(sg) = dma_len;
+}
+
+void os_set_sg_page(struct scatterlist *sg, struct page *page,
+		    unsigned int len, unsigned int offset)
+{
+	sg_set_page(sg, page, len, offset);
 }
 
 int os_sg_alloc_table_from_pages(struct sg_table *sgt, struct page **pages,
@@ -1190,6 +1223,18 @@ __poll_t os_vfs_poll(struct file *file, struct poll_table_struct *pt)
 	return vfs_poll(file, pt);
 }
 
+bool os_check_file_exist(const char __user *path)
+{
+	struct file *filp;
+	filp = filp_open(path, O_RDONLY, 0);
+	 if (IS_ERR(filp)) {
+        	return false;
+	} else {
+		filp_close(filp, NULL);
+		return true;
+	}
+}
+
 void os_poll_wait(struct file *filp, wait_queue_head_t *wait_address, struct poll_table_struct *p)
 {
 	poll_wait(filp, wait_address, p);
@@ -1273,6 +1318,16 @@ void os_remove_proc_entry(const char *name, struct proc_dir_entry *parent)
 int os_atomic_read_this_module_refcnt(void)
 {
 	return atomic_read(&THIS_MODULE->refcnt);
+}
+
+void os_module_put(void)
+{
+	module_put(THIS_MODULE);
+}
+
+bool os_try_module_get(void)
+{
+	return try_module_get(THIS_MODULE);
 }
 
 void *os_pde_data(const struct inode *inode)
@@ -1434,6 +1489,11 @@ void os_kref_init(mt_kref *kref)
 int os_kref_put(mt_kref *kref, void (*release)(mt_kref *kref))
 {
 	return kref_put((struct kref *)kref, (void *)release);
+}
+
+int os_kref_read(mt_kref *kref)
+{
+	return kref_read((struct kref *)kref);
 }
 
 void os_kref_get(mt_kref *kref)
@@ -2125,6 +2185,11 @@ struct device *os_get_device_parent(struct device *dev)
 	return dev->parent;
 }
 
+struct device_node *os_get_device_of_node(struct device *dev)
+{
+	return dev->of_node;
+}
+
 int os_dma_set_mask_and_coherent(struct device *dev, u64 mask)
 {
 	return dma_set_mask_and_coherent(dev, mask);
@@ -2312,6 +2377,11 @@ void os_release_mem_region(resource_size_t start, resource_size_t n)
 	release_mem_region(start, n);
 }
 
+struct resource *os_alloc_resource(void)
+{
+	return kzalloc(sizeof(struct resource), GFP_KERNEL);
+}
+
 struct resource *os_create_resource(struct mtgpu_resource *mtgpu_res, u32 num_res)
 {
 	int i;
@@ -2436,9 +2506,15 @@ void **os_radix_tree_next_slot(void **slot, struct radix_tree_iter *iter, unsign
 	return radix_tree_next_slot(slot, iter, flags);
 }
 
-u64 os_eventfd_signal(struct eventfd_ctx *ctx, __u64 n)
+u64 os_eventfd_signal(struct eventfd_ctx *ctx)
 {
-	return eventfd_signal(ctx, n);
+#if defined(OS_EVENTFD_SIGNAL_HAS_ONE_ARG)
+	eventfd_signal(ctx);
+	return 0;
+#else
+	return eventfd_signal(ctx, 1);
+
+#endif
 }
 
 void os_eventfd_ctx_put(struct eventfd_ctx *ctx)
@@ -2583,6 +2659,189 @@ void os_pci_disable_sriov(struct pci_dev *dev)
 	pci_disable_sriov(dev);
 }
 
+unsigned long os_ffs(unsigned long word)
+{
+	return __ffs(word);
+}
+
+unsigned long os_get_iodomain_aperture_end(struct iommu_domain *domain)
+{
+	return domain->geometry.aperture_end;
+}
+
+unsigned long os_get_iodomain_pgsize_bitmap(struct iommu_domain *domain)
+{
+	return domain->pgsize_bitmap;
+}
+
+void *os_create_iova_domain(void)
+{
+	return kzalloc(sizeof(struct iova_domain), GFP_KERNEL);
+}
+
+int os_of_dma_configure(struct device *dev,
+			struct device_node *np,
+			bool force_dma)
+{
+	return of_dma_configure(dev, np, force_dma);
+}
+
+struct device_node *os_of_find_node_by_path(const char *path)
+{
+	return of_find_node_by_path(path);
+}
+
+struct device_node *os_of_get_next_child(const struct device_node *node, struct device_node *prev)
+{
+	return of_get_next_child(node, prev);
+}
+
+const char *os_of_node_get_name(const struct device_node *device)
+{
+	return device->name;
+}
+
+int os_of_device_is_compatible(const struct device_node *device, const char *name)
+{
+	return of_device_is_compatible(device, name);
+}
+
+int os_of_address_to_resource(struct device_node *dev, int index, struct resource *r)
+{
+	return of_address_to_resource(dev, index, r);
+}
+
+bool os_is_acpi_disabled(void)
+{
+	return acpi_disabled;
+}
+
+struct acpi_device *os_acpi_companion(struct device *dev)
+{
+	return ACPI_COMPANION(dev);
+}
+
+struct acpi_buffer *os_create_acpi_buffer(void)
+{
+	return kzalloc(sizeof(struct acpi_buffer), GFP_KERNEL);
+}
+
+void os_set_acpi_buffer_length(struct acpi_buffer *buffer, u64 size)
+{
+	buffer->length = size;
+}
+
+void *os_get_acpi_buffer_pointer(struct acpi_buffer *buffer)
+{
+	return buffer->pointer;
+}
+
+u32 os_get_acpi_object_type(union acpi_object *object)
+{
+	return object->type;
+}
+
+u64 os_get_acpi_object_integer_value(union acpi_object *object)
+{
+	return object->integer.value;
+}
+
+void *os_get_acpi_device_handle(struct acpi_device *adev)
+{
+	return adev->handle;
+}
+
+u32 os_acpi_evaluate_object(void *object, char *path_name,
+			    struct acpi_object_list *parameter_objects,
+			    struct acpi_buffer *return_object_buffer)
+{
+	return acpi_evaluate_object(object, path_name,
+				    parameter_objects,
+				    return_object_buffer);
+}
+
+unsigned long os_iova_size(struct iova *iova)
+{
+	return iova_size(iova);
+}
+
+unsigned long os_iova_shift(struct iova_domain *iovad)
+{
+	return iova_shift(iovad);
+}
+
+unsigned long os_iova_mask(struct iova_domain *iovad)
+{
+	return iova_mask(iovad);
+}
+
+size_t os_iova_offset(struct iova_domain *iovad, dma_addr_t iova)
+{
+	return iova_offset(iovad, iova);
+}
+
+size_t os_iova_align(struct iova_domain *iovad, size_t size)
+{
+	return iova_align(iovad, size);
+}
+
+dma_addr_t os_iova_dma_addr(struct iova_domain *iovad, struct iova *iova)
+{
+	return iova_dma_addr(iovad, iova);
+}
+
+unsigned long os_iova_pfn(struct iova_domain *iovad, dma_addr_t iova)
+{
+	return iova_pfn(iovad, iova);
+}
+
+int os_iova_cache_get(void)
+{
+	return iova_cache_get();
+}
+
+void os_iova_cache_put(void)
+{
+	iova_cache_put();
+}
+
+void os_free_iova(struct iova_domain *iovad, struct iova *iova)
+{
+	__free_iova(iovad, iova);
+}
+
+struct iova *os_alloc_iova(struct iova_domain *iovad, unsigned long size,
+			   unsigned long limit_pfn, bool size_aligned)
+{
+	return alloc_iova(iovad, size, limit_pfn, size_aligned);
+}
+
+struct iova *os_find_iova(struct iova_domain *iovad, unsigned long pfn)
+{
+	return find_iova(iovad, pfn);
+}
+
+void os_put_iova_domain(struct iova_domain *iovad)
+{
+	put_iova_domain(iovad);
+}
+
+void os_init_iova_domain(struct iova_domain *iovad, unsigned long granule,
+			 unsigned long start_pfn)
+{
+	init_iova_domain(iovad, granule, start_pfn);
+}
+
+size_t os_iommu_map_sg(struct iommu_domain *domain, unsigned long iova,
+		       struct scatterlist *sg, unsigned int nents, int prot)
+{
+#ifdef OS_IOMMU_MAP_USE_GFP_ARG
+	return iommu_map_sg(domain, iova, sg, nents, prot, GFP_KERNEL);
+#else
+	return iommu_map_sg(domain, iova, sg, nents, prot);
+#endif
+}
+
 int os_iommu_map(struct iommu_domain *domain, unsigned long iova,
 		 phys_addr_t paddr, size_t size, int prot)
 {
@@ -2692,6 +2951,11 @@ int os_bitmap_full(const unsigned long *src, unsigned int nbits)
 	return bitmap_full(src, nbits);
 }
 
+int os_bitmap_weight(const unsigned long *src, unsigned int nbits)
+{
+	return bitmap_weight(src, nbits);
+}
+
 void os_bitmap_free(const unsigned long *bitmap)
 {
 	bitmap_free(bitmap);
@@ -2709,6 +2973,11 @@ unsigned long os_bitmap_find_next_zero_area(unsigned long *map,
 					    unsigned long align_mask)
 {
 	return bitmap_find_next_zero_area(map, size, start, nr, align_mask);
+}
+
+unsigned long os_find_first_zero_bit(const unsigned long *addr, unsigned long size)
+{
+	return find_first_zero_bit(addr, size);
 }
 
 int os_test_bit(int nr, const volatile unsigned long *addr)
@@ -2773,9 +3042,24 @@ int os_atomic_inc_return(atomic_t *v)
 	return atomic_inc_return(v);
 }
 
+void os_atomic_add(int i, atomic_t *v)
+{
+	atomic_add(i, v);
+}
+
+int os_atomic_sub_return(int i, atomic_t *v)
+{
+	return atomic_sub_return(i, v);
+}
+
 bool os_atomic_dec_and_test(atomic_t *v)
 {
 	return atomic_dec_and_test(v);
+}
+
+int os_atomic_dec_return(atomic_t *v)
+{
+	return atomic_dec_return(v);
 }
 
 int os_atomic_read(atomic_t *v)
@@ -3036,6 +3320,16 @@ void *os_platform_get_drvdata(struct platform_device *pdev)
 	return platform_get_drvdata(pdev);
 }
 
+int os_platform_get_irq(struct platform_device *dev, unsigned int num)
+{
+	return platform_get_irq(dev, num);
+}
+
+int os_platform_irq_count(struct platform_device *pdev)
+{
+	return platform_irq_count(pdev);
+}
+
 struct platform_device *
 os_platform_device_register_full(const struct platform_device_info *pdevinfo)
 {
@@ -3050,6 +3344,11 @@ void os_platform_device_unregister(struct platform_device *pdev)
 struct platform_device *os_to_platform_device(struct device *dev)
 {
 	return to_platform_device(dev);
+}
+
+const char *os_get_paltform_device_name(struct platform_device *pdev)
+{
+	return pdev->name;
 }
 
 u64 os_roundup_pow_of_two(u64 size)
@@ -3175,16 +3474,50 @@ int os_printk(const char *fmt, ...)
 	return r;
 }
 
-void os_printk_ratelimited(const char *fmt, ...)
-{
-	va_list args;
-	static DEFINE_RATELIMIT_STATE(_rs, DEFAULT_RATELIMIT_INTERVAL, DEFAULT_RATELIMIT_BURST);
+struct mt_ratelimit_state {
+	struct ratelimit_state state;
+	struct list_head node;
+};
 
-	if (__ratelimit(&_rs)) {
-		va_start(args, fmt);
-		vprintk(fmt, args);
-		va_end(args);
+static DEFINE_SPINLOCK(g_ratelimit_state_lock);
+static LIST_HEAD(g_ratelimit_state_list);
+
+int ___os_ratelimit(struct ratelimit_state *rs, const char *func)
+{
+	return ___ratelimit(rs, func);
+}
+
+int os_create_ratelimit_state(struct ratelimit_state **rs, int interval, int burst)
+{
+	unsigned long flags;
+	struct mt_ratelimit_state *mt_rs;
+
+	mt_rs = kmalloc(sizeof(*mt_rs), preempt_count() ? GFP_ATOMIC : GFP_KERNEL);
+	if (!mt_rs)
+		return -ENOMEM;
+
+	ratelimit_state_init(&mt_rs->state, interval, burst);
+
+	spin_lock_irqsave(&g_ratelimit_state_lock, flags);
+	list_add(&mt_rs->node, &g_ratelimit_state_list);
+	spin_unlock_irqrestore(&g_ratelimit_state_lock, flags);
+
+	*rs = &mt_rs->state;
+
+	return 0;
+}
+
+void os_destroy_ratelimit_state_all(void)
+{
+	unsigned long flags;
+	struct mt_ratelimit_state *rs, *tmp;
+
+	spin_lock_irqsave(&g_ratelimit_state_lock, flags);
+	list_for_each_entry_safe(rs, tmp, &g_ratelimit_state_list, node) {
+		list_del(&rs->node);
+		kfree(rs);
 	}
+	spin_unlock_irqrestore(&g_ratelimit_state_lock, flags);
 }
 
 void os_blocking_init_notifier_head(struct blocking_notifier_head *nh)
@@ -3306,16 +3639,6 @@ void *os_create_dma_fence(void)
 void os_destroy_dma_fence(struct dma_fence *dma_fence)
 {
 	kfree(dma_fence);
-}
-
-void *os_create_dma_fence_cb(void)
-{
-	return kzalloc(sizeof(struct dma_fence_cb), GFP_KERNEL);
-}
-
-void os_destroy_dma_fence_cb(struct dma_fence_cb *dma_fence_cb)
-{
-	kfree(dma_fence_cb);
 }
 
 void os_dma_fence_init(struct dma_fence *fence,
@@ -3602,6 +3925,41 @@ struct dma_fence *os_sync_file_get_fence(int fd)
 	return sync_file_get_fence(fd);
 }
 
+struct gen_pool *os_gen_pool_create(int min_alloc_order, int nid)
+{
+	return gen_pool_create(min_alloc_order, nid);
+}
+
+void os_gen_pool_destroy(struct gen_pool *pool)
+{
+	gen_pool_destroy(pool);
+}
+
+int os_gen_pool_add_owner(struct gen_pool *pool, unsigned long virt, phys_addr_t phys,
+			  size_t size, int nid, void *owner)
+{
+#ifdef OS_STRUCT_GEN_POOL_CHUNK_HAS_OWNER
+	return gen_pool_add_owner(pool, virt, phys, size, nid, owner);
+#else
+	return gen_pool_add(pool, virt, size, nid);
+#endif
+}
+
+unsigned long os_gen_pool_alloc_owner(struct gen_pool *pool, size_t size, void **owner)
+{
+#ifdef OS_STRUCT_GEN_POOL_CHUNK_HAS_OWNER
+	return gen_pool_alloc_owner(pool, size, owner);
+#else
+	*owner = NULL;
+	return gen_pool_alloc(pool, size);
+#endif
+}
+
+void os_gen_pool_free(struct gen_pool *pool, unsigned long addr, size_t size)
+{
+	gen_pool_free(pool, addr, size);
+}
+
 /*About dev print*/
 static void __os_dev_printk(const char *level, const struct device *dev,
 			    struct va_format *vaf)
@@ -3690,9 +4048,9 @@ size_t os_strlcat(char *dest, const char *src, size_t count)
 	return strlcat(dest, src, count);
 }
 
-size_t os_strlcpy(char *dest, const char *src, size_t size)
+size_t os_strscpy(char *dest, const char *src, size_t size)
 {
-	return strlcpy(dest, src, size);
+	return strscpy(dest, src, size);
 }
 
 int os_strcmp(const char *cs, const char *ct)
@@ -3786,6 +4144,7 @@ const struct dmi_dev_onboard *os_get_dmi_device_data(const struct dmi_device *de
 	return dev->device_data;
 }
 
+#if defined(OS_STRUCT_DMI_DEV_ONBOARD_EXIST)
 int os_get_dmi_device_board_segment(const struct dmi_dev_onboard *dev_onboard)
 {
 	return dev_onboard->segment;
@@ -3810,6 +4169,32 @@ const char *os_get_dmi_device_board_name(const struct dmi_dev_onboard *dev_onboa
 {
 	return dev_onboard->dev.name;
 }
+#else
+int os_get_dmi_device_board_segment(const struct dmi_dev_onboard *dev_onboard)
+{
+        return 0;
+}
+
+int os_get_dmi_device_board_bus(const struct dmi_dev_onboard *dev_onboard)
+{
+        return 0;
+}
+
+int os_get_dmi_device_board_devfn(const struct dmi_dev_onboard *dev_onboard)
+{
+        return 0;
+}
+
+int os_get_dmi_device_board_instance(const struct dmi_dev_onboard *dev_onboard)
+{
+        return 0;
+}
+
+const char *os_get_dmi_device_board_name(const struct dmi_dev_onboard *dev_onboard)
+{
+        return NULL;
+}
+#endif
 
 DEFINE_SPINLOCK(mtgpu_global_bo_handle_idr_spinlock);
 
@@ -3843,6 +4228,62 @@ void os_idr_preload_end(void)
 	idr_preload_end();
 }
 
+bool os_running_on_hypervisor(void)
+{
+#ifdef CONFIG_X86
+	return boot_cpu_has(X86_FEATURE_HYPERVISOR);
+#else
+	return false;
+#endif
+}
+
+struct sock *os_netlink_kernel_create(struct net *net, int unit,
+				      struct netlink_kernel_cfg *cfg)
+{
+	return netlink_kernel_create(net, unit, cfg);
+}
+
+void os_netlink_kernel_release(struct sock *sk)
+{
+	netlink_kernel_release(sk);
+}
+
+struct nlmsghdr *os_nlmsg_hdr(struct sk_buff *skb)
+{
+	return nlmsg_hdr(skb);
+}
+
+char *os_nlmsg_data(struct nlmsghdr *nlh)
+{
+	return NLMSG_DATA(nlh);
+}
+
+int os_nlmsg_len(struct nlmsghdr *nlh)
+{
+	return nlmsg_len(nlh);
+}
+
+struct sk_buff *os_nlmsg_new(size_t payload, gfp_t flags)
+{
+	return nlmsg_new(payload, flags);
+}
+
+void os_nlmsg_free(struct sk_buff *skb)
+{
+	nlmsg_free(skb);
+}
+
+struct nlmsghdr *os_nlmsg_put(struct sk_buff *skb, u32 portid, u32 seq,
+			      int type, int payload, int flags)
+{
+	return nlmsg_put(skb, portid, seq, type, payload, flags);
+}
+
+int os_nlmsg_unicast(struct sock *sk, struct sk_buff *skb, u32 portid)
+{
+	return nlmsg_unicast(sk, skb, portid);
+}
+
 #define define_os_dev_printk_level(func, kern_level)		\
 void func(const struct device *dev, const char *fmt, ...)	\
 {								\
@@ -3872,3 +4313,4 @@ IMPLEMENT_OS_STRUCT_COMMON_FUNCS(notifier_block);
 IMPLEMENT_OS_STRUCT_COMMON_FUNCS(poll_table_struct);
 IMPLEMENT_OS_STRUCT_COMMON_FUNCS(wait_queue_entry);
 IMPLEMENT_OS_STRUCT_COMMON_FUNCS(timer_list);
+IMPLEMENT_OS_STRUCT_COMMON_FUNCS(dma_fence_cb);

@@ -36,6 +36,8 @@
 #include "mtgpu_phy_common.h"
 #include "mtgpu_drm_debugfs.h"
 #include "mtgpu_drm_dsc.h"
+#include "mtgpu_module_param.h"
+#include "mtgpu_drm_utils.h"
 
 static const u8 display_port_type[] = {
 	DRM_MODE_CONNECTOR_Unknown,    /*PORT_DISABLED*/
@@ -73,13 +75,59 @@ mtgpu_dp_aux_transfer(struct drm_dp_aux *aux, struct drm_dp_aux_msg *msg)
 	return msg->size;
 }
 
-static enum drm_connector_status
-mtgpu_dp_connector_detect(struct drm_connector *connector, bool force)
+static void mtgpu_dp_get_edid(struct drm_connector *connector)
 {
 	struct mtgpu_dp *dp = connector_to_mtgpu_dp(connector);
 	u16 retries = 100;
 
-	DRM_DEV_DEBUG(dp->dev, "%s()\n", __func__);
+	DRM_DEV_DEBUG(dp->dev, "%s(): fixed:%d, init:%d\n", __func__,
+		      dp->fixed_edid, dp->fixed_inited);
+
+	if (dp->fixed_edid && dp->fixed_inited != FIXED_EDID_STATUS) {
+		kfree(dp->edid);
+		dp->edid = NULL;
+
+		dp->edid = (struct edid *)mtgpu_drm_get_fixed_edid(connector);
+		if (dp->edid)
+			dp->fixed_inited = FIXED_EDID_STATUS;
+	}
+
+	if (dp->connected && !dp->edid) {
+		do {
+			dp->edid = drm_get_edid(connector, &dp->aux->ddc);
+			if (dp->edid)
+				break;
+
+			usleep_range(2000, 3000);
+			retries--;
+		} while (!dp->edid && retries);
+
+		if (!dp->edid) {
+			DRM_DEV_ERROR(dp->dev, "failed to get edid\n");
+			return;
+		}
+	}
+
+	/* plugout */
+	if (!dp->fixed_edid && !dp->connected && dp->edid) {
+		kfree(dp->edid);
+		dp->edid = NULL;
+	}
+}
+
+static enum drm_connector_status
+mtgpu_dp_connector_detect(struct drm_connector *connector, bool force)
+{
+	struct mtgpu_dp *dp = connector_to_mtgpu_dp(connector);
+
+	if (dp->fixed_inited == FIXED_INVALID_STATUS) {
+		if (mtgpu_drm_get_fixedflag_from_fs()) {
+			dp->fixed_edid = mtgpu_drm_get_fixed_edid_flag(connector);
+			dp->fixed_inited = FIXED_INITED_STATUS;
+		}
+	}
+
+	DRM_DEV_DEBUG(dp->dev, "comm:%s lock:%d\n", current->comm, dp->fixed_edid);
 
 	if (!dp->core->is_plugin) {
 		DRM_DEV_ERROR(dp->dev, "hotplug detect callback is not implemented\n");
@@ -87,28 +135,18 @@ mtgpu_dp_connector_detect(struct drm_connector *connector, bool force)
 	}
 
 	dp->connected = dp->core->is_plugin(&dp->ctx);
+
 	if (dp->connected && dp->ctx.dsc_param.dsc_capable)
 		mtgpu_dp_dsc_discover(dp);
 
-	if (dp->connected && !dp->edid) {
-		do {
-			dp->edid = drm_get_edid(connector, &dp->aux->ddc);
-			usleep_range(2000, 3000);
-			retries--;
-		} while (!dp->edid && retries);
+	mtgpu_dp_get_edid(connector);
 
-		if (!dp->edid) {
-			DRM_DEV_ERROR(dp->dev, "failed to get edid\n");
-			drm_connector_update_edid_property(connector, NULL);
-		} else {
-			drm_connector_update_edid_property(connector, dp->edid);
-		}
-	} else if (!dp->connected && dp->edid) {
-		kfree(dp->edid);
-		dp->edid = NULL;
-	}
+	drm_connector_update_edid_property(connector, dp->edid);
 
-	return dp->connected ? connector_status_connected : connector_status_disconnected;
+	if (dp->connected || (dp->edid && dp->fixed_edid))
+		return connector_status_connected;
+	else
+		return connector_status_disconnected;
 }
 
 static int mtgpu_dp_connector_get_modes(struct drm_connector *connector)
@@ -150,14 +188,20 @@ static int mtgpu_dp_mode_supported_by_product(struct mtgpu_dp *dp,
 			    dp_dsc_param->sink_dsc_support);
 	int max_pclk;
 
-	if (dp->ctx.max_rate == 0)
-		mtgpu_dp_get_sinkcaps(dp);
+	if (dp->fixed_edid && !dp->connected) {
+		if (mode->clock > dp->ctx.max_pclk_100khz * 100)
+			return MODE_CLOCK_HIGH;
+	} else {
+		if (dp->ctx.max_rate == 0)
+			mtgpu_dp_get_sinkcaps(dp);
 
-	max_pclk = mtgpu_dp_link_rate_to_pclk(dp->ctx.max_rate, dp->ctx.lane_cnt, 24);
+		max_pclk = mtgpu_dp_link_rate_to_pclk(dp->ctx.max_rate,
+						      dp->ctx.lane_cnt, 24);
 
-	if (mode->clock > dp->ctx.max_pclk_100khz * 100 ||
-	    (!dsc_support && mode->clock > max_pclk))
-		return MODE_CLOCK_HIGH;
+		if (mode->clock > dp->ctx.max_pclk_100khz * 100 ||
+		    (!dsc_support && mode->clock > max_pclk))
+			return MODE_CLOCK_HIGH;
+	}
 
 	if (mode->hdisplay > dp->ctx.max_hres)
 		return MODE_H_ILLEGAL;
@@ -238,6 +282,45 @@ static int mtgpu_dp_connector_mode_valid(struct drm_connector *connector,
 	return mode_status;
 }
 
+static void mtgpu_dp_create_properties(struct drm_device *drm, struct mtgpu_dp *dp)
+{
+	dp->prop_fixed_edid = drm_property_create_bool(drm, 0, "FIXED_EDID");
+	drm_object_attach_property(&dp->connector->base, dp->prop_fixed_edid, 0);
+}
+
+static int mtgpu_dp_connector_set_property(struct drm_connector *connector,
+					   struct drm_connector_state *connector_state,
+					   struct drm_property *property,
+					   uint64_t val)
+{
+	struct mtgpu_dp *dp = connector_to_mtgpu_dp(connector);
+
+	DRM_DEV_DEBUG(dp->dev, "dp set property:%s value:%llx.\n", property->name, val);
+
+	if (dp->prop_fixed_edid == property)
+		return mtgpu_dp_update_fixed_edid_flag(dp, (bool)val);
+
+	return -EINVAL;
+}
+
+static int mtgpu_dp_connector_get_property(struct drm_connector *connector,
+					   const struct drm_connector_state *state,
+					   struct drm_property *property,
+					   uint64_t *val)
+{
+	int ret = -EINVAL;
+	struct mtgpu_dp *dp = connector_to_mtgpu_dp(connector);
+
+	if (dp->prop_fixed_edid == property) {
+		*val = dp->fixed_edid;
+		ret = 0;
+	}
+
+	DRM_DEV_DEBUG(dp->dev, "dp get property:%s value:%llx.\n", property->name, *val);
+
+	return ret;
+}
+
 static const struct drm_connector_funcs mtgpu_dp_connector_funcs = {
 	.detect			= mtgpu_dp_connector_detect,
 	.fill_modes		= drm_helper_probe_single_connector_modes,
@@ -245,6 +328,8 @@ static const struct drm_connector_funcs mtgpu_dp_connector_funcs = {
 	.atomic_duplicate_state	= drm_atomic_helper_connector_duplicate_state,
 	.atomic_destroy_state	= drm_atomic_helper_connector_destroy_state,
 	.reset			= drm_atomic_helper_connector_reset,
+	.atomic_set_property	= mtgpu_dp_connector_set_property,
+	.atomic_get_property	= mtgpu_dp_connector_get_property,
 };
 
 static const struct drm_connector_helper_funcs
@@ -374,6 +459,10 @@ static int mtgpu_dp_drm_init(struct mtgpu_dp *dp, struct drm_device *drm)
 	drm_connector_helper_add(connector, &mtgpu_dp_connector_helper_funcs);
 	drm_connector_register(connector);
 	drm_connector_attach_encoder(connector, encoder);
+
+	mtgpu_dp_create_properties(drm, dp);
+	dp->fixed_edid = false;
+	dp->fixed_inited = FIXED_INVALID_STATUS;
 
 	return 0;
 }
@@ -738,6 +827,8 @@ static int mtgpu_dp_component_bind(struct device *dev,
 		break;
 	case GPU_SOC_GEN2:
 		chip = &mtgpu_dp_chip_qy1;
+		if (mtgpu_fec_enable)
+			chip->core = &mtgpu_dp_fec;
 		break;
 	case GPU_SOC_GEN3:
 		chip = &mtgpu_dp_chip_qy2;

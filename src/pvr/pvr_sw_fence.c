@@ -159,9 +159,9 @@ pvr_sw_fence_context_create(const char *context_name, const char *driver_name)
 		return NULL;
 
 	fence_context->context = dma_fence_context_alloc(1);
-	strlcpy(fence_context->context_name, context_name,
+	strscpy(fence_context->context_name, context_name,
 		sizeof(fence_context->context_name));
-	strlcpy(fence_context->driver_name, driver_name,
+	strscpy(fence_context->driver_name, driver_name,
 		sizeof(fence_context->driver_name));
 	atomic_set(&fence_context->seqno, 0);
 	atomic_set(&fence_context->fence_count, 0);

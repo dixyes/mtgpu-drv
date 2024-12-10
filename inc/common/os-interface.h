@@ -67,6 +67,10 @@
 )
 #endif
 
+#ifndef INT_MAX
+#define INT_MAX	((int)(~0U >> 1))
+#endif
+
 #define OS_VAL(index)	(os_value[OS_##index])
 #define DECLEAR_OS_VALUE \
 	X(PCI_IRQ_LEGACY)\
@@ -173,6 +177,7 @@
 	X(DISPLAY_FLAGS_PIXDATA_NEGEDGE)\
 	X(PAGE_SIZE)\
 	X(PAGE_SHIFT)\
+	X(PAGE_MASK)\
 	X(FOLL_WRITE)\
 	X(O_NONBLOCK)\
 	X(O_RDWR)\
@@ -215,6 +220,7 @@
 	X(EEXIST)\
 	X(ENODEV)\
 	X(ENXIO)\
+	X(ENOTNAM)\
 	X(ETIMEDOUT)\
 	X(EBUSY)\
 	X(EFAULT)\
@@ -246,7 +252,6 @@
 	X(SZ_1M)\
 	X(SZ_1G)\
 	X(NOTIFY_OK)\
-	X(MAX_ORDER)\
 	X(__GFP_COMP)\
 	X(__GFP_ZERO)\
 	X(__GFP_MOVABLE)\
@@ -255,7 +260,11 @@
 	X(IOMMU_WRITE)\
 	X(IOMMU_READ)\
 	X(IOMMU_DOMAIN_UNMANAGED)\
-	X(HZ)
+	X(HZ)\
+	X(DEFAULT_RATELIMIT_INTERVAL)\
+	X(DEFAULT_RATELIMIT_BURST)\
+	X(ACPI_ALLOCATE_BUFFER)\
+	X(ACPI_TYPE_INTEGER)
 
 enum {
 #define X(VALUE) OS_##VALUE,
@@ -316,6 +325,7 @@ struct workqueue_struct;
 struct platform_device;
 struct platform_device_info;
 struct device;
+struct device_node;
 struct msi_msg;
 struct msi_desc;
 struct pci_bus;
@@ -369,6 +379,8 @@ struct radix_tree_root;
 struct page;
 struct iommu_group;
 struct iommu_domain;
+struct iova;
+struct iova_domain;
 struct kmem_cache;
 struct dma_fence;
 struct dma_fence_array;
@@ -380,6 +392,16 @@ struct ww_mutex;
 typedef void (*dma_fence_func_t)(struct dma_fence *fence, struct dma_fence_cb *cb);
 struct sync_file;
 struct kmem_cache;
+struct ratelimit_state;
+struct acpi_buffer;
+union acpi_object;
+struct acpi_device;
+struct acpi_object_list;
+struct net;
+struct sock;
+struct sk_buff;
+struct nlmsghdr;
+struct netlink_kernel_cfg;
 
 #if defined(SUPPORT_ION)
 struct ion_heap;
@@ -612,6 +634,7 @@ void os_dev_set_drvdata(struct device *dev, void *data);
 struct device *os_get_device(struct device *dev);
 void os_put_device(struct device *dev);
 int os_device_attach(struct device *dev);
+const void *os_device_get_match_data(struct device *dev);
 
 int os_find_first_bit(const unsigned long *p, unsigned int size);
 int os_find_next_bit(const unsigned long *p, int size, int offset);
@@ -641,6 +664,8 @@ dma_addr_t os_sg_dma_address(struct scatterlist *sg);
 unsigned int os_sg_dma_len(struct scatterlist *sg);
 void os_set_sg_dma_address(struct scatterlist *sg, dma_addr_t dev_addr);
 void os_set_sg_dma_len(struct scatterlist *sg, unsigned int dma_len);
+void os_set_sg_page(struct scatterlist *sg, struct page *page,
+		    unsigned int len, unsigned int offset);
 int os_sg_alloc_table_from_pages(struct sg_table *sgt, struct page **pages,
 				 unsigned int n_pages, unsigned int offset,
 				 unsigned long size);
@@ -699,6 +724,7 @@ unsigned long os_copy_to_user(void __user *to, const void *from, unsigned long n
 __poll_t os_key_to_poll(void *key);
 void os_init_poll_funcptr(poll_table *pt, poll_queue_proc qproc);
 __poll_t os_vfs_poll(struct file *file, struct poll_table_struct *pt);
+bool os_check_file_exist(const char __user *path);
 void os_poll_wait(struct file *filp, struct wait_queue_head *wait_address,
 		  struct poll_table_struct *p);
 
@@ -721,6 +747,8 @@ struct proc_dir_entry *os_proc_mkdir(const char *name, struct proc_dir_entry *pa
 void os_proc_remove(struct proc_dir_entry *de);
 void os_remove_proc_entry(const char *name, struct proc_dir_entry *parent);
 int os_atomic_read_this_module_refcnt(void);
+void os_module_put(void);
+bool os_try_module_get(void);
 void *os_pde_data(const struct inode *inode);
 void os_seq_printf(struct seq_file *m, const char *f, ...);
 
@@ -753,6 +781,7 @@ struct file *os_get_fd_file(struct fd *fd);
 
 void os_kref_init(mt_kref *kref);
 int os_kref_put(mt_kref *kref, void (*release)(mt_kref *kref));
+int os_kref_read(mt_kref *kref);
 void os_kref_get(mt_kref *kref);
 
 int os_ida_create(struct ida **ida);
@@ -1052,6 +1081,7 @@ struct resource *os_request_mem_region(resource_size_t start,
 				       resource_size_t n,
 				       const char *name);
 void os_release_mem_region(resource_size_t start, resource_size_t n);
+struct resource *os_alloc_resource(void);
 struct resource *os_create_resource(struct mtgpu_resource *mtgpu_res, u32 num_res);
 void os_destroy_resource(struct resource *resource);
 int os_release_resource(struct resource *new);
@@ -1072,6 +1102,8 @@ struct platform_device_info *os_create_platform_device_info(struct device *dev,
 void os_destroy_platform_device_info(struct platform_device_info *pdev_info);
 void *os_platform_get_drvdata(struct platform_device *pdev);
 void os_platform_set_drvdata(struct platform_device *pdev, void *data);
+int os_platform_get_irq(struct platform_device *dev, unsigned int num);
+int os_platform_irq_count(struct platform_device *pdev);
 struct platform_device *
 os_platform_device_register_full(const struct platform_device_info *pdevinfo);
 void os_platform_device_unregister(struct platform_device *pdev);
@@ -1080,6 +1112,7 @@ struct resource *os_platform_get_resource(struct platform_device *dev,
 					  unsigned int num);
 struct device *os_get_platform_device_base(struct platform_device *pdev);
 struct platform_device *os_to_platform_device(struct device *dev);
+const char *os_get_paltform_device_name(struct platform_device *pdev);
 
 u64 os_roundup_pow_of_two(u64 size);
 u32 os_order_base_2(u64 size);
@@ -1160,7 +1193,7 @@ void **os_radix_tree_next_chunk(const struct radix_tree_root *root,
 				struct radix_tree_iter *iter, unsigned int flags);
 void **os_radix_tree_next_slot(void **slot, struct radix_tree_iter *iter, unsigned int flags);
 
-u64 os_eventfd_signal(struct eventfd_ctx *ctx, __u64 n);
+u64 os_eventfd_signal(struct eventfd_ctx *ctx);
 void os_eventfd_ctx_put(struct eventfd_ctx *ctx);
 struct eventfd_ctx *os_eventfd_ctx_fdget(int fd);
 
@@ -1184,7 +1217,23 @@ void _os_dev_dbg(const struct device *dev, const char *fmt, ...);
 
 int os_snprintf(char *buf, size_t size, const char *fmt, ...);
 int os_printk(const char *fmt, ...);
-void os_printk_ratelimited(const char *fmt, ...);
+
+int ___os_ratelimit(struct ratelimit_state *rs, const char *func);
+int os_create_ratelimit_state(struct ratelimit_state **rs, int interval, int burst);
+void os_destroy_ratelimit_state_all(void);
+#define __os_ratelimit(state) ___os_ratelimit(state, __func__)
+#define os_printk_ratelimited(fmt, ...)						\
+({										\
+	static struct ratelimit_state *_rs;					\
+										\
+	if (!_rs)								\
+		os_create_ratelimit_state(&_rs,					\
+					  OS_VAL(DEFAULT_RATELIMIT_INTERVAL),	\
+					  OS_VAL(DEFAULT_RATELIMIT_BURST));	\
+										\
+	if (_rs && __os_ratelimit(_rs))						\
+		os_printk(fmt, ##__VA_ARGS__);					\
+})
 
 bool OS_IS_ERR(const void *ptr);
 bool OS_IS_ERR_OR_NULL(__force const void *ptr);
@@ -1200,7 +1249,7 @@ void os_dump_stack(void);
 int os_sscanf(const char *str, const char *fmt, ...);
 size_t os_strlen(const char *s);
 size_t os_strlcat(char *dest, const char *src, size_t count);
-size_t os_strlcpy(char *dest, const char *src, size_t size);
+size_t os_strscpy(char *dest, const char *src, size_t size);
 char *os_strcat(char *dest, const char *src);
 int os_strcmp(const char *cs, const char *ct);
 int os_strncmp(const char *cs, const char *ct, size_t count);
@@ -1213,6 +1262,47 @@ char *os_strsep(char **s, const char *delim);
 int os_sprintf(char *buf, const char *fmt, ...);
 char *os_strtrim(char *src);
 
+unsigned long os_ffs(unsigned long word);
+unsigned long os_get_iodomain_aperture_end(struct iommu_domain *domain);
+unsigned long os_get_iodomain_pgsize_bitmap(struct iommu_domain *domain);
+void *os_create_iova_domain(void);
+int os_of_dma_configure(struct device *dev,
+			struct device_node *np,
+			bool force_dma);
+struct device_node *os_of_find_node_by_path(const char *path);
+struct device_node *os_of_get_next_child(const struct device_node *node, struct device_node *prev);
+int os_of_device_is_compatible(const struct device_node *device, const char *name);
+int os_of_address_to_resource(struct device_node *dev, int index, struct resource *r);
+const char *os_of_node_get_name(const struct device_node *device);
+bool os_is_acpi_disabled(void);
+struct acpi_device *os_acpi_companion(struct device *dev);
+struct acpi_buffer *os_create_acpi_buffer(void);
+void os_set_acpi_buffer_length(struct acpi_buffer *buffer, u64 size);
+void *os_get_acpi_buffer_pointer(struct acpi_buffer *buffer);
+u32 os_get_acpi_object_type(union acpi_object *object);
+u64 os_get_acpi_object_integer_value(union acpi_object *object);
+void *os_get_acpi_device_handle(struct acpi_device *adev);
+u32 os_acpi_evaluate_object(void *object, char *path_name,
+			    struct acpi_object_list *parameter_objects,
+			    struct acpi_buffer *return_object_buffer);
+unsigned long os_iova_size(struct iova *iova);
+unsigned long os_iova_shift(struct iova_domain *iovad);
+unsigned long os_iova_mask(struct iova_domain *iovad);
+size_t os_iova_offset(struct iova_domain *iovad, dma_addr_t iova);
+size_t os_iova_align(struct iova_domain *iovad, size_t size);
+dma_addr_t os_iova_dma_addr(struct iova_domain *iovad, struct iova *iova);
+unsigned long os_iova_pfn(struct iova_domain *iovad, dma_addr_t iova);
+int os_iova_cache_get(void);
+void os_iova_cache_put(void);
+void os_free_iova(struct iova_domain *iovad, struct iova *iova);
+struct iova *os_alloc_iova(struct iova_domain *iovad, unsigned long size,
+			   unsigned long limit_pfn, bool size_aligned);
+struct iova *os_find_iova(struct iova_domain *iovad, unsigned long pfn);
+void os_put_iova_domain(struct iova_domain *iovad);
+void os_init_iova_domain(struct iova_domain *iovad, unsigned long granule,
+			 unsigned long start_pfn);
+size_t os_iommu_map_sg(struct iommu_domain *domain, unsigned long iova,
+		       struct scatterlist *sg, unsigned int nents, int prot);
 int os_iommu_map(struct iommu_domain *domain, unsigned long iova,
 		 phys_addr_t paddr, size_t size, int prot);
 size_t os_iommu_unmap(struct iommu_domain *domain, unsigned long iova, size_t size);
@@ -1233,6 +1323,7 @@ phys_addr_t os_virt_to_phys(void *address);
 struct device *os_get_dev_parent_parent(struct device *dev);
 struct device *os_get_dev_parent(struct device *dev);
 void *os_get_device_driver_data(struct device *dev);
+struct device_node *os_get_device_of_node(struct device *dev);
 
 char *os_get_current_comm(void);
 u64 os_get_current_pid(void);
@@ -1247,8 +1338,6 @@ const struct dma_fence_ops *os_get_dma_fence_ops(struct dma_fence *dma_fence);
 void os_set_dma_fence_struct_seqno(struct dma_fence *dma_fence, u64 seqno);
 void *os_create_dma_fence(void);
 void os_destroy_dma_fence(struct dma_fence *dma_fence);
-void *os_create_dma_fence_cb(void);
-void os_destroy_dma_fence_cb(struct dma_fence_cb *dma_fence_cb);
 void os_dma_fence_init(struct dma_fence *fence,
 		       const struct dma_fence_ops *ops,
 		       spinlock_t *lock, u64 context, u64 seqno);
@@ -1298,6 +1387,13 @@ void os_fd_install_sync_file(int fd, struct sync_file *sync_file);
 struct sync_file *os_sync_file_create(struct dma_fence *fence);
 struct dma_fence *os_sync_file_get_fence(int fd);
 
+struct gen_pool *os_gen_pool_create(int min_alloc_order, int nid);
+void os_gen_pool_destroy(struct gen_pool *pool);
+int os_gen_pool_add_owner(struct gen_pool *pool, unsigned long virt, phys_addr_t phys,
+			  size_t size, int nid, void *owner);
+unsigned long os_gen_pool_alloc_owner(struct gen_pool *pool, size_t size, void **owner);
+void os_gen_pool_free(struct gen_pool *pool, unsigned long addr, size_t size);
+
 struct bus_type *os_get_dev_bus_type(struct device *dev);
 
 /**
@@ -1311,10 +1407,23 @@ int os_get_dmi_device_board_devfn(const struct dmi_dev_onboard *dev_onboard);
 int os_get_dmi_device_board_instance(const struct dmi_dev_onboard *dev_onboard);
 const char *os_get_dmi_device_board_name(const struct dmi_dev_onboard *dev_onboard);
 
+struct sock *os_netlink_kernel_create(struct net *net, int unit,
+				      struct netlink_kernel_cfg *cfg);
+void os_netlink_kernel_release(struct sock *sk);
+struct nlmsghdr *os_nlmsg_hdr(struct sk_buff *skb);
+char *os_nlmsg_data(struct nlmsghdr *nlh);
+int os_nlmsg_len(struct nlmsghdr *nlh);
+struct sk_buff *os_nlmsg_new(size_t payload, gfp_t flags);
+void os_nlmsg_free(struct sk_buff *skb);
+struct nlmsghdr *os_nlmsg_put(struct sk_buff *skb, u32 portid, u32 seq,
+			      int type, int payload, int flags);
+int os_nlmsg_unicast(struct sock *sk, struct sk_buff *skb, u32 portid);
+
 void os_bitmap_set(unsigned long *map, unsigned int start, unsigned int nbits);
 void os_bitmap_clear(unsigned long *map, unsigned int start, unsigned int nbits);
 int os_bitmap_empty(const unsigned long *src, unsigned int nbits);
 int os_bitmap_full(const unsigned long *src, unsigned int nbits);
+int os_bitmap_weight(const unsigned long *src, unsigned int nbits);
 void os_bitmap_free(const unsigned long *bitmap);
 unsigned long *os_bitmap_zalloc(unsigned int nbits, gfp_t flags);
 unsigned long os_bitmap_find_next_zero_area(unsigned long *map,
@@ -1322,6 +1431,7 @@ unsigned long os_bitmap_find_next_zero_area(unsigned long *map,
 					    unsigned long start,
 					    unsigned int nr,
 					    unsigned long align_mask);
+unsigned long os_find_first_zero_bit(const unsigned long *addr, unsigned long size);
 int os_test_bit(int nr, const volatile unsigned long *addr);
 
 void *os_kmem_cache_alloc(struct kmem_cache *cachep, gfp_t flags);
@@ -1338,7 +1448,10 @@ int os_atomic_xchg(atomic_t *v, int val);
 void os_atomic_set(atomic_t *v, int val);
 void os_atomic_inc(atomic_t *v);
 int os_atomic_inc_return(atomic_t *v);
+void os_atomic_add(int i, atomic_t *v);
+int os_atomic_sub_return(int i, atomic_t *v);
 bool os_atomic_dec_and_test(atomic_t *v);
+int os_atomic_dec_return(atomic_t *v);
 int os_atomic_read(atomic_t *v);
 int os_atomic_fetch_add(int i, atomic_t *v);
 void os_atomic64_set(atomic64_t *v, s64 i);
@@ -1359,11 +1472,13 @@ void *os_idr_find(const struct idr *idr, unsigned long id);
 void *os_idr_remove(struct idr *idr, unsigned long id);
 void os_idr_preload(void);
 void os_idr_preload_end(void);
+bool os_running_on_hypervisor(void);
 
 DECLARE_OS_STRUCT_COMMON_FUNCS(notifier_block);
 DECLARE_OS_STRUCT_COMMON_FUNCS(poll_table_struct);
 DECLARE_OS_STRUCT_COMMON_FUNCS(wait_queue_entry);
 DECLARE_OS_STRUCT_COMMON_FUNCS(timer_list);
+DECLARE_OS_STRUCT_COMMON_FUNCS(dma_fence_cb);
 
 #ifndef KERN_SOH
 #define KERN_SOH	"\001"		/* ASCII Start Of Header */

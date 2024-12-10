@@ -16,6 +16,7 @@
 
 extern ulong display_debug;
 
+#define DISP_PRINT_REG		BIT(5)
 #define DISP_PRINT_TRACE	BIT(4)
 #define DISP_PRINT_DEBUG	BIT(3)
 #define DISP_PRINT_INFO		BIT(2)
@@ -34,68 +35,74 @@ extern ulong display_debug;
 #define DP_DEBUG_CTL		((display_debug & DP_DEBUG_MASK)    >> 0)
 
 /* DSC debug log */
-#define DSC_TRACE(fmt, ...)									\
+#define DSC_DBG_REG(fmt, ...)								\
+({											\
+	if (DSC_DEBUG_CTL & DISP_PRINT_REG)						\
+		os_pr_info("DSC-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+})
+
+#define DSC_TRACE(fmt, ...)								\
 ({											\
 	if (DSC_DEBUG_CTL & DISP_PRINT_TRACE)						\
-		os_pr_info("DSC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+		os_pr_info("DSC-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 })
 
 #define DSC_DEBUG(fmt, ...)								\
 ({											\
 	if (DSC_DEBUG_CTL & DISP_PRINT_DEBUG)						\
-		os_pr_info("DSC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+		os_pr_info("DSC-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 })
 
 #define DSC_INFO(fmt, ...)								\
 ({											\
 	if (DSC_DEBUG_CTL & DISP_PRINT_INFO)						\
-		os_pr_info("DSC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+		os_pr_info("DSC-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 })
 
 #define DSC_WARN(fmt, ...)								\
 ({											\
 	if (DSC_DEBUG_CTL & DISP_PRINT_WARN)						\
-		os_pr_warn("DSC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+		os_pr_warn("DSC-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 })
 
 #define DSC_ERROR(fmt, ...)								\
 ({											\
 	if (DSC_DEBUG_CTL & DISP_PRINT_ERROR)						\
-		os_pr_err("DSC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+		os_pr_err("DSC-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 })
 
-#define DSC_INFO_ONCE(fmt, ...)								\
+#define DSC_INFO_ONCE(fmt, ...)									\
 ({												\
-	if (DSC_DEBUG_CTL & DISP_PRINT_INFO) {						\
+	if (DSC_DEBUG_CTL & DISP_PRINT_INFO) {							\
 		static bool _section(.data.once) __print_once;					\
 												\
 		if (!__print_once) {								\
 			__print_once = true;							\
-			os_pr_info("DSC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+			os_pr_info("DSC-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 		}										\
 	}											\
 })
 
-#define DSC_WARN_ONCE(fmt, ...)								\
+#define DSC_WARN_ONCE(fmt, ...)									\
 ({												\
-	if (DSC_DEBUG_CTL & DISP_PRINT_WARN) {						\
+	if (DSC_DEBUG_CTL & DISP_PRINT_WARN) {							\
 		static bool _section(.data.once) __print_once;					\
 												\
 		if (!__print_once) {								\
 			__print_once = true;							\
-			os_pr_warn("DSC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+			os_pr_warn("DSC-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 		}										\
 	}											\
 })
 
 #define DSC_ERROR_ONCE(fmt, ...)								\
 ({												\
-	if (DSC_DEBUG_CTL & DISP_PRINT_ERROR) {						\
+	if (DSC_DEBUG_CTL & DISP_PRINT_ERROR) {							\
 		static bool _section(.data.once) __print_once;					\
 												\
 		if (!__print_once) {								\
 			__print_once = true;							\
-			os_pr_err("DSC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+			os_pr_err("DSC-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 		}										\
 	}											\
 })
@@ -103,38 +110,44 @@ extern ulong display_debug;
 #define DSC_ERROR_RATELIMITATED(fmt, ...)							\
 ({												\
 	if (DSC_DEBUG_CTL & DISP_PRINT_ERROR)							\
-		os_pr_err_ratelimited("DSC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);\
+		os_pr_err_ratelimited("DSC-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 })
 
 /* global debug log */
+#define GLB_DBG_REG(fmt, ...)							\
+({										\
+	if (GLB_DEBUG_CTL & DISP_PRINT_REG)					\
+		os_pr_info("DISP-TOP: %s() " fmt, __func__, ##__VA_ARGS__);	\
+})
+
 #define GLB_TRACE(fmt, ...)							\
 ({										\
 	if (GLB_DEBUG_CTL & DISP_PRINT_TRACE)					\
-		os_pr_info("DISP-TOP: %s(): " fmt, __func__, ##__VA_ARGS__);	\
+		os_pr_info("DISP-TOP: %s() " fmt, __func__, ##__VA_ARGS__);	\
 })
 
 #define GLB_DEBUG(fmt, ...)							\
 ({										\
 	if (GLB_DEBUG_CTL & DISP_PRINT_DEBUG)					\
-		os_pr_info("DISP-TOP: %s(): " fmt, __func__, ##__VA_ARGS__);	\
+		os_pr_info("DISP-TOP: %s() " fmt, __func__, ##__VA_ARGS__);	\
 })
 
 #define GLB_INFO(fmt, ...)							\
 ({										\
 	if (GLB_DEBUG_CTL & DISP_PRINT_INFO)					\
-		os_pr_info("DISP-TOP: %s(): " fmt, __func__, ##__VA_ARGS__);	\
+		os_pr_info("DISP-TOP: %s() " fmt, __func__, ##__VA_ARGS__);	\
 })
 
 #define GLB_WARN(fmt, ...)							\
 ({										\
 	if (GLB_DEBUG_CTL & DISP_PRINT_WARN)					\
-		os_pr_warn("DISP-TOP: %s(): " fmt, __func__, ##__VA_ARGS__);	\
+		os_pr_warn("DISP-TOP: %s() " fmt, __func__, ##__VA_ARGS__);	\
 })
 
 #define GLB_ERROR(fmt, ...)							\
 ({										\
 	if (GLB_DEBUG_CTL & DISP_PRINT_ERROR)					\
-		os_pr_err("DISP-TOP: %s(): " fmt, __func__, ##__VA_ARGS__);	\
+		os_pr_err("DISP-TOP: %s() " fmt, __func__, ##__VA_ARGS__);	\
 })
 
 #define GLB_INFO_ONCE(fmt, ...)								\
@@ -144,7 +157,7 @@ extern ulong display_debug;
 											\
 		if (!__print_once) {							\
 			__print_once = true;						\
-			os_pr_info("DISP-TOP: %s(): " fmt, __func__, ##__VA_ARGS__);	\
+			os_pr_info("DISP-TOP: %s() " fmt, __func__, ##__VA_ARGS__);	\
 		}									\
 	}										\
 })
@@ -156,7 +169,7 @@ extern ulong display_debug;
 											\
 		if (!__print_once) {							\
 			__print_once = true;						\
-			os_pr_warn("DISP-TOP: %s(): " fmt, __func__, ##__VA_ARGS__);	\
+			os_pr_warn("DISP-TOP: %s() " fmt, __func__, ##__VA_ARGS__);	\
 		}									\
 	}										\
 })
@@ -168,7 +181,7 @@ extern ulong display_debug;
 											\
 		if (!__print_once) {							\
 			__print_once = true;						\
-			os_pr_err("DISP-TOP: %s(): " fmt, __func__, ##__VA_ARGS__);	\
+			os_pr_err("DISP-TOP: %s() " fmt, __func__, ##__VA_ARGS__);	\
 		}									\
 	}										\
 })
@@ -176,38 +189,44 @@ extern ulong display_debug;
 #define GLB_ERROR_RATELIMITATED(fmt, ...)						\
 ({											\
 	if (GLB_DEBUG_CTL & DISP_PRINT_ERROR)						\
-		os_pr_err_ratelimited("DISP-TOP: %s(): " fmt, __func__, ##__VA_ARGS__);	\
+		os_pr_err_ratelimited("DISP-TOP: %s() " fmt, __func__, ##__VA_ARGS__);	\
 })
 
 /* DISPC debug log */
+#define DISPC_DBG_REG(fmt, ...)								\
+({											\
+	if (DISPC_DEBUG_CTL & DISP_PRINT_REG)						\
+		os_pr_info("DISPC-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+})
+
 #define DISPC_TRACE(fmt, ...)								\
 ({											\
 	if (DISPC_DEBUG_CTL & DISP_PRINT_TRACE)						\
-		os_pr_info("DISPC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+		os_pr_info("DISPC-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 })
 
 #define DISPC_DEBUG(fmt, ...)								\
 ({											\
 	if (DISPC_DEBUG_CTL & DISP_PRINT_DEBUG)						\
-		os_pr_info("DISPC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+		os_pr_info("DISPC-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 })
 
 #define DISPC_INFO(fmt, ...)								\
 ({											\
 	if (DISPC_DEBUG_CTL & DISP_PRINT_INFO)						\
-		os_pr_info("DISPC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+		os_pr_info("DISPC-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 })
 
 #define DISPC_WARN(fmt, ...)								\
 ({											\
 	if (DISPC_DEBUG_CTL & DISP_PRINT_WARN)						\
-		os_pr_warn("DISPC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+		os_pr_warn("DISPC-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 })
 
 #define DISPC_ERROR(fmt, ...)								\
 ({											\
 	if (DISPC_DEBUG_CTL & DISP_PRINT_ERROR)						\
-		os_pr_err("DISPC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+		os_pr_err("DISPC-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 })
 
 #define DISPC_INFO_ONCE(fmt, ...)								\
@@ -217,7 +236,7 @@ extern ulong display_debug;
 												\
 		if (!__print_once) {								\
 			__print_once = true;							\
-			os_pr_info("DISPC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+			os_pr_info("DISPC-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 		}										\
 	}											\
 })
@@ -229,7 +248,7 @@ extern ulong display_debug;
 												\
 		if (!__print_once) {								\
 			__print_once = true;							\
-			os_pr_warn("DISPC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+			os_pr_warn("DISPC-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 		}										\
 	}											\
 })
@@ -241,7 +260,7 @@ extern ulong display_debug;
 												\
 		if (!__print_once) {								\
 			__print_once = true;							\
-			os_pr_err("DISPC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+			os_pr_err("DISPC-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 		}										\
 	}											\
 })
@@ -249,38 +268,44 @@ extern ulong display_debug;
 #define DISPC_ERROR_RATELIMITATED(fmt, ...)							\
 ({												\
 	if (DISPC_DEBUG_CTL & DISP_PRINT_ERROR)							\
-		os_pr_err_ratelimited("DISPC-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);\
+		os_pr_err_ratelimited("DISPC-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);\
 })
 
 /* HDMI debug log */
+#define HDMI_DBG_REG(fmt, ...)								\
+({											\
+	if (HDMI_DEBUG_CTL & DISP_PRINT_REG)						\
+		os_pr_info("HDMI: %s() " fmt, __func__, ##__VA_ARGS__);		\
+})
+
 #define HDMI_TRACE(fmt, ...)								\
 ({											\
 	if (HDMI_DEBUG_CTL & DISP_PRINT_TRACE)						\
-		os_pr_info("HDMI: %s(): " fmt, __func__, ##__VA_ARGS__);		\
+		os_pr_info("HDMI: %s() " fmt, __func__, ##__VA_ARGS__);		\
 })
 
 #define HDMI_DEBUG(fmt, ...)								\
 ({											\
 	if (HDMI_DEBUG_CTL & DISP_PRINT_DEBUG)						\
-		os_pr_info("HDMI: %s(): " fmt, __func__, ##__VA_ARGS__);		\
+		os_pr_info("HDMI: %s() " fmt, __func__, ##__VA_ARGS__);		\
 })
 
 #define HDMI_INFO(fmt, ...)								\
 ({											\
 	if (HDMI_DEBUG_CTL & DISP_PRINT_INFO)						\
-		os_pr_info("HDMI: %s(): " fmt, __func__, ##__VA_ARGS__);		\
+		os_pr_info("HDMI: %s() " fmt, __func__, ##__VA_ARGS__);		\
 })
 
 #define HDMI_WARN(fmt, ...)								\
 ({											\
 	if (HDMI_DEBUG_CTL & DISP_PRINT_WARN)						\
-		os_pr_warn("HDMI: %s(): " fmt, __func__, ##__VA_ARGS__);		\
+		os_pr_warn("HDMI: %s() " fmt, __func__, ##__VA_ARGS__);		\
 })
 
 #define HDMI_ERROR(fmt, ...)								\
 ({											\
 	if (HDMI_DEBUG_CTL & DISP_PRINT_ERROR)						\
-		os_pr_err("HDMI: %s(): " fmt, __func__, ##__VA_ARGS__);			\
+		os_pr_err("HDMI: %s() " fmt, __func__, ##__VA_ARGS__);			\
 })
 
 #define HDMI_INFO_ONCE(fmt, ...)							\
@@ -290,7 +315,7 @@ extern ulong display_debug;
 											\
 		if (!__print_once) {							\
 			__print_once = true;						\
-			os_pr_info("HDMI: %s(): " fmt, __func__, ##__VA_ARGS__);	\
+			os_pr_info("HDMI: %s() " fmt, __func__, ##__VA_ARGS__);	\
 		}									\
 	}										\
 })
@@ -302,7 +327,7 @@ extern ulong display_debug;
 											\
 		if (!__print_once) {							\
 			__print_once = true;						\
-			os_pr_warn("HDMI: %s(): " fmt, __func__, ##__VA_ARGS__);	\
+			os_pr_warn("HDMI: %s() " fmt, __func__, ##__VA_ARGS__);	\
 		}									\
 	}										\
 })
@@ -314,7 +339,7 @@ extern ulong display_debug;
 											\
 		if (!__print_once) {							\
 			__print_once = true;						\
-			os_pr_err("HDMI: %s(): " fmt, __func__, ##__VA_ARGS__);		\
+			os_pr_err("HDMI: %s() " fmt, __func__, ##__VA_ARGS__);		\
 		}									\
 	}										\
 })
@@ -322,38 +347,44 @@ extern ulong display_debug;
 #define HDMI_WARN_RATELIMITED(fmt, ...)							\
 ({											\
 	if (HDMI_DEBUG_CTL & DISP_PRINT_WARN)						\
-		os_pr_warn_ratelimited("HDMI: %s(): " fmt, __func__, ##__VA_ARGS__);	\
+		os_pr_warn_ratelimited("HDMI: %s() " fmt, __func__, ##__VA_ARGS__);	\
 })
 
 /* DP debug log */
+#define DP_DBG_REG(fmt, ...)								\
+({											\
+	if (DP_DEBUG_CTL & DISP_PRINT_REG)						\
+		os_pr_info("DP-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+})
+
 #define DP_TRACE(fmt, ...)								\
 ({											\
 	if (DP_DEBUG_CTL & DISP_PRINT_TRACE)						\
-		os_pr_info("DP-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+		os_pr_info("DP-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 })
 
 #define DP_DEBUG(fmt, ...)								\
 ({											\
 	if (DP_DEBUG_CTL & DISP_PRINT_DEBUG)						\
-		os_pr_info("DP-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+		os_pr_info("DP-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 })
 
 #define DP_INFO(fmt, ...)								\
 ({											\
 	if (DP_DEBUG_CTL & DISP_PRINT_INFO)						\
-		os_pr_info("DP-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+		os_pr_info("DP-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 })
 
 #define DP_WARN(fmt, ...)								\
 ({											\
 	if (DP_DEBUG_CTL & DISP_PRINT_WARN)						\
-		os_pr_warn("DP-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+		os_pr_warn("DP-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 })
 
 #define DP_ERROR(fmt, ...)								\
 ({											\
 	if (DP_DEBUG_CTL & DISP_PRINT_ERROR)						\
-		os_pr_err("DP-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+		os_pr_err("DP-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 })
 
 #define DP_INFO_ONCE(fmt, ...)									\
@@ -363,7 +394,7 @@ extern ulong display_debug;
 												\
 		if (!__print_once) {								\
 			__print_once = true;							\
-			os_pr_info("DP-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+			os_pr_info("DP-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 		}										\
 	}											\
 })
@@ -375,7 +406,7 @@ extern ulong display_debug;
 												\
 		if (!__print_once) {								\
 			__print_once = true;							\
-			os_pr_warn("DP-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+			os_pr_warn("DP-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 		}										\
 	}											\
 })
@@ -387,7 +418,7 @@ extern ulong display_debug;
 												\
 		if (!__print_once) {								\
 			__print_once = true;							\
-			os_pr_err("DP-%d: %s(): " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
+			os_pr_err("DP-%d: %s() " fmt, ctx->id, __func__, ##__VA_ARGS__);	\
 		}										\
 	}											\
 })

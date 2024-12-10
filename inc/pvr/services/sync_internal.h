@@ -47,6 +47,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "img_types.h"
 #include "img_defs.h"
+#include "linux-types.h"
+#include "linux-list.h"
 #include "ra.h"
 #include "dllist.h"
 #include "lock.h"
@@ -68,15 +70,17 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define SYNC_PRIM_NAME_SIZE		50
 typedef struct SYNC_PRIM_CONTEXT_TAG
 {
-	SHARED_DEV_CONNECTION       hDevConnection;
-	IMG_CHAR					azName[SYNC_PRIM_NAME_SIZE];	/*!< Name of the RA */
-	RA_ARENA					*psSubAllocRA;					/*!< RA context */
-	IMG_CHAR					azSpanName[SYNC_PRIM_NAME_SIZE];/*!< Name of the span RA */
-	RA_ARENA					*psSpanRA;						/*!< RA used for span management of SubAllocRA */
+	SHARED_DEV_CONNECTION			hDevConnection;
+	IMG_CHAR				azName[SYNC_PRIM_NAME_SIZE];	/*!< Name of the RA */
+	RA_ARENA				*psSubAllocRA;					/*!< RA context */
+	IMG_CHAR				azSpanName[SYNC_PRIM_NAME_SIZE];/*!< Name of the span RA */
+	RA_ARENA				*psSpanRA;						/*!< RA used for span management of SubAllocRA */
 	ATOMIC_T				hRefCount;	/*!< Ref count for this context */
 #if defined(LOCAL_SYNC_BLOCK_RETAIN_FIRST)
-	IMG_HANDLE					hFirstSyncPrim; /*!< Handle to the first allocated sync prim */
+	IMG_HANDLE				hFirstSyncPrim; /*!< Handle to the first allocated sync prim */
 #endif
+	POS_SPINLOCK				SyncPrimListLock;
+	struct list_head			SyncPrimExportDataList;
 } SYNC_PRIM_CONTEXT;
 
 typedef struct SYNC_PRIM_BLOCK_TAG

@@ -32,29 +32,8 @@
 #include "mtgpu_hdmi_common.h"
 #include "mtgpu_drv.h"
 #include "mtgpu_board_cfg.h"
-
-struct mtgpu_hdmi {
-	struct drm_connector connector;
-	struct drm_encoder encoder;
-	struct mtgpu_hdmi_ctx ctx;
-	struct mtgpu_hdmi_ops *core;
-	struct mtgpu_hdmi_glb_ops *glb;
-	struct device *dev;
-	struct i2c_adapter *ddc;
-	struct mutex i2c_lock;
-	struct delayed_work hpd_work;
-	u8 port_type;
-	/* audio codec */
-	struct platform_device *hdmi_audio;
-	hdmi_codec_plugged_cb codec_plugged_cb;
-
-	struct device *codec_dev;
-	struct mutex codec_lock;
-	struct edid *edid;
-	bool connected;
-	bool enabled;
-	bool audio_enabled;
-};
+#include "mtgpu_drm_debugfs.h"
+#include "mtgpu_drm_utils.h"
 
 static const u8 hdmi_port_type[] = {
 	DRM_MODE_CONNECTOR_Unknown,	/* PORT_DISABLED */
@@ -135,55 +114,74 @@ static struct drm_display_mode hdmi_supported_mode[] = {
 		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC), },
 };
 
-static inline struct mtgpu_hdmi *encoder_to_mtgpu_hdmi(struct drm_encoder *encoder)
-{
-	return container_of(encoder, struct mtgpu_hdmi, encoder);
-}
-
-static inline
-struct mtgpu_hdmi *connector_to_mtgpu_hdmi(struct drm_connector *connector)
-{
-	return container_of(connector, struct mtgpu_hdmi, connector);
-}
-
-static enum drm_connector_status
-mtgpu_hdmi_connector_detect(struct drm_connector *connector, bool force)
+static void mtgpu_hdmi_get_edid(struct drm_connector *connector)
 {
 	struct mtgpu_hdmi *hdmi = connector_to_mtgpu_hdmi(connector);
-	bool connected;
 	u16 retries = 100;
 
-	DRM_DEV_DEBUG(hdmi->dev, "%s()\n", __func__);
+	DRM_DEV_DEBUG(hdmi->dev, "%s(): fixed:%d, init:%d\n", __func__,
+		      hdmi->fixed_edid, hdmi->fixed_inited);
 
-	if (!hdmi->core->is_plugin)
-		return connector_status_disconnected;
+	if (hdmi->fixed_edid && hdmi->fixed_inited != FIXED_EDID_STATUS) {
+		kfree(hdmi->edid);
+		hdmi->edid = NULL;
 
-	connected = hdmi->core->is_plugin(&hdmi->ctx);
+		hdmi->edid = (struct edid *)mtgpu_drm_get_fixed_edid(connector);
+		if (hdmi->edid)
+			hdmi->fixed_inited = FIXED_EDID_STATUS;
+	}
 
-	if (connected && !hdmi->edid) {
+	if (hdmi->connected && !hdmi->edid) {
 		do {
 			hdmi->edid = drm_get_edid(connector, hdmi->ddc);
+			if (hdmi->edid)
+				break;
+
 			usleep_range(2000, 3000);
 			retries--;
 		} while (!hdmi->edid && retries);
 
 		if (!hdmi->edid) {
 			DRM_DEV_ERROR(hdmi->dev, "failed to get edid\n");
-			drm_connector_update_edid_property(connector, NULL);
-		} else {
-			drm_connector_update_edid_property(connector, hdmi->edid);
-			/* update eld earlier for audio for kylin */
-			drm_add_edid_modes(connector, hdmi->edid);
+			return;
 		}
-	} else if (!connected && hdmi->edid) {
+	}
+
+	/* plugout */
+	if (!hdmi->fixed_edid && !hdmi->connected && hdmi->edid) {
 		kfree(hdmi->edid);
 		hdmi->edid = NULL;
 	}
+}
 
-	hdmi->connected = connected;
+static enum drm_connector_status
+mtgpu_hdmi_connector_detect(struct drm_connector *connector, bool force)
+{
+	struct mtgpu_hdmi *hdmi = connector_to_mtgpu_hdmi(connector);
 
-	return connected ? connector_status_connected :
-		connector_status_disconnected;
+	if (hdmi->fixed_inited == FIXED_INVALID_STATUS) {
+		if (mtgpu_drm_get_fixedflag_from_fs()) {
+			hdmi->fixed_edid = mtgpu_drm_get_fixed_edid_flag(connector);
+			hdmi->fixed_inited = FIXED_INITED_STATUS;
+		}
+	}
+
+	DRM_DEV_DEBUG(hdmi->dev, "comm:%s lock:%d\n", current->comm, hdmi->fixed_edid);
+
+	if (!hdmi->core->is_plugin)
+		return connector_status_disconnected;
+
+	hdmi->connected = hdmi->core->is_plugin(&hdmi->ctx);
+
+	mtgpu_hdmi_get_edid(connector);
+
+	drm_connector_update_edid_property(connector, hdmi->edid);
+
+	if (hdmi->edid && hdmi->fixed_edid)
+		return connector_status_connected;
+	else
+		return hdmi->connected ? connector_status_connected :
+			connector_status_disconnected;
 }
 
 static int mtgpu_hdmi_connector_get_modes(struct drm_connector *connector)
@@ -252,7 +250,7 @@ mtgpu_hdmi_connector_best_encoder(struct drm_connector *connector)
 
 	DRM_DEV_DEBUG(hdmi->dev, "%s()\n", __func__);
 
-	return &hdmi->encoder;
+	return hdmi->encoder;
 }
 
 static int mtgpu_hdmi_mode_supported_by_product(struct mtgpu_hdmi *hdmi,
@@ -337,6 +335,47 @@ preferred_mode_check:
 	return mode_status;
 }
 
+static void mtgpu_hdmi_create_properties(struct drm_device *drm,
+					 struct mtgpu_hdmi *hdmi)
+{
+	hdmi->prop_fixed_edid = drm_property_create_bool(drm, 0, "FIXED_EDID");
+	drm_object_attach_property(&hdmi->connector->base,
+				   hdmi->prop_fixed_edid, 0);
+}
+
+static int mtgpu_hdmi_connector_set_property(struct drm_connector *connector,
+					     struct drm_connector_state *connector_state,
+					     struct drm_property *property,
+					     uint64_t val)
+{
+	struct mtgpu_hdmi *hdmi = connector_to_mtgpu_hdmi(connector);
+
+	DRM_DEV_DEBUG(hdmi->dev, "hdmi set property:%s value:%llx.\n", property->name, val);
+
+	if (hdmi->prop_fixed_edid == property)
+		return mtgpu_hdmi_update_fixed_edid_flag(hdmi, (bool)val);
+
+	return -EINVAL;
+}
+
+static int mtgpu_hdmi_connector_get_property(struct drm_connector *connector,
+					     const struct drm_connector_state *state,
+					     struct drm_property *property,
+					     uint64_t *val)
+{
+	int ret = -EINVAL;
+	struct mtgpu_hdmi *hdmi = connector_to_mtgpu_hdmi(connector);
+
+	if (hdmi->prop_fixed_edid == property) {
+		*val = hdmi->fixed_edid;
+		ret = 0;
+	}
+
+	DRM_DEV_DEBUG(hdmi->dev, "hdmi get property:%s value:%llx.\n", property->name, *val);
+
+	return ret;
+}
+
 static const struct drm_connector_funcs mtgpu_hdmi_connector_funcs = {
 	.detect			= mtgpu_hdmi_connector_detect,
 	.fill_modes		= drm_helper_probe_single_connector_modes,
@@ -344,6 +383,8 @@ static const struct drm_connector_funcs mtgpu_hdmi_connector_funcs = {
 	.atomic_duplicate_state	= drm_atomic_helper_connector_duplicate_state,
 	.atomic_destroy_state	= drm_atomic_helper_connector_destroy_state,
 	.reset			= drm_atomic_helper_connector_reset,
+	.atomic_set_property	= mtgpu_hdmi_connector_set_property,
+	.atomic_get_property	= mtgpu_hdmi_connector_get_property,
 };
 
 static const struct drm_connector_helper_funcs
@@ -397,7 +438,7 @@ static int mtgpu_hdmi_send_avi_infoframe(struct mtgpu_hdmi *hdmi)
 
 #if !defined(OS_DRM_HDMI_AVI_INFOFRAME_FROM_DISPLAY_MODE_HAS_BOOL_ARG)
 	err = drm_hdmi_avi_infoframe_from_display_mode(&frame,
-						       &hdmi->connector, &mode);
+						       hdmi->connector, &mode);
 #else
 	err = drm_hdmi_avi_infoframe_from_display_mode(&frame, &mode, false);
 #endif
@@ -450,7 +491,7 @@ static int mtgpu_hdmi_send_vendor_infoframe(struct mtgpu_hdmi *hdmi)
 	struct hdmi_vendor_infoframe frame;
 	u8 buffer[10];
 	ssize_t err;
-	bool has_hdmi_infoframe = hdmi->connector.display_info.has_hdmi_infoframe;
+	bool has_hdmi_infoframe = hdmi->connector->display_info.has_hdmi_infoframe;
 
 	DRM_DEV_DEBUG(hdmi->dev, "%s()\n", __func__);
 
@@ -460,7 +501,7 @@ static int mtgpu_hdmi_send_vendor_infoframe(struct mtgpu_hdmi *hdmi)
 	drm_display_mode_from_videomode(hdmi->ctx.vm, &mode);
 
 	err = drm_hdmi_vendor_infoframe_from_display_mode(&frame,
-							  &hdmi->connector, &mode);
+							  hdmi->connector, &mode);
 	if (err) {
 		DRM_DEV_ERROR(hdmi->dev, "Failed to get vendor infoframe from mode: %zd\n", err);
 		return err;
@@ -482,7 +523,7 @@ static void mtgpu_hdmi_scramble_config(struct mtgpu_hdmi *hdmi)
 {
 	u8 version;
 
-	struct drm_display_info *disp_info = &hdmi->connector.display_info;
+	struct drm_display_info *disp_info = &hdmi->connector->display_info;
 
 	if (!disp_info->hdmi.scdc.supported) {
 		hdmi->core->scramble_config(&hdmi->ctx, false);
@@ -497,13 +538,13 @@ static void mtgpu_hdmi_scramble_config(struct mtgpu_hdmi *hdmi)
 		drm_scdc_writeb(hdmi->ddc, SCDC_SOURCE_VERSION, min_t(u8, version, 0x01));
 
 #if defined(OS_DRM_SCDC_SET_HIGH_TMDS_CLOCK_RATIO_USE_DRM_CONNECTOR_ARG)
-		drm_scdc_set_high_tmds_clock_ratio(&hdmi->connector, true);
+		drm_scdc_set_high_tmds_clock_ratio(hdmi->connector, true);
 #else
 		drm_scdc_set_high_tmds_clock_ratio(hdmi->ddc, true);
 #endif
 
 #if defined(OS_DRM_SCDC_SET_SCRAMBLING_USE_DRM_CONNECTOR_ARG)
-		drm_scdc_set_scrambling(&hdmi->connector, true);
+		drm_scdc_set_scrambling(hdmi->connector, true);
 #else
 		drm_scdc_set_scrambling(hdmi->ddc, true);
 #endif
@@ -512,13 +553,13 @@ static void mtgpu_hdmi_scramble_config(struct mtgpu_hdmi *hdmi)
 			hdmi->core->scramble_config(&hdmi->ctx, true);
 	} else {
 #if defined(OS_DRM_SCDC_SET_HIGH_TMDS_CLOCK_RATIO_USE_DRM_CONNECTOR_ARG)
-		drm_scdc_set_high_tmds_clock_ratio(&hdmi->connector, false);
+		drm_scdc_set_high_tmds_clock_ratio(hdmi->connector, false);
 #else
 		drm_scdc_set_high_tmds_clock_ratio(hdmi->ddc, false);
 #endif
 
 #if defined(OS_DRM_SCDC_SET_SCRAMBLING_USE_DRM_CONNECTOR_ARG)
-		drm_scdc_set_scrambling(&hdmi->connector, false);
+		drm_scdc_set_scrambling(hdmi->connector, false);
 #else
 		drm_scdc_set_scrambling(hdmi->ddc, false);
 #endif
@@ -636,8 +677,8 @@ static const struct drm_encoder_funcs mtgpu_hdmi_encoder_funcs = {
 
 static int mtgpu_hdmi_drm_init(struct mtgpu_hdmi *hdmi, struct drm_device *drm)
 {
-	struct drm_encoder *encoder = &hdmi->encoder;
-	struct drm_connector *connector = &hdmi->connector;
+	struct drm_encoder *encoder = hdmi->encoder;
+	struct drm_connector *connector = hdmi->connector;
 	int ret;
 
 	/*
@@ -683,25 +724,29 @@ static int mtgpu_hdmi_drm_init(struct mtgpu_hdmi *hdmi, struct drm_device *drm)
 	drm_connector_register(connector);
 	drm_connector_attach_encoder(connector, encoder);
 
+	mtgpu_hdmi_create_properties(drm, hdmi);
+	hdmi->fixed_edid = false;
+	hdmi->fixed_inited = FIXED_INVALID_STATUS;
+
 	return 0;
 }
 
 static void mtgpu_hdmi_hpd_work(struct work_struct *work)
 {
 	enum drm_connector_status old_status;
-	struct mtgpu_hdmi *hdmi = container_of(work, struct mtgpu_hdmi, hpd_work.work);
+	struct mtgpu_hdmi *hdmi = dwork_to_mtgpu_hdmi(work);
 
 	old_status = hdmi->connected ? connector_status_connected : connector_status_disconnected;
 
-	mutex_lock(&hdmi->connector.dev->mode_config.mutex);
-	hdmi->connector.status = drm_helper_probe_detect(&hdmi->connector, NULL, false);
-	mutex_unlock(&hdmi->connector.dev->mode_config.mutex);
+	mutex_lock(&hdmi->connector->dev->mode_config.mutex);
+	hdmi->connector->status = drm_helper_probe_detect(hdmi->connector, NULL, false);
+	mutex_unlock(&hdmi->connector->dev->mode_config.mutex);
 
-	if (hdmi->enabled && hdmi->connector.status == connector_status_connected)
-		mtgpu_hdmi_encoder_enable(&hdmi->encoder);
+	if (hdmi->enabled && hdmi->connector->status == connector_status_connected)
+		mtgpu_hdmi_encoder_enable(hdmi->encoder);
 
-	if (old_status != hdmi->connector.status)
-		drm_kms_helper_hotplug_event(hdmi->connector.dev);
+	if (old_status != hdmi->connector->status)
+		drm_kms_helper_hotplug_event(hdmi->connector->dev);
 }
 
 static void mtgpu_hdmi_irq_handler(void *data)
@@ -713,10 +758,10 @@ static void mtgpu_hdmi_irq_handler(void *data)
 		status = hdmi->core->isr(&hdmi->ctx);
 
 	if (status & MTGPU_HDMI_IRQ_TYPE_HPD_OUT)
-		schedule_delayed_work(&hdmi->hpd_work,
+		schedule_delayed_work(hdmi->hpd_work,
 				      msecs_to_jiffies(DELAY_ON_HDMI_PLUGOUT_DETECTION_MS));
 	else if (status & MTGPU_HDMI_IRQ_TYPE_HPD_IN)
-		schedule_delayed_work(&hdmi->hpd_work, 0);
+		schedule_delayed_work(hdmi->hpd_work, 0);
 }
 
 /*
@@ -801,7 +846,7 @@ static int mtgpu_hdmi_audio_get_eld(struct device *dev, void *data, uint8_t *buf
 
 	DRM_DEV_INFO(hdmi->dev, "%s()\n", __func__);
 
-	memcpy(buf, hdmi->connector.eld, min(sizeof(hdmi->connector.eld), len));
+	memcpy(buf, hdmi->connector->eld, min(sizeof(hdmi->connector->eld), len));
 
 	return 0;
 }
@@ -814,10 +859,10 @@ static int mtgpu_hdmi_audio_hook_plugged_cb(struct device *dev, void *data,
 
 	DRM_DEV_INFO(hdmi->dev, "%s()\n", __func__);
 
-	mutex_lock(&hdmi->codec_lock);
+	mutex_lock(hdmi->codec_lock);
 	hdmi->codec_plugged_cb = fn;
 	hdmi->codec_dev = codec_dev;
-	mutex_unlock(&hdmi->codec_lock);
+	mutex_unlock(hdmi->codec_lock);
 
 	if (hdmi->codec_plugged_cb && hdmi->codec_dev)
 		hdmi->codec_plugged_cb(hdmi->codec_dev, hdmi->enabled);
@@ -875,7 +920,7 @@ static int mtgpu_hdmi_audio_register(struct mtgpu_hdmi *hdmi)
 	if (IS_ERR(hdmi->hdmi_audio))
 		return PTR_ERR(hdmi->hdmi_audio);
 
-	mutex_init(&hdmi->codec_lock);
+	mutex_init(hdmi->codec_lock);
 
 	return 0;
 }
@@ -897,7 +942,7 @@ static int mtgpu_hdmi_i2c_xfer(struct i2c_adapter *ddc, struct i2c_msg *msgs, in
 	struct mtgpu_hdmi *hdmi = i2c_get_adapdata(ddc);
 	int i, j, ret = 0;
 
-	mutex_lock(&hdmi->i2c_lock);
+	mutex_lock(hdmi->i2c_lock);
 
 	for (i = 0; i < num; i++) {
 		DRM_DEV_DEBUG(hdmi->dev,
@@ -921,7 +966,7 @@ static int mtgpu_hdmi_i2c_xfer(struct i2c_adapter *ddc, struct i2c_msg *msgs, in
 	if (!ret)
 		ret = num;
 
-	mutex_unlock(&hdmi->i2c_lock);
+	mutex_unlock(hdmi->i2c_lock);
 
 	return ret;
 }
@@ -951,7 +996,9 @@ static int mtgpu_hdmi_ddc_register(struct mtgpu_hdmi *hdmi)
 		return -ENOMEM;
 
 	ddc->owner = THIS_MODULE;
+#if defined (I2C_CLASS_DDC)
 	ddc->class = I2C_CLASS_DDC;
+#endif
 	ddc->dev.parent = hdmi->dev;
 	ddc->algo = &mtgpu_hdmi_algorithm;
 	snprintf(ddc->name, sizeof(ddc->name), "mtgpu hdmi i2c");
@@ -965,7 +1012,7 @@ static int mtgpu_hdmi_ddc_register(struct mtgpu_hdmi *hdmi)
 	i2c_set_adapdata(ddc, hdmi);
 	hdmi->ddc = ddc;
 
-	mutex_init(&hdmi->i2c_lock);
+	mutex_init(hdmi->i2c_lock);
 
 	return 0;
 }
@@ -985,6 +1032,8 @@ static int mtgpu_hdmi_component_bind(struct device *dev,
 	if (!hdmi)
 		return -ENOMEM;
 
+	hdmi->dev = dev;
+
 	hdmi->ctx.vm = kzalloc(sizeof(*hdmi->ctx.vm), GFP_KERNEL);
 	if (!hdmi->ctx.vm) {
 		DRM_DEV_ERROR(dev, "failed to create vm\n");
@@ -996,6 +1045,12 @@ static int mtgpu_hdmi_component_bind(struct device *dev,
 	if (!hdmi->ctx.waitq) {
 		DRM_DEV_ERROR(dev, "failed to create waitq\n");
 		ret = -ENOMEM;
+		goto err_free_hdmi;
+	}
+
+	ret = mtgpu_hdmi_kernel_struct_create(hdmi);
+	if (ret) {
+		DRM_DEV_ERROR(dev, "failed to create hdmi kernel struct\n");
 		goto err_free_hdmi;
 	}
 
@@ -1031,10 +1086,9 @@ static int mtgpu_hdmi_component_bind(struct device *dev,
 	hdmi->ctx.max_hres = pdata->max_hres;
 	hdmi->ctx.max_vres = pdata->max_vres;
 	hdmi->ctx.max_pclk_100khz = pdata->max_pclk_100khz;
-	hdmi->dev = dev;
 	hdmi->port_type = pdata->port_type;
 	dev_set_drvdata(dev, hdmi);
-	INIT_DELAYED_WORK(&hdmi->hpd_work, mtgpu_hdmi_hpd_work);
+	INIT_DELAYED_WORK(hdmi->hpd_work, mtgpu_hdmi_hpd_work);
 	init_waitqueue_head(hdmi->ctx.waitq);
 
 	chip = &mtgpu_hdmi_chip_sudi,
@@ -1090,6 +1144,8 @@ static int mtgpu_hdmi_component_bind(struct device *dev,
 		goto err_free_hdmi;
 	}
 
+	mtgpu_hdmi_debugfs_create_files(hdmi);
+
 	DRM_DEV_INFO(dev, "mtgpu HDMI driver loaded successfully\n");
 
 	return 0;
@@ -1127,6 +1183,9 @@ static void mtgpu_hdmi_component_unbind(struct device *dev,
 	if (hdmi->core->ctx_exit)
 		hdmi->core->ctx_exit(&hdmi->ctx);
 
+	mtgpu_hdmi_debugfs_remove_files(hdmi);
+
+	mtgpu_hdmi_kernel_struct_destroy(hdmi);
 	kfree(hdmi->ctx.waitq);
 	kfree(hdmi->ctx.vm);
 	kfree(hdmi);

@@ -3,6 +3,7 @@
  * @License     Dual MIT/GPLv2
  */
 
+#include <linux/io.h>
 #include <linux/wait.h>
 #include <linux/workqueue.h>
 #include <linux/component.h>
@@ -36,7 +37,53 @@
 #include "mtgpu_drm_debugfs.h"
 #include "mtgpu_drm_internal.h"
 #include "../mtgpu/mtgpu_drv.h"
+#include "mtgpu_module_param.h"
 #include "os-interface-drm.h"
+#include "mtgpu_pstate.h"
+#include "os-interface.h"
+
+static bool mtgpu_dispc_idle_allowed(struct mtgpu_device *mtdev,
+				     struct mtgpu_dispc *m_dispc)
+{
+	struct platform_device *pdev;
+	struct device *dev;
+	struct mtgpu_dispc *dispc;
+	u32 disp, crtc_num = 0;
+	u32 bandwidth = 0;
+
+	for (disp = 0; disp < mtdev->disp_cnt; disp++) {
+		pdev = mtdev->disp_dev[disp];
+		if (os_strncmp(os_get_paltform_device_name(pdev), MTGPU_DEVICE_NAME_DISPC,
+		    os_strlen(MTGPU_DEVICE_NAME_DISPC)))
+			continue;
+
+		dev = os_get_platform_device_base(pdev);
+		dispc = os_dev_get_drvdata(dev);
+
+		if (dispc && dispc->active) {
+			crtc_num++;
+			bandwidth += dispc->bandwidth;
+		}
+	}
+
+	DRM_DEV_DEBUG(m_dispc->dev, "crtc_num:%d, total bw:%d MHz!\n", crtc_num, bandwidth);
+
+	if (m_dispc->glb->is_idle_allowed)
+		return m_dispc->glb->is_idle_allowed(&m_dispc->ctx, bandwidth, crtc_num);
+
+	return false;
+}
+
+static void mtgpu_dispc_report_pstate(struct mtgpu_dispc *dispc)
+{
+	struct device *dev = os_get_dev_parent_parent(dispc->dev);
+	struct mtgpu_device *mtdev = os_dev_get_drvdata(dev);
+
+	if (!mtgpu_dispc_idle_allowed(mtdev, dispc))
+		mtgpu_pstate_notifier_call_chain(mtdev, MTGPU_PSTATE_EVENT_DISP_ACTIVE, NULL);
+	else
+		mtgpu_pstate_notifier_call_chain(mtdev, MTGPU_PSTATE_EVENT_DISP_IDLE, NULL);
+}
 
 static inline struct mtgpu_dispc *to_mtgpu_dispc(struct drm_crtc *crtc)
 {
@@ -281,9 +328,10 @@ static void mtgpu_crtc_atomic_enable(struct drm_crtc *crtc,
 	u16 *red = crtc->gamma_store;
 	u16 *green = red + crtc->gamma_size;
 	u16 *blue = green + crtc->gamma_size;
+	u64 bandwidth = 0;
+	struct drm_display_mode *dmode = &crtc->state->adjusted_mode;
 
-	DRM_DEV_INFO(dispc->dev, DRM_MODE_FMT "\n",
-		     DRM_MODE_ARG(&crtc->state->adjusted_mode));
+	DRM_DEV_INFO(dispc->dev, DRM_MODE_FMT "\n", DRM_MODE_ARG(dmode));
 
 	if (dispc->glb->enable)
 		dispc->glb->enable(&dispc->ctx);
@@ -295,6 +343,12 @@ static void mtgpu_crtc_atomic_enable(struct drm_crtc *crtc,
 		dispc->core->gamma_set(&dispc->ctx, red, green, blue, crtc->gamma_size);
 
 	dispc->debugfs.underrun_cnt = 0;
+
+	bandwidth = (u64)drm_mode_vrefresh(dmode) * dmode->vdisplay * dmode->hdisplay * 4;
+	dispc->bandwidth = bandwidth / 1000000;
+	dispc->active = true;
+
+	mtgpu_dispc_report_pstate(dispc);
 
 	drm_crtc_vblank_on(crtc);
 }
@@ -325,6 +379,11 @@ static void mtgpu_crtc_atomic_disable(struct drm_crtc *crtc,
 
 	if (dispc->glb->disable)
 		dispc->glb->disable(&dispc->ctx);
+
+	dispc->bandwidth = 0;
+	dispc->active = false;
+
+	mtgpu_dispc_report_pstate(dispc);
 }
 
 static void mtgpu_crtc_atomic_begin(struct drm_crtc *crtc,
@@ -423,110 +482,6 @@ static int mtgpu_crtc_gamma_set(struct drm_crtc *crtc, u16 *red, u16 *green,
 	return 0;
 }
 
-#if defined(OS_SWAP_FB_IN_LEAGACY_CURSOR)
-
-#if defined(OS_FUNC_DRM_GEM_OBJECT_PUT_UNLOCKED_EXIST)
-#define drm_gem_object_put(obj) drm_gem_object_put_unlocked(obj)
-#endif
-
-static int mtgpu_legacy_cursor_set(struct drm_crtc *crtc, struct drm_file *file,
-				   u32 handle, u32 width, u32 height)
-{
-	struct mtgpu_gem_object *mt_obj;
-	struct drm_gem_object *cursor_bo = NULL;
-	struct mtgpu_layer_config config = {0};
-	struct mtgpu_dispc *dispc = to_mtgpu_dispc(crtc);
-
-	if (!mtgpu_is_crtc_active(crtc))
-		return 0;
-
-	/* handle 0 means cursor hide */
-	if (!handle && dispc->core->cursor_config) {
-		dispc->cursor_info.dev_addr = 0;
-		dispc->cursor_info.width = 0;
-		dispc->cursor_info.height = 0;
-		dispc->core->cursor_config(&dispc->ctx, NULL);
-		return 0;
-	}
-
-	cursor_bo = drm_gem_object_lookup(file, handle);
-	if (!cursor_bo)
-		return -ENOENT;
-
-	mt_obj = os_get_drm_gem_object_drvdata(cursor_bo);
-	if (!mt_obj->dev_addr) {
-		drm_gem_object_put(cursor_bo);
-		return -EINVAL;
-	}
-
-	if (cursor_bo->size < width * height * 4) {
-		DRM_DEV_ERROR(dispc->dev, " cursor buffer is too small!\n");
-		drm_gem_object_put(cursor_bo);
-		return -ENOMEM;
-	}
-
-	if (dispc->cursor_info.bo)
-		drm_gem_object_put(dispc->cursor_info.bo);
-
-	dispc->cursor_info.bo = cursor_bo;
-	config.addr[0] = mt_obj->dev_addr;
-	config.dst_x   = dispc->cursor_info.x;
-	config.dst_y   = dispc->cursor_info.y;
-	config.dst_w   = width;
-	config.dst_h   = height;
-	config.src_w   = width;
-	config.src_h   = height;
-	config.pitch[0] = width * 4;
-	config.alpha   = 255;
-	config.blend_mode = 0;
-	config.format = DRM_FORMAT_ARGB8888;
-
-	dispc->cursor_info.dev_addr = mt_obj->dev_addr;
-	dispc->cursor_info.width = width;
-	dispc->cursor_info.height = height;
-
-	if (dispc->core->cursor_config)
-		dispc->core->cursor_config(&dispc->ctx, &config);
-
-	return 0;
-}
-
-static int mtgpu_legacy_cursor_move(struct drm_crtc *crtc, int x, int y)
-{
-	struct mtgpu_layer_config config = {0};
-	struct mtgpu_dispc *dispc = to_mtgpu_dispc(crtc);
-
-	if (!mtgpu_is_crtc_active(crtc))
-		return 0;
-
-	config.addr[0] = dispc->cursor_info.dev_addr;
-	config.dst_x   = x;
-	config.dst_y   = y;
-	config.dst_w   = dispc->cursor_info.width;
-	config.dst_h   = dispc->cursor_info.height;
-	config.src_w   = dispc->cursor_info.width;
-	config.src_h   = dispc->cursor_info.height;
-	config.pitch[0] = dispc->cursor_info.width * 4;
-	config.alpha   = 255;
-	config.blend_mode = 0;
-	config.format = DRM_FORMAT_ARGB8888;
-
-	dispc->cursor_info.x = x;
-	dispc->cursor_info.y = y;
-
-	if ((!config.addr[0] || !config.dst_w || !config.dst_h) &&
-	    dispc->core->cursor_config) {
-		dispc->core->cursor_config(&dispc->ctx, NULL);
-		return 0;
-	}
-
-	if (dispc->core->cursor_config)
-		dispc->core->cursor_config(&dispc->ctx, &config);
-
-	return 0;
-}
-#endif
-
 static const struct drm_crtc_funcs mtgpu_crtc_funcs = {
 	.set_config             = drm_atomic_helper_set_config,
 	.destroy                = mtgpu_crtc_destroy,
@@ -537,10 +492,6 @@ static const struct drm_crtc_funcs mtgpu_crtc_funcs = {
 	.enable_vblank		= mtgpu_crtc_enable_vblank,
 	.disable_vblank		= mtgpu_crtc_disable_vblank,
 	.gamma_set		= mtgpu_crtc_gamma_set,
-#if defined(OS_SWAP_FB_IN_LEAGACY_CURSOR)
-	.cursor_set		= mtgpu_legacy_cursor_set,
-	.cursor_move		= mtgpu_legacy_cursor_move,
-#endif
 };
 
 static void mtgpu_plane_create_properties(struct drm_plane *plane,
@@ -675,6 +626,8 @@ static int mtgpu_dispc_component_bind(struct device *dev,
 		break;
 	case GPU_SOC_GEN2:
 		chip = &mtgpu_dispc_qy1;
+		if (mtgpu_fec_enable)
+			chip->core = &mtgpu_dispc_fec;
 		break;
 	case GPU_SOC_GEN3:
 		chip = &mtgpu_dispc_qy2;
@@ -740,15 +693,6 @@ static int mtgpu_dispc_component_bind(struct device *dev,
 	for (i = 0; i < dispc_cap.layer_count; i++) {
 		struct drm_plane *plane;
 
-	/* skip register cursor plane as for some old kernel versions,
-	 * async update cursor maybe check fail,so we need add legacy
-	 * cursor interfaces instead of update plane.
-	 */
-#if defined(OS_SWAP_FB_IN_LEAGACY_CURSOR)
-		if (layer_caps[i].type == DRM_PLANE_TYPE_CURSOR)
-			continue;
-#endif
-
 		plane = kzalloc(sizeof(*plane), GFP_KERNEL);
 		if (!plane) {
 			ret = -ENOMEM;
@@ -790,6 +734,8 @@ static int mtgpu_dispc_component_bind(struct device *dev,
 	}
 
 	drm_mode_crtc_set_gamma_size(dispc->crtc, dispc_cap.gamma_size);
+	dispc->ctx.gamma_store = dispc->crtc->gamma_store;
+	dispc->ctx.gamma_size  = dispc->crtc->gamma_size;
 
 	drm_crtc_helper_add(dispc->crtc, &mtgpu_crtc_helper_funcs);
 

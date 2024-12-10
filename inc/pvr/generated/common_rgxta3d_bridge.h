@@ -74,7 +74,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PVRSRV_BRIDGE_RGXTA3D_CREATE_FENCE	(PVRSRV_BRIDGE_RGXTA3D_CMD_FIRST + 15)
 #define PVRSRV_BRIDGE_RGXTA3D_RGXKICKTA3D4	(PVRSRV_BRIDGE_RGXTA3D_CMD_FIRST + 16)
 #define PVRSRV_BRIDGE_RGXTA3D_RGXCREATEHWRTDATASET2			PVRSRV_BRIDGE_RGXTA3D_CMD_FIRST+17
-#define PVRSRV_BRIDGE_RGXTA3D_CMD_LAST		(PVRSRV_BRIDGE_RGXTA3D_CMD_FIRST + 17)
+
+/* for ddk 2.0 */
+#define PVRSRV_BRIDGE_RGXTA3D_RGXCREATERENDERCONTEXT2			PVRSRV_BRIDGE_RGXTA3D_CMD_FIRST+18
+#define PVRSRV_BRIDGE_RGXTA3D_RGXDESTROYRENDERCONTEXT2			PVRSRV_BRIDGE_RGXTA3D_CMD_FIRST+19
+#define PVRSRV_BRIDGE_RGXTA3D_RGXKICKTA3D5				PVRSRV_BRIDGE_RGXTA3D_CMD_FIRST+20
+
+#define PVRSRV_BRIDGE_RGXTA3D_CMD_LAST		(PVRSRV_BRIDGE_RGXTA3D_CMD_FIRST + 20)
 
 /*******************************************
             RGXCreateHWRTDataSet
@@ -534,6 +540,65 @@ typedef struct PVRSRV_BRIDGE_OUT_RGXKICKTA3D4_TAG
 	PVRSRV_FENCE hUpdateFence3D;
 } __packed PVRSRV_BRIDGE_OUT_RGXKICKTA3D4;
 
+/*******************************************
+                  DDK2.0
+ *******************************************/
+
+/* Bridge in structure for RGXCreateRenderContext ddk2.0 */
+typedef struct PVRSRV_BRIDGE_IN_RGXCREATERENDERCONTEXT2_TAG
+{
+	IMG_HANDLE hPrivData;
+	IMG_UINT32 ui32Priority;
+} __packed PVRSRV_BRIDGE_IN_RGXCREATERENDERCONTEXT2;
+
+/* Bridge out structure for RGXCreateRenderContext ddk2.0 */
+typedef struct PVRSRV_BRIDGE_OUT_RGXCREATERENDERCONTEXT2_TAG
+{
+	IMG_HANDLE hRenderContext;
+	PVRSRV_ERROR eError;
+} __packed PVRSRV_BRIDGE_OUT_RGXCREATERENDERCONTEXT2;
+
+/* Bridge in structure for RGXDestroyRenderContext ddk2.0 */
+typedef struct PVRSRV_BRIDGE_IN_RGXDESTROYRENDERCONTEXT2_TAG
+{
+	IMG_HANDLE hRenderContext;
+} __packed PVRSRV_BRIDGE_IN_RGXDESTROYRENDERCONTEXT2;
+
+/* Bridge out structure for RGXDestroyRenderContext ddk2.0 */
+typedef struct PVRSRV_BRIDGE_OUT_RGXDESTROYRENDERCONTEXT2_TAG
+{
+	PVRSRV_ERROR eError;
+} __packed PVRSRV_BRIDGE_OUT_RGXDESTROYRENDERCONTEXT2;
+
+/* Bridge in structure for RGXKickTA3D5 ddk2.0*/
+typedef struct PVRSRV_BRIDGE_IN_RGXKICKTA3D5_TAG
+{
+	IMG_HANDLE hRenderContext;
+
+	IMG_HANDLE* phCheckUFOSyncPrimBlock;
+	IMG_UINT32* pui32CheckSyncOffset;
+	IMG_UINT32* pui32CheckValue;
+
+	IMG_HANDLE* phUpdateUFOSyncPrimBlock;
+	IMG_UINT32* pui32UpdateSyncOffset;
+	IMG_UINT32* pui32UpdateValue;
+
+	IMG_UINT32* pui32SyncPMRFlags;
+	IMG_HANDLE* phSyncPMRs;
+
+	IMG_UINT64  ui64SubmissionVa;
+	IMG_UINT32  ui32SubmissionSize;
+
+	IMG_UINT32  ui32CheckCount;
+	IMG_UINT32  ui32UpdateCount;
+	IMG_UINT32  ui32SyncPMRCount;
+} __packed PVRSRV_BRIDGE_IN_RGXKICKTA3D5;
+
+/* Bridge out structure for RGXKickTA3D5 ddk2.0*/
+typedef struct PVRSRV_BRIDGE_OUT_RGXKICKTA3D5_TAG
+{
+	PVRSRV_ERROR eError;
+} __packed PVRSRV_BRIDGE_OUT_RGXKICKTA3D5;
 
 /*******************************************
             RGXSetRenderContextProperty

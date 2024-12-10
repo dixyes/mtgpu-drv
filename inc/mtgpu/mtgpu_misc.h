@@ -6,7 +6,7 @@
 #ifndef __MTGPU_MISC_H__
 #define __MTGPU_MISC_H__
 
-#include "mtgpu_ipc.h"
+#include "uapi_common.h"
 
 #define MTGPU_BUILD_VER_MSG_MAX_DATA_SIZE	(256)
 
@@ -18,7 +18,7 @@ struct device_info {
 
 struct ipc_msg_interface {
 	u64 header;
-	u8 data[PCIE_IPC_MSG_MAX_DATA_SIZE];
+	u8 data[256]; /* PCIE_IPC_MSG_MAX_DATA_SIZE */
 };
 
 struct build_version {
@@ -26,6 +26,8 @@ struct build_version {
 };
 
 #define MTGPU_MISC_GET_BUILD_VERSION		_IOR('M', 0x9, struct build_version)
+
+#define MTGPU_MISC_GET_NUMA_NODE		_IOR('M', 0xA, int)
 
 /* WARNING: MKIS Managed! */
 /* !!! CAUTION !!! This value MUST match the definition in MTML */
@@ -122,5 +124,9 @@ void mtgpu_unregister_misc_instance_devices(struct mtgpu_device *mtdev);
 void mtgpu_unregister_misc_parent_device(struct mtgpu_device *mtdev);
 int mtgpu_misc_init(void);
 void mtgpu_misc_deinit(void);
+
+int mtgpu_reset_event_msgs(struct mtgpu_misc_info *misc_info);
+int mtgpu_reset_gpu(struct mtgpu_misc_info *misc_info, PROCESS_DRIVER_STATS_OS_TYPE_INFO_TOTAL *msg);
+int mtgpu_clear_musa_status(struct mtgpu_misc_info *misc_info, u64 bitmask);
 
 #endif /* __MTGPU_MISC_H__ */

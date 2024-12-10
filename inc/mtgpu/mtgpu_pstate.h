@@ -14,6 +14,8 @@ enum mtgpu_pstate_event {
 	MTGPU_PSTATE_EVENT_GFX_ACTIVE,
 	MTGPU_PSTATE_EVENT_VIDEO_IDLE,
 	MTGPU_PSTATE_EVENT_VIDEO_ACTIVE,
+	MTGPU_PSTATE_EVENT_DISP_IDLE,
+	MTGPU_PSTATE_EVENT_DISP_ACTIVE,
 	MTGPU_PSTATE_EVENT_ALL_IDLE,
 	MTGPU_PSTATE_EVENT_ALL_ACTIVE,
 };
@@ -23,6 +25,7 @@ enum mtgpu_pstate_mode {
 	MTGPU_PSTATE_MODE_NORMAL,
 };
 
+int mtgpu_pstate_update(struct mtgpu_device *mtdev);
 int mtgpu_pstate_notifier_call_chain(struct mtgpu_device *mtdev,
 				     unsigned long event, void *data);
 void mtgpu_pstate_enable_timer(struct mtgpu_device *mtdev);

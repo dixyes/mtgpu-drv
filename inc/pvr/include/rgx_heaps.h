@@ -46,24 +46,56 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /*
   Identify heaps by their names
 */
-#define RGX_GENERAL_SVM_HEAP_IDENT          "General SVM"               /*!< SVM (shared virtual memory) Heap Identifier */
-#define RGX_GENERAL_HEAP_IDENT              "General"                   /*!< RGX General Heap Identifier */
-#define RGX_GENERAL_NON4K_HEAP_IDENT        "General NON-4K"            /*!< RGX General non-4K Heap Identifier */
-#define RGX_PDSCODEDATA_HEAP_IDENT          "PDS Code and Data"         /*!< RGX PDS Code/Data Heap Identifier */
-#define RGX_USCCODE_HEAP_IDENT              "USC Code"                  /*!< RGX USC Code Heap Identifier */
-#define RGX_VK_CAPT_REPLAY_HEAP_IDENT       "Vulkan Capture Replay"     /*!< RGX vulkan capture replay buffer Heap Identifier */
-#define RGX_SIGNALS_HEAP_IDENT              "Signals"                   /*!< Compute Signals Heap Identifier */
-#define RGX_COMPONENT_CTRL_HEAP_IDENT       "Component Control"         /*!< RGX DCE Component Control Heap Identifier */
-#define RGX_FBCDC_HEAP_IDENT                "FBCDC"                     /*!< RGX FBCDC State Table Heap Identifier */
-#define RGX_FBCDC_LARGE_HEAP_IDENT          "Large FBCDC"               /*!< RGX Large FBCDC State Table Heap Identifier */
-#define RGX_PDS_INDIRECT_STATE_HEAP_IDENT   "PDS Indirect State"        /*!< PDS Indirect State Table Heap Identifier */
-#define RGX_CMP_MISSION_RMW_HEAP_IDENT      "Compute Mission RMW"       /*!< Compute Mission RMW Heap Identifier */
-#define RGX_CMP_SAFETY_RMW_HEAP_IDENT       "Compute Safety RMW"        /*!< Compute Safety RMW Heap Identifier */
-#define RGX_TEXTURE_STATE_HEAP_IDENT        "Texture State"             /*!< Texture State Heap Identifier */
-#define RGX_VISIBILITY_TEST_HEAP_IDENT      "Visibility Test"           /*!< Visibility Test Heap Identifier */
-#define RGX_GENERAL_RESERVED_HEAP_IDENT     "General Reserved"          /*!< RGX General Reserved Heap Identifier */
-#define RGX_PDSCODEDATA_RESERVED_HEAP_IDENT "PDS Reserved"              /*!< RGX PDS Code/Data Reserved Heap Identifier */
-#define RGX_USCCODE_RESERVED_HEAP_IDENT     "USC Reserved"              /*!< RGX USC Code Reserved Heap Identifier */
-#define RGX_COMPONENT_CTRL_RESERVED_HEAP_IDENT  "Component Reserved"    /*!< RGX COMPONENT Ctrl Reserved Heap Identifier */
+#define RGX_GENERAL_VPU_HEAP_IDENT		"General VPU"		       /*!< RGX General VPU Heap Identifier */
+#define RGX_GENERAL_SVM_HEAP_IDENT              "General SVM"                  /*!< SVM (shared virtual memory) Heap Identifier */
+#define RGX_GENERAL_HEAP_IDENT                  "General"                      /*!< RGX General Heap Identifier */
+#define RGX_GENERAL_NON4K_HEAP_IDENT            "General NON-4K"               /*!< RGX General non-4K Heap Identifier */
+#define RGX_PDSCODEDATA_HEAP_IDENT              "PDS Code and Data"            /*!< RGX PDS Code/Data Heap Identifier */
+#define RGX_USCCODE_HEAP_IDENT                  "USC Code"                     /*!< RGX USC Code Heap Identifier */
+#define RGX_VK_CAPT_REPLAY_HEAP_IDENT           "Vulkan Capture Replay"        /*!< RGX vulkan capture replay buffer Heap Identifier */
+#define RGX_SIGNALS_HEAP_IDENT                  "Signals"                      /*!< Compute Signals Heap Identifier */
+#define RGX_COMPONENT_CTRL_HEAP_IDENT           "Component Control"            /*!< RGX DCE Component Control Heap Identifier */
+#define RGX_FBCDC_HEAP_IDENT                    "FBCDC"                        /*!< RGX FBCDC State Table Heap Identifier */
+#define RGX_FBCDC_LARGE_HEAP_IDENT              "Large FBCDC"                  /*!< RGX Large FBCDC State Table Heap Identifier */
+#define RGX_PDS_INDIRECT_STATE_HEAP_IDENT       "PDS Indirect State"           /*!< PDS Indirect State Table Heap Identifier */
+#define RGX_CMP_MISSION_RMW_HEAP_IDENT          "Compute Mission RMW"          /*!< Compute Mission RMW Heap Identifier */
+#define RGX_CMP_SAFETY_RMW_HEAP_IDENT           "Compute Safety RMW"           /*!< Compute Safety RMW Heap Identifier */
+#define RGX_TEXTURE_STATE_HEAP_IDENT            "Texture State"                /*!< Texture State Heap Identifier */
+#define RGX_VISIBILITY_TEST_HEAP_IDENT          "Visibility Test"              /*!< Visibility Test Heap Identifier */
+#define RGX_GENERAL_RESERVED_HEAP_IDENT         "General Reserved"             /*!< RGX General Reserved Heap Identifier */
+#define RGX_PDSCODEDATA_RESERVED_HEAP_IDENT     "PDS Reserved"                 /*!< RGX PDS Code/Data Reserved Heap Identifier */
+#define RGX_USCCODE_RESERVED_HEAP_IDENT         "USC Reserved"                 /*!< RGX USC Code Reserved Heap Identifier */
+#define RGX_COMPONENT_CTRL_RESERVED_HEAP_IDENT  "Component Reserved"           /*!< RGX COMPONENT Ctrl Reserved Heap Identifier */
+#define RGX_GENERAL_RESERVED_CSC_HEAP_IDENT     "General Reserved CSC Table"   /*!< RGX YUV CSC TABLE Reserved Heap Identifier */
+#define RGX_GENERAL_RESERVED_VPU_HEAP_IDENT	"General Reserved VPU"	       /*!< RGX General Reserved VPU Heap Identifier */
+
+enum {
+	RGX_FIRMWARE_MAIN_HEAP_ID = 0,
+	RGX_FIRMWARE_CONFIG_HEAP_ID,
+	RGX_FIRMWARE_GUEST_RAW_HEAP_ID,
+	RGX_GENERAL_SVM_HEAP_ID,
+	RGX_GENERAL_HEAP_ID,
+	RGX_GENERAL_NON4K_HEAP_ID,
+	RGX_PDSCODEDATA_HEAP_ID,
+	RGX_USCCODE_HEAP_ID,
+	RGX_VK_CAPT_REPLAY_HEAP_ID,
+	RGX_SIGNALS_HEAP_ID,
+	RGX_COMPONENT_CTRL_HEAP_ID,
+	RGX_FBCDC_HEAP_ID,
+	RGX_FBCDC_LARGE_HEAP_ID,
+	RGX_PDS_INDIRECT_STATE_HEAP_ID,
+	RGX_CMP_MISSION_RMW_HEAP_ID,
+	RGX_CMP_SAFETY_RMW_HEAP_ID,
+	RGX_TEXTURE_STATE_HEAP_ID,
+	RGX_VISIBILITY_TEST_HEAP_ID,
+	RGX_GENERAL_VPU_HEAP_ID,
+	RGX_GENERAL_RESERVED_HEAP_ID,
+	RGX_PDSCODEDATA_RESERVED_HEAP_ID,
+	RGX_USCCODE_RESERVED_HEAP_ID,
+	RGX_COMPONENT_CTRL_RESERVED_HEAP_ID,
+	RGX_GENERAL_RESERVED_CSC_HEAP_ID,
+	RGX_GENERAL_RESERVED_VPU_HEAP_ID,
+	RGX_INVALID_HEAP_ID,
+};
 
 #endif /* RGX_HEAPS_H */

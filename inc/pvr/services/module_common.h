@@ -59,6 +59,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define ENABLE_ASYNC_JOB_SUBMIT_COMPUTE  (enable_async_job_submit & (0x1 << 2))
 #define ENABLE_ASYNC_JOB_SUBMIT_RENDER   (enable_async_job_submit & (0x1 << 3))
 
+#define CACHE_SNOOPING_BIT_MASK			(0x3)
+#define ENABLE_CACHE_SNOOPING_REQUEST_MMU	(enable_cache_snooping & 0x1)
+#define ENABLE_CACHE_SNOOPING_REQUEST_NON_MMU	(enable_cache_snooping & (0x1 << 1))
+#define ENABLE_CACHE_SNOOPING_REQUEST		(enable_cache_snooping & CACHE_SNOOPING_BIT_MASK)
+
 struct _PVRSRV_DEVICE_NODE_;
 struct drm_file;
 struct drm_device;
@@ -94,11 +99,14 @@ typedef struct
 
 extern long vram_lower_limit;
 extern bool disable_gpu;
+extern bool disable_hwr;
 extern bool enable_rdma;
 extern int enable_large_mem_mode;
 extern bool enable_mmu_persistence;
 extern unsigned int enable_async_job_submit;
-extern bool enable_mss_mmu;
+extern bool mss_mmu_bypass;
+extern bool enable_pfm_mss;
+extern unsigned int enable_cache_snooping;
 #if defined(DEBUG)
 extern IMG_UINT32 gPMRAllocFail;
 #endif /* DEBUG */

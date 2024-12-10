@@ -48,5 +48,8 @@ ssize_t mtlink_monitor_start_proc_write(struct file *file, const char __user *us
 int mtlink_monitor_counter_proc_open(struct inode *inode, struct file *file);
 ssize_t mtlink_monitor_counter_proc_write(struct file *file, const char __user *user_buf,
 					  size_t nbytes, loff_t *ppos);
+int mtlink_warm_reset_proc_open(struct inode *inode, struct file *file);
+ssize_t mtlink_warm_reset_proc_write(struct file *file, const char __user *user_buf,
+				     size_t nbytes, loff_t *ppos);
 
 #endif /*__MT_LINK_PROC_FS__*/

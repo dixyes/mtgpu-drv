@@ -148,7 +148,8 @@ static enum hrtimer_restart dummy_vblank_simulate(struct hrtimer *timer)
 
 	ret_overrun = hrtimer_forward_now(&dummy->vblank_hrtimer,
 					  dummy->vblank_periods);
-	WARN_ON(ret_overrun != 1);
+	if (ret_overrun != 1)
+		DRM_WARN("hrtimer_forward return overrun %lld.\n", ret_overrun);
 
 	spin_unlock_irqrestore(&dummy->dummy_lock, flags);
 
@@ -290,6 +291,10 @@ static int dummy_crtc_component_bind(struct device *dev, struct device *master, 
 	if (!dummy)
 		return -ENOMEM;
 	crtc = &dummy->crtc;
+
+#if defined(OS_STRUCT_DRM_MODE_CONFIG_HAS_ALLOW_FB_MODIFIERS)
+	drm->mode_config.allow_fb_modifiers = false;
+#endif
 
 	primary = dummy_plane_init(drm, DRM_PLANE_TYPE_PRIMARY, 0);
 	if (IS_ERR(primary)) {

@@ -38,6 +38,8 @@ enum reset_type {
 	RESET_TYPE_ASSERT = 1,
 	RESET_TYPE_DEASSERT,
 	RESET_TYPE_PULSE,
+	RESET_TYPE_DISABLE_CLOCK,
+	RESET_TYPE_ENABLE_CLOCK,
 };
 
 enum mtgpu_subsys_id {

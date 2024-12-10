@@ -8,7 +8,7 @@
 
 #include "os-interface.h"
 
-enum {NONE=0, ERR, WARN, INFO, TRACE, MAX_LOG_LEVEL};
+enum {MIN_LOG_LEVEL=0, ERR, WARN, INFO, MTDEBUG, TRACE, MAX_LOG_LEVEL};
 
 extern int mtvpu_log_level;
 

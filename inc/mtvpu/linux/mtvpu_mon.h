@@ -7,6 +7,7 @@
 #define __MTVPU_MON_H__
 
 struct timer_list;
+extern struct mt_chip *chip;
 
 struct mt_inst_info {
 	u32 pid;           /* Process Id, 0 represents an idle session */
@@ -17,6 +18,7 @@ struct mt_inst_info {
 	u32 latency;       /* Codec latency, in microsecond */
 	CodStd stream_type;/* Type of stream, e.g. H.265/AV1/etc. */
 	u64 vcore_mem_base;/* Each instance has a 4G group base for some instance memory */
+	u64 used_vcpu_size;/* total vcpu size that this instance used, exact for VDI */
 };
 
 struct mt_inst_extra {
@@ -30,4 +32,5 @@ struct mt_inst_extra {
 };
 
 void vpu_monitor(struct timer_list *timer_list);
+u32 vpu_query_core_utilize(struct mt_chip *chip, u32 core_idx);
 #endif

@@ -224,7 +224,7 @@ void dsc_reg_write(struct mtgpu_dsc_ctx *ctx, int offset, u32 val)
 {
 	os_writel(val, ctx->regs + offset);
 	os_readl(ctx->regs + offset);
-	DSC_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
+	DSC_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
 }
 
 static inline
@@ -232,7 +232,7 @@ u32 dsc_reg_read(struct mtgpu_dsc_ctx *ctx, int offset)
 {
 	u32 val = os_readl(ctx->regs + offset);
 
-	DSC_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
+	DSC_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
 	return val;
 }
 
@@ -257,7 +257,7 @@ void dsc_glb_reg_write(struct mtgpu_dsc_ctx *ctx, int offset, u32 val)
 {
 	os_writel(val, ctx->glb_regs + offset);
 	os_readl(ctx->glb_regs + offset);
-	GLB_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
+	GLB_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
 }
 
 static inline
@@ -265,7 +265,7 @@ u32 dsc_glb_reg_read(struct mtgpu_dsc_ctx *ctx, int offset)
 {
 	u32 val = os_readl(ctx->glb_regs + offset);
 
-	GLB_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
+	GLB_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
 	return val;
 }
 
@@ -275,7 +275,7 @@ void dsc_crg_reg_write(struct mtgpu_dsc_ctx *ctx, int offset, u32 val)
 	os_writel(val, ctx->crg_regs + offset);
 	os_readl(ctx->crg_regs + offset);
 
-	DSC_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
+	DSC_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
 }
 
 static inline
@@ -283,7 +283,7 @@ u32 dsc_crg_reg_read(struct mtgpu_dsc_ctx *ctx, int offset)
 {
 	u32 val = os_readl(ctx->crg_regs + offset);
 
-	DSC_TRACE("offset = 0x%04x value = 0x%08x\n", offset, val);
+	DSC_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
 	return val;
 }
 

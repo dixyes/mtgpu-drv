@@ -29,6 +29,9 @@
 #endif // !UNDER_UM
 #endif
 
+#define DEC_ETC_NUM 2
+#define FBC_COUNT_MAX 18
+
 #define MAX_GDI_IDX      31
 #define MAX_REG_FRAME    MAX_GDI_IDX*2 // 2 for WTL
 
@@ -1363,7 +1366,8 @@ typedef enum {
     SW_RESET_SAFETY,    /**< It resets VPU in safe way. It waits until pending bus transaction is completed and then perform reset. */
     SW_RESET_FORCE,     /**< It forces to reset VPU without waiting pending bus transaction to be completed. It is used for immediate termination such as system off. */
     SW_RESET_ON_BOOT,    /**< This is the default reset mode that is executed since system booting.  This mode is actually executed in VPU_Init(), so does not have to be used independently. */
-    SW_RESET_BEFORE_HW_RESET /** need sw reset bclk before hw reset, because act tests looks hw reset without it */
+    SW_RESET_BEFORE_HW_RESET, /** need sw reset b-clk before hw reset, because act tests looks hw reset without it */
+    SW_RESET_ON_UNBIND,      /** let vpu sleep into a relatively safe mode and then uninstall the driver */
 } SWResetMode;
 
 /**
@@ -1820,9 +1824,9 @@ typedef struct {
 */
 typedef struct {
     Uint64 TableStartAddr;
-    Uint32 TableLength;
+    Uint32 TablePageSizeMask;
+    Uint16 TableAvailable;
     Uint16 TableCtxId;
-    Uint16 Reserved;
 } RootPageTableInfo;
 
 /**
@@ -2284,8 +2288,13 @@ It sets the mode of error conceal.
     Int32            drm_id;
     Int32            pool_id;
 
+    union
+    {
+        void*        mmu_ctx;
+        Uint64       dummy;
+    }mmuCtx;
+    
     RootPageTableInfo rptInfo;
-
 } DecOpenParam;
 
 /**
@@ -3389,6 +3398,7 @@ typedef struct {
     Uint8  packedSeiParamNum;               /**< It specifies the number of VA-API packed sei parameter for one frame. */
     Uint8  uniqueHeaderFlag;                /**< It indicates whether or not the header is unique, set 1 means that the header
                                                  is the same as the previous frame and will not be packed. */
+    Uint8   packedSliceHeaderOnly;          /**< It indicates whether the DX12 mode is used. Set 1 means DX12 mode enable. */
 /**
 @verbatim
 It specifies the enable flag of VA-API misc parameter.
@@ -3408,9 +3418,11 @@ It specifies the enable flag of VA-API misc parameter.
     PhysicalAddress miscRateControlBufAddr; /**< It specifies the buffer address of VA-API misc rate control parameter. */
     PhysicalAddress miscHrdBufAddr;         /**< It specifies the buffer address of VA-API misc hrd parameter. */
     PhysicalAddress fbcYBufAddr;            /**< It specifies the FBC Y buffer address of VA-API encoding. */
-    PhysicalAddress fbcCBufAddr;            /**< It specifies the FBC C buffer address of VA-API encoding. */
+    PhysicalAddress fbcCBufAddr;            /**< It specifies the FBC Cb buffer address of VA-API encoding. */
+    PhysicalAddress fbcVBufAddr;            /**< It specifies the FBC Cr buffer address of VA-API encoding. */
     PhysicalAddress fbcYOffsetBufAddr;      /**< It specifies the FBC Y Offset buffer address of VA-API encoding. */
-    PhysicalAddress fbcCOffsetBufAddr;      /**< It specifies the FBC C Offset buffer address of VA-API encoding. */
+    PhysicalAddress fbcCOffsetBufAddr;      /**< It specifies the FBC Cb Offset buffer address of VA-API encoding. */
+    PhysicalAddress fbcVOffsetBufAddr;      /**< It specifies the FBC Cr Offset buffer address of VA-API encoding. */
     PhysicalAddress mvColBufAddr;           /**< It specifies the MV Col buffer address of VA-API encoding. */
     PhysicalAddress subSampledBufAddr;      /**< It specifies the Sub sampled buffer address of VA-API encoding. */
 } VaapiInfo;
@@ -5262,6 +5274,12 @@ VPU core index number
     Int32           drm_id;
     Int32           pool_id;
 
+    union
+    {
+        void*       mmu_ctx;
+        Uint64      dummy;
+    }mmuCtx;
+
     RootPageTableInfo rptInfo;
 } EncOpenParam;
 
@@ -5462,6 +5480,7 @@ This is only for CODA9.
     EncCSCParam    csc;                /**< It indicates the RGB to YUV CSC(color space conversion) parameter. <<vpuapi_h_EncCSCParam>> */
     TimestampInfo  timestamp;          /**< It indicates the Timestamp parameter. (WAVE6 only) <<vpuapi_h_TimestampInfo>> */
     Uint32         fenceId;            /**< the unique identifier for frame. */
+    Uint32         reconID;            /* the buffer id mapped to enc fbc buffers allocated by umd */
 } EncParam;
 
 /**
@@ -6021,6 +6040,35 @@ int VPU_GetFrameBufSize(
 
 
 // function for decode
+/**
+*  @brief
+This function opens a decoder instance and get instIndex.
+By calling this function, HOST application can get a handle by which they can refer to a decoder instance.
+HOST application needs this kind of handle under multiple instances running codec.
+Once HOST application gets a handle, the HOST application must pass this handle to all subsequent decoder-related functions.
+* @return
+@verbatim
+*RETCODE_SUCCESS* ::
+Operation was done successfully, which means a new decoder instance was created
+successfully.
+*RETCODE_FAILURE* ::
+Operation was failed, which means getting a new decoder instance was not done
+successfully. If there is no free instance anymore, this value is returned
+in this function call.
+*RETCODE_INVALID_PARAM* ::
+The given argument parameter, `pop`, was invalid, which means it has a null
+pointer, or given values for some member variables are improper values.
+*RETCODE_NOT_INITIALIZED* ::
+This means VPU was not initialized yet before calling this function.
+Applications should initialize VPU by calling VPU_Init() before calling this
+function.
+@endverbatim
+ */
+ RetCode VPU_DecGetInst(
+    DecHandle *pHandle,     /**< [Output] A pointer to DecHandle type variable which specifies each instance for HOST application. */
+    DecOpenParam *pop       /**< [Input] A pointer to <<vpuapi_h_DecOpenParam>> which describes required parameters for creating a new decoder instance. */
+    );
+
 /**
 *  @brief
 This function opens a decoder instance in order to start a new decoder operation.
@@ -6765,6 +6813,41 @@ values.
     );
 
 // function for encode
+
+/**
+* @brief    This function opens an encoder instance and get instIndex.
+By calling this function, HOST application can get a
+handle specifying a new encoder instance. Because VPU supports multiple
+instances of codec operations, HOST application needs this kind of handles for the
+all codec instances now on running. Once HOST application gets a handle, the HOST application
+must use this handle to represent the target instances for all subsequent
+encoder-related functions.
+* @return
+@verbatim
+*RETCODE_SUCCESS* ::
+Operation was done successfully, which means a new encoder instance was opened
+successfully.
+
+*RETCODE_FAILURE* ::
+Operation was failed, which means getting a new encoder instance was not done
+successfully. If there is no free instance anymore, this value is returned
+in this function call.
+
+*RETCODE_INVALID_PARAM* ::
+The given argument parameter, pOpenParam, was invalid, which means it has a null
+pointer, or given values for some member variables are improper values.
+
+*RETCODE_NOT_INITIALIZED* ::
+VPU was not initialized at all before calling this function. Application should
+initialize VPU by calling VPU_Init() before calling this function.
+@endverbatim
+*/
+
+RetCode VPU_EncGetInst(
+    EncHandle*      handle,     /**< [Output] A pointer to EncHandle type variable which specifies each instance for HOST application. If no instance is available, null handle is returned. */
+    EncOpenParam*   encOpParam  /**< [Input] A pointer to <<vpuapi_h_EncOpenParam>> structure which describes required parameters for creating a new encoder instance. */
+    );
+
 /**
 * @brief    This function opens an encoder instance in order to start a new encoder operation.
 By calling this function, HOST application can get a
@@ -7403,6 +7486,7 @@ typedef struct {
     PhysicalAddress oldPa;
     PhysicalAddress newPa;
     Int32 bufIdx;
+    Uint32 rtIndex;
 } UpdatePaInfo_t;
 
 /**
@@ -7413,9 +7497,11 @@ memCnt: Number of memory, first element must be the workBuffer if the workBuffer
 * @return result
 */
 RetCode VPU_UpdatePa(
-    DecHandle handle,
-    UpdatePaInfo_t* paInfo,
-    Uint32 memCnt
+    DecHandle       handle,
+    UpdatePaInfo_t* internalPaInfo,
+    UpdatePaInfo_t* rtPaInfo,
+    Uint32          internalMemCnt,
+    Uint32          rtUpdateMemCnt
     );
 
 /**

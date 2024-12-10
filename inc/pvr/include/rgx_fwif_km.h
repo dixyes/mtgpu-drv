@@ -561,7 +561,7 @@ typedef struct
 #define RGXFWIF_INICFG_HWPERF_EN							(IMG_UINT32_C(0x1) << 2)
 #define RGXFWIF_INICFG_DM_KILL_MODE_RAND_EN					(IMG_UINT32_C(0x1) << 3)	/*!< Randomise DM-killing requests */
 #define RGXFWIF_INICFG_POW_RASCALDUST						(IMG_UINT32_C(0x1) << 4)
-#define RGXFWIF_INICFG_DISABLE_CE						(IMG_UINT32_C(0x1) << 5)
+#define RGXFWIF_INICFG_DISABLE_CE							(IMG_UINT32_C(0x1) << 5)
 #define RGXFWIF_INICFG_FBCDC_V3_1_EN						(IMG_UINT32_C(0x1) << 6)
 #define RGXFWIF_INICFG_CHECK_MLIST_EN						(IMG_UINT32_C(0x1) << 7)
 #define RGXFWIF_INICFG_DISABLE_CLKGATING_EN					(IMG_UINT32_C(0x1) << 8)
@@ -1372,6 +1372,8 @@ typedef enum
 	RGXFWIF_KCCB_CMD_GPUMAP								= 219U | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Request a FW GPU mapping which is written into by the FW with a pattern */
 #endif
 	RGXFWIF_KCCB_CMD_HWPERF_PFM								= 220U | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< PFM */
+	RGXFWIF_KCCB_CMD_VM_SCHEDULE_UPDATE               = 221U | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Update vgpu schedule timer */
+	RGXFWIF_KCCB_CMD_ACE_STATUS_CHECK                 = 222U | RGX_CMD_MAGIC_DWORD_SHIFTED, /*!< Detects the AXI bus status */
 } RGXFWIF_KCCB_CMD_TYPE;
 
 #define RGXFWIF_LAST_ALLOWED_GUEST_KCCB_CMD (RGXFWIF_KCCB_CMD_REGCONFIG - 1)
@@ -1386,6 +1388,7 @@ typedef enum
 	RGXFWIF_PFM_REQUEST_INSTANCE_CONFIG,
 	RGXFWIF_PFM_REQUEST_WRAPPER_CONFIG,
 	RGXFWIF_PFM_REQUEST_SWITCH,
+	RGXFWIF_PFM_REQUEST_STAT_CONFIG,
 	RGXFWIF_PFM_REQUEST_RESET_ALL, // Disable All PFM
 } RGXFWIF_PFM_REQUEST_TYPE;
 
@@ -1415,6 +1418,7 @@ typedef struct
 	} uConfig;
 } RGXFWIF_PFM_GLOBAL_CONFIG;
 
+#define RGXFWIF_PFM_L2PU_DEST_ADDR_COUNT 12
 typedef struct
 {
 	IMG_UINT32 ui32Instance;
@@ -1424,6 +1428,7 @@ typedef struct
 	IMG_UINT64 ui64Config;
 	IMG_UINT64 ui64TrigCtrl;
 	IMG_UINT32 aui32Group;
+	IMG_UINT64 aui64DestAddr[RGXFWIF_PFM_L2PU_DEST_ADDR_COUNT];
 } RGXFWIF_PFM_INSTANCE_CONFIG_PH1;
 
 typedef struct
@@ -1498,14 +1503,14 @@ typedef enum
 
 typedef struct
 {
-	IMG_UINT64 ui64PcBaseAddr;
+	IMG_UINT64 ui64PCBaseReg;
 	RGXFWIF_DEV_VIRTADDR sFwPFMContextID;
 	IMG_UINT32 ui32PfmCMSSCtrl;
 } RGXFWIF_PFM_INIT_CONFIG_PH1;
 
 typedef struct
 {
-	IMG_UINT64 ui64PcBaseAddr;
+	IMG_UINT64 ui64PCBaseReg;
 	RGXFWIF_DEV_VIRTADDR sFwPFMContextID;
 } RGXFWIF_PFM_INIT_CONFIG_QY2;
 
@@ -1518,6 +1523,19 @@ typedef struct
 	} uConfig;
 } RGXFWIF_PFM_INIT_CONFIG;
 
+typedef struct
+{
+	IMG_BOOL bGetStat;
+	IMG_UINT64 ui64BufSize;
+} RGXFWIF_PFM_GET_STAT_CTRL;
+
+typedef struct
+{
+	RGXFWIF_DEV_VIRTADDR sFWGetStatCfgs;
+	RGXFWIF_PFM_GET_STAT_CTRL sGetStatCtrlGPU;
+	RGXFWIF_PFM_GET_STAT_CTRL sGetStatCtrlCMSS;
+} RGXFWIF_PFM_GET_STAT_CONFIG;
+
 typedef struct _RGXFWIF_HWPERF_PFM_DATA_
 {
 	RGXFWIF_PFM_REQUEST_TYPE eType;
@@ -1528,6 +1546,7 @@ typedef struct _RGXFWIF_HWPERF_PFM_DATA_
 		RGXFWIF_PFM_INSTANCE_CONFIG sPFMInstCfg;
 		RGXFWIF_PFM_WRAPPER_CONFIG sPFMWrapCfg;
 		RGXFWIF_PFM_DUMP_TRIG_CONFIG sPFMDumpTrig;
+		RGXFWIF_PFM_GET_STAT_CONFIG sPFMGetStatCfg;
 	} uCmdData;
 } RGXFWIF_HWPERF_PFM_CTRL;
 
@@ -1626,13 +1645,13 @@ typedef struct
  *****************************************************************************/
 typedef struct
 {
-	IMG_UINT32						ui32ServerCommonContextID;	/*!< Context affected by the reset */
-	RGX_CONTEXT_RESET_REASON		eResetReason;				/*!< Reason for reset */
-	RGXFWIF_DM						eDM;						/*!< Data Master affected by the reset */
-	IMG_UINT32						ui32ResetJobRef;			/*!< Job ref running at the time of reset */
-	IMG_UINT32						ui32Flags;					/*!< RGXFWIF_FWCCB_CMD_CONTEXT_RESET_FLAG bitfield  */
-	IMG_UINT64 RGXFW_ALIGN			ui64PCAddress;				/*!< At what page catalog address */
-	IMG_DEV_VIRTADDR RGXFW_ALIGN	sFaultAddress;				/*!< Page fault address (only when applicable) */
+	IMG_UINT32			ui32ServerCommonContextID;	/*!< Context affected by the reset */
+	IMG_UINT64 RGXFW_ALIGN		ui64ResetReason;		/*!< Reason for reset */
+	RGXFWIF_DM			eDM;				/*!< Data Master affected by the reset */
+	IMG_UINT32			ui32ResetJobRef;		/*!< Job ref running at the time of reset */
+	IMG_UINT32			ui32Flags;			/*!< RGXFWIF_FWCCB_CMD_CONTEXT_RESET_FLAG bitfield  */
+	IMG_UINT64 RGXFW_ALIGN		ui64PCAddress;			/*!< At what page catalog address */
+	IMG_DEV_VIRTADDR RGXFW_ALIGN	sFaultAddress;			/*!< Page fault address (only when applicable) */
 } RGXFWIF_FWCCB_CMD_CONTEXT_RESET_DATA;
 
 /*!
@@ -1678,6 +1697,8 @@ typedef enum
 #endif
 	RGXFWIF_FWCCB_CMD_CONTEXT_FW_PF_NOTIFICATION    = 112U | RGX_CMD_MAGIC_DWORD_SHIFTED,   /*!< Notifies host of a FW pagefault
 	                                                                                          \n Command data: RGXFWIF_FWCCB_CMD_FW_PAGEFAULT_DATA */
+	RGXFWIF_FWCCB_CMD_ACE_CHECK_RESPONSE            = 113U | RGX_CMD_MAGIC_DWORD_SHIFTED,   /*!< Return ace check result
+	                                                                                          \n Command data: RGXFWIF_FWCCB_CMD_ACE_CHECK_DATA */
 } RGXFWIF_FWCCB_CMD_TYPE;
 
 /*!
@@ -1729,6 +1750,27 @@ typedef struct
 
 /*!
  ******************************************************************************
+ * List of the various stats of the ace status
+ *****************************************************************************/
+typedef enum
+{
+	RGXFWIF_FWCCB_CMD_ACE_STATUS_OK = 0,      /*!< AXI Hardware protocol state OK*/
+	RGXFWIF_FWCCB_CMD_ACE_STATUS_NEED_RESET,  /*!< AXI Hardware protocol state abnormal, need reset HW */
+} RGXFWIF_FWCCB_CMD_ACE_STATUS_STATS_TYPE;
+
+/*!
+ ******************************************************************************
+ * @Brief Command data of the \ref RGXFWIF_FWCCB_CMD_ACE_STATUS
+ * Firmware CCB command
+ *****************************************************************************/
+typedef struct
+{
+	RGXFWIF_FWCCB_CMD_ACE_STATUS_STATS_TYPE  eState;        /*!< Return HW status */
+	IMG_UINT32                               ui32AceStatus; /*!< Record register value */
+} RGXFWIF_FWCCB_CMD_ACE_STATUS;
+
+/*!
+ ******************************************************************************
  * @Brief Firmware CCB command structure
  *****************************************************************************/
 typedef struct
@@ -1751,6 +1793,7 @@ typedef struct
 		RGXFWIF_FWCCB_CMD_SAMPLE_TIMERS_DATA				sCmdTimers;
 #endif
 #endif
+		RGXFWIF_FWCCB_CMD_ACE_STATUS				sCmdAceStatus;
 	} RGXFW_ALIGN uCmdData;
 } RGXFW_ALIGN RGXFWIF_FWCCB_CMD;
 
@@ -1922,6 +1965,17 @@ typedef struct
 	IMG_BOOL					bUpdated;				/*!< Information is valid */
 } UNCACHED_ALIGN RGXFWIF_COMPCHECKS;
 
+#if defined(RGX_NUM_OS_SUPPORTED) && (RGX_NUM_OS_SUPPORTED > 1)
+#define RGXFW_MAX_VGPU_DM_NUM (4) /* TDM/TA/3D/CDM */
+
+struct VGPU_SCHEDULE_INFO_LINUX
+{
+    IMG_UINT32 cmdExecutedTime;   /* total hw execution time */
+    IMG_UINT32 maxCmdTime;        /* completed or preempted cmd */
+    IMG_UINT16 completeCmdCnt;    /* count of completed cmd */
+};
+#endif
+
 /*!
  ******************************************************************************
  * Updated configuration post FW data init.
@@ -1940,6 +1994,11 @@ typedef struct
 	IMG_UINT32         aui32OSidPriority[RGXFW_MAX_NUM_OS]; /*!< Array of priorities per OS */
 	PRGXFWIF_HWPERFBUF sHWPerfBuf;                          /* On-demand allocated HWPerf buffer address, to be passed to the FW */
 	RGXFWIF_DMA_ADDR   sHWPerfDMABuf;
+#if defined(RGX_NUM_OS_SUPPORTED) && (RGX_NUM_OS_SUPPORTED > 1)
+	IMG_UINT32         ui32VgpuSchCycle;
+	IMG_UINT32         ui32VgpuActualSchCycle;
+	struct VGPU_SCHEDULE_INFO_LINUX sVgpuSchInfo[RGXFW_MAX_VGPU_DM_NUM][RGX_NUM_OS_SUPPORTED];
+#endif
 } RGXFWIF_RUNTIME_CFG;
 
 /*!
@@ -2119,6 +2178,7 @@ typedef struct
 
 	IMG_DEV_VIRTADDR        RGXFW_ALIGN sPDSExecBase; /*!< PDS execution base */
 	IMG_DEV_VIRTADDR        RGXFW_ALIGN sUSCExecBase; /*!< USC execution base */
+	IMG_UINT32              RGXFW_ALIGN ui32TDMExecBase; /*!< TDM execution base */
 	IMG_DEV_VIRTADDR        RGXFW_ALIGN sFBCDCStateTableBase; /*!< FBCDC bindless texture state table base */
 	IMG_DEV_VIRTADDR        RGXFW_ALIGN sFBCDCLargeStateTableBase;
 	IMG_DEV_VIRTADDR        RGXFW_ALIGN sTextureHeapBase; /*!< Texture state base */

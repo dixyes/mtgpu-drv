@@ -81,6 +81,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "devicemem_server_utils.h"
 #include "pvr_vmap.h"
 #include "physheap.h"
+#include "physmem_usermem.h"
 
 /* ourselves */
 #include "physmem_osmem.h"
@@ -3851,20 +3852,20 @@ void PhysmemGetOSRamMemStats(PHEAP_IMPL_DATA pvImplData,
 
 }
 
-PVRSRV_ERROR
-PhysmemNewOSRamBackedPMR(PHYS_HEAP *psPhysHeap,
-						 CONNECTION_DATA *psConnection,
-						 IMG_DEVMEM_SIZE_T uiSize,
-						 IMG_DEVMEM_SIZE_T uiChunkSize,
-						 IMG_UINT32 ui32NumPhysChunks,
-						 IMG_UINT32 ui32NumVirtChunks,
-						 IMG_UINT32 *puiAllocIndices,
-						 IMG_UINT32 uiLog2AllocPageSize,
-						 PVRSRV_MEMALLOCFLAGS_T uiFlags,
-						 const IMG_CHAR *pszAnnotation,
-						 IMG_PID uiPid,
-						 PMR **ppsPMRPtr,
-						 IMG_UINT32 ui32PDumpFlags)
+static PVRSRV_ERROR
+PhysmemCreateSystemMemBackedPMR(PHYS_HEAP *psPhysHeap,
+				CONNECTION_DATA *psConnection,
+				IMG_DEVMEM_SIZE_T uiSize,
+				IMG_DEVMEM_SIZE_T uiChunkSize,
+				IMG_UINT32 ui32NumPhysChunks,
+				IMG_UINT32 ui32NumVirtChunks,
+				IMG_UINT32 *puiAllocIndices,
+				IMG_UINT32 uiLog2AllocPageSize,
+				PVRSRV_MEMALLOCFLAGS_T uiFlags,
+				const IMG_CHAR *pszAnnotation,
+				IMG_PID uiPid,
+				PMR **ppsPMRPtr,
+				IMG_UINT32 ui32PDumpFlags)
 {
 	PVRSRV_ERROR eError;
 	PVRSRV_ERROR eError2;
@@ -4012,4 +4013,63 @@ errorOnAllocPageArray:
 errorOnParam:
 	PVR_ASSERT(eError != PVRSRV_OK);
 	return eError;
+}
+
+PVRSRV_ERROR
+PhysmemNewOSRamBackedPMR(PHYS_HEAP *psPhysHeap,
+			 CONNECTION_DATA *psConnection,
+			 IMG_DEVMEM_SIZE_T uiSize,
+			 IMG_DEVMEM_SIZE_T uiChunkSize,
+			 IMG_UINT32 ui32NumPhysChunks,
+			 IMG_UINT32 ui32NumVirtChunks,
+			 IMG_UINT32 *puiAllocIndices,
+			 IMG_UINT32 uiLog2AllocPageSize,
+			 PVRSRV_MEMALLOCFLAGS_T uiFlags,
+			 const IMG_CHAR *pszAnnotation,
+			 IMG_PID uiPid,
+			 PMR **ppsPMRPtr,
+			 IMG_UINT32 ui32PDumpFlags)
+{
+	if (!PVRSRV_MEMALLOCFLAG_IS_VALID(uiFlags))
+	{
+		PVR_DPF((PVR_DBG_ERROR,
+			 "Invalid memalloc flag: normal %u, system %u, user %u.",
+			 PVRSRV_IS_NORMAL_MEM_FLAG(uiFlags),
+			 PVRSRV_IS_SYSTEM_MEM_FLAG(uiFlags),
+			 PVRSRV_IS_USER_MEM_FLAG(uiFlags)));
+		return PVRSRV_ERROR_INVALID_PARAMS;
+	}
+
+	if (PVRSRV_IS_USER_MEM_FLAG(uiFlags))
+	{
+		return PhysmemCreateUserMemPMR(psPhysHeap,
+					       psConnection,
+					       uiSize,
+					       uiChunkSize,
+					       ui32NumPhysChunks,
+					       ui32NumVirtChunks,
+					       puiAllocIndices,
+					       uiLog2AllocPageSize,
+					       uiFlags,
+					       pszAnnotation,
+					       uiPid,
+					       ppsPMRPtr,
+					       ui32PDumpFlags);
+	}
+	else
+	{
+		return PhysmemCreateSystemMemBackedPMR(psPhysHeap,
+						       psConnection,
+						       uiSize,
+						       uiChunkSize,
+						       ui32NumPhysChunks,
+						       ui32NumVirtChunks,
+						       puiAllocIndices,
+						       uiLog2AllocPageSize,
+						       uiFlags,
+						       pszAnnotation,
+						       uiPid,
+						       ppsPMRPtr,
+						       ui32PDumpFlags);
+	}
 }

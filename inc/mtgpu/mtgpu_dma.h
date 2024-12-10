@@ -76,16 +76,18 @@ struct dma_xfer_block {
 	u64 dev_addr;
 	u64 ext_addr;
 	u64 block_size;
+	struct page **pages;
+	u64 pinned;
 };
 
 struct mtgpu_dma_ops {
 	int (*init)(struct mtgpu_device *mtdev);
 	int (*transmit)(void *dma_info, struct mtgpu_dma_xfer_desc *descs,
 			int desc_cnt, int xfer_type, int type, int chan);
+	int (*acquire_channel)(struct mtgpu_device *mtdev, int dir, u32 instance_id);
+	int (*release_channel)(struct mtgpu_device *mtdev, int dir, int chan);
 	void (*resume)(struct mtgpu_device *mtdev);
 	int (*get_capabilities)(u32 type, struct dma_capability *dma_cap);
-	int (*acquire_channel)(struct mtgpu_device *mtdev, u32 instance_id);
-	u32 (*release_channel)(struct mtgpu_device *mtdev, int chan);
 	void (*exit)(struct mtgpu_device *mtdev);
 };
 

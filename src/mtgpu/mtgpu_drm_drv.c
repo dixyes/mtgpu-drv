@@ -7,6 +7,12 @@
 #include <linux/component.h>
 #include <linux/pci.h>
 #include <linux/platform_device.h>
+#include <linux/of.h>
+#include <linux/of_platform.h>
+#include <linux/acpi.h>
+#if defined(OS_LINUX_DEVICE_BUS_H_EXIT)
+#include <linux/device/bus.h>
+#endif
 
 #if defined(OS_DRM_DRMP_H_EXIST)
 #include <drm/drmP.h>
@@ -17,11 +23,13 @@
 #include <drm/drm_aperture.h>
 #endif
 #include <linux/dma-mapping.h>
+#include <drm/drm_of.h>
 #include <drm/drm_drv.h>
 #include <drm/drm_vblank.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc_helper.h>
+#include <drm/drm_blend.h>
 #if defined(OS_DRM_DRM_PROBE_HELPER_H_EXIST)
 #include <drm/drm_probe_helper.h>
 #endif
@@ -29,6 +37,10 @@
 #if defined(OS_DRM_DRM_FBDEV_GENERIC_H_EXIST)
 #include <drm/drm_fbdev_generic.h>
 #endif
+#if defined(OS_DRM_DRM_SELF_REFRESH_HELPER_H_EXIST)
+#include <drm/drm_self_refresh_helper.h>
+#endif
+#include <drm/drm_blend.h>
 
 #include "mtgpu_drv.h"
 #include "mtgpu_drm_drv.h"
@@ -44,6 +56,12 @@
 #define DRIVER_MAJOR	1
 #define DRIVER_MINOR	0
 
+enum mtgpu_of_component_type {
+	MTGPU_COMP_TYPE_DC,
+	MTGPU_COMP_TYPE_DP,
+	MTGPU_COMP_TYPE_VIDEO,
+};
+
 /* disable_fbdev is used for kick the fb node. */
 #if (RGX_NUM_OS_SUPPORTED > 1)
 static bool disable_fbdev = true;
@@ -57,13 +75,13 @@ MODULE_PARM_DESC(disable_fbdev, "0 - enable fbdev, 1 - disable fbdev. The defaul
  * display_debug - A master switch is used to control debug.
  * All display components print info, warning, error by default,
  * each Byte controls one component, as follows:
- * |<-- 32bits -->|<-- 8bits -->|<-- 8bits -->|<-- 8bits -->|<-- 8bits -->|
- * |   reserved   |global_debug | dispc_debug | hdmi_debug  |  dp_debug   |
+ * |<-- 24bits -->|<-- 8bits -->|<-- 8bits -->|<-- 8bits -->|<-- 8bits -->|<-- 8bits -->|
+ * |   reserved   |  dsc_debug  |global_debug | dispc_debug | hdmi_debug  |  dp_debug   |
  */
 ulong display_debug = 0x0707070707;
 module_param(display_debug, ulong, 0600);
 MODULE_PARM_DESC(display_debug,
-		 " H->L: global[8] dispc[8] hdmi[8] dp[8]. The default value is 0x0707070707.");
+		 " H->L: dsc[8] global[8] dispc[8] hdmi[8] dp[8]. Default: 0x0707070707.");
 
 bool dsc_enable = true;
 module_param(dsc_enable, bool, 0444);
@@ -95,13 +113,41 @@ static void mtgpu_atomic_helper_commit_tail_rpm(struct drm_atomic_state *old_sta
 	drm_atomic_helper_cleanup_planes(dev, old_state);
 }
 
+static int mtgpu_atomic_helper_check(struct drm_device *dev,
+				     struct drm_atomic_state *state)
+{
+	int ret;
+
+	ret = drm_atomic_helper_check_modeset(dev, state);
+	if (ret)
+		return ret;
+
+	if (dev->mode_config.normalize_zpos) {
+		ret = drm_atomic_normalize_zpos(dev, state);
+		if (ret)
+			return ret;
+	}
+
+	ret = drm_atomic_helper_check_planes(dev, state);
+	if (ret)
+		return ret;
+
+	if (state->legacy_cursor_update)
+		state->async_update = !mtgpu_atomic_helper_async_check(dev, state);
+
+#if defined(OS_DRM_DRM_SELF_REFRESH_HELPER_H_EXIST)
+	drm_self_refresh_helper_alter_state(state);
+#endif
+	return ret;
+}
+
 static const struct drm_mode_config_helper_funcs mtgpu_mode_config_helpers = {
 	.atomic_commit_tail = mtgpu_atomic_helper_commit_tail_rpm,
 };
 
 static const struct drm_mode_config_funcs mtgpu_mode_config_funcs = {
 	.fb_create = drm_gem_fb_create,
-	.atomic_check = drm_atomic_helper_check,
+	.atomic_check = mtgpu_atomic_helper_check,
 	.atomic_commit = drm_atomic_helper_commit,
 };
 
@@ -209,6 +255,7 @@ static struct drm_driver mtgpu_drm_driver = {
 	.gem_prime_export		= mtgpu_gem_prime_export,
 	.gem_prime_vmap			= mtgpu_gem_prime_vmap,
 	.gem_prime_vunmap		= mtgpu_gem_prime_vunmap,
+	.gem_prime_get_sg_table		= mtgpu_gem_prime_get_sg_table,
 #endif
 
 	.name				= DRIVER_NAME,
@@ -356,8 +403,138 @@ static void mtgpu_match_add_drivers(struct device *drm_dev,
 
 			if (drm_dev == component_dev->parent)
 				component_match_add(drm_dev, match, compare_dev, component_dev);
+
 		} while (true);
 	}
+}
+
+static const struct of_device_id component_dev_of_ids[] = {
+	{ .compatible = "apollo,dptx", .data = (void *)MTGPU_COMP_TYPE_DP },
+	{ .compatible = "verisilicon,dc9x00", .data = (void *)MTGPU_COMP_TYPE_DC },
+	{ .compatible = "mthreads,apollo-vpu", .data = (void *)MTGPU_COMP_TYPE_VIDEO },
+	{ }
+};
+
+static int compare_node(struct device *dev, void *data)
+{
+	return dev->of_node == data;
+}
+
+static void mtgpu_match_add_device_nodes(struct device *drm_dev, struct component_match **match)
+{
+	struct device_node *node;
+	struct device_node *phandle = drm_dev->parent->of_node;
+
+	for_each_child_of_node(phandle->parent, node) {
+		const struct platform_device *pdev;
+		const struct of_device_id *of_id;
+		enum mtgpu_of_component_type comp_type;
+
+		of_id = of_match_node(component_dev_of_ids, node);
+		if (!of_id)
+			continue;
+
+		if (mtgpu_display_is_dummy() || mtgpu_display_is_none()) {
+			comp_type = (enum mtgpu_of_component_type)of_id->data;
+
+			if (comp_type == MTGPU_COMP_TYPE_DP ||
+			    comp_type == MTGPU_COMP_TYPE_DC) {
+				dev_dbg(drm_dev, "Skipping display component: %s\n", node->name);
+				continue;
+			}
+		}
+
+		if (!of_device_is_available(node)) {
+			dev_dbg(drm_dev, "Skipping disabled component: %s\n", node->name);
+			continue;
+		}
+
+		pdev = of_find_device_by_node(node);
+		if (!pdev || !pdev->dev.driver) {
+			dev_dbg(drm_dev, "Skipping unbinded component: %s\n", node->name);
+			continue;
+		}
+
+		drm_of_component_match_add(drm_dev, match, compare_node, node);
+	}
+}
+
+static const struct acpi_device_id component_dev_acpi_ids[] = {
+	{ .id = "DPTX0001", .driver_data = (kernel_ulong_t)MTGPU_COMP_TYPE_DP },
+	{ .id = "DC9X0001", .driver_data = (kernel_ulong_t)MTGPU_COMP_TYPE_DC },
+	{ .id = "MVPU0001", .driver_data = (kernel_ulong_t)MTGPU_COMP_TYPE_VIDEO },
+	{ }, /* end of all entries */
+};
+
+struct match_info {
+	struct device *drm_dev;
+	struct component_match **match;
+};
+
+#if defined(OS_BUS_FIND_DEVICE_MATCH_USE_CONST_MODIFIER)
+static int is_device_match_acpi_dev(struct device *dev, const void *adev)
+#else
+static int is_device_match_acpi_dev(struct device *dev, void *adev)
+#endif
+{
+	return ACPI_COMPANION(dev) == adev;
+}
+
+static acpi_status register_acpi_device(acpi_handle handle, u32 level, void *data, void **ret)
+{
+	struct device *dev;
+	struct acpi_device *adev;
+	struct platform_device *pdev;
+	struct match_info *match_info = data;
+	const struct acpi_device_id *id;
+	enum mtgpu_of_component_type comp_type;
+
+#if defined(OS_FUNC_ACPI_BUS_GET_DEVICE_EXIST)
+	if (acpi_bus_get_device(handle, &adev))
+		return AE_OK;
+#else
+	adev = acpi_fetch_acpi_dev(handle);
+#endif
+	/* Check if the device exists. */
+	if (!adev || !adev->status.present)
+		return AE_OK;
+
+	/* Check if the compatible driver exists. */
+	dev = bus_find_device(&platform_bus_type, NULL, adev, is_device_match_acpi_dev);
+	pdev = dev ? to_platform_device(dev) : NULL;
+	if (!pdev || !pdev->dev.driver)
+		return AE_OK;
+
+	/* Match ACPI device */
+#if defined(OS_FUNC_ACPI_MATCH_ACPI_DEVICE_EXIST)
+	id = acpi_match_acpi_device(component_dev_acpi_ids, adev);
+#else
+	id = acpi_match_device(component_dev_acpi_ids, dev);
+#endif
+	if (!id)
+		return AE_OK;
+
+	if (mtgpu_display_is_dummy() || mtgpu_display_is_none()) {
+		comp_type = (enum mtgpu_of_component_type)id->driver_data;
+		if (comp_type == MTGPU_COMP_TYPE_DP ||
+		    comp_type == MTGPU_COMP_TYPE_DC) {
+			dev_dbg(match_info->drm_dev, "Skipping display component: %s\n", id->id);
+			return AE_OK;
+		}
+	}
+
+	/* Add compnent device. */
+	component_match_add(match_info->drm_dev, match_info->match, compare_dev, dev);
+
+	return AE_OK;
+}
+
+static void mtgpu_match_add_acpi_devices(struct device *drm_dev, struct component_match **match)
+{
+	struct match_info match_info = {drm_dev, match};
+
+	acpi_walk_namespace(ACPI_TYPE_ANY, ACPI_ROOT_OBJECT, ACPI_UINT32_MAX,
+			    register_acpi_device, NULL, &match_info, NULL);
 }
 
 static int mtgpu_drm_probe(struct platform_device *pdev)
@@ -368,6 +545,14 @@ static int mtgpu_drm_probe(struct platform_device *pdev)
 	/* This is just for MPC when unbind and rebind drm devices. */
 	if (!platform_get_drvdata(pdev))
 		return -EPROBE_DEFER;
+
+	/* This is just for IGPU to add components. */
+	if (!dev_is_pci(dev->parent)) {
+		if (acpi_disabled)
+			mtgpu_match_add_device_nodes(dev, &match);
+		else
+			mtgpu_match_add_acpi_devices(dev, &match);
+	}
 
 	mtgpu_match_add_drivers(dev, &match, component_drivers,
 				ARRAY_SIZE(component_drivers));

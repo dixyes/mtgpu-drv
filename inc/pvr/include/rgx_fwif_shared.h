@@ -87,8 +87,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  * checked against this maximum limit.
  * In case the incoming command size is larger than the specified limit,
  * the bridge call is retired with error.
+ * 
+ * The size should be less than 170K theoretically.
  */
-#define RGXFWIF_DM_INDEPENDENT_KICK_CMD_SIZE	(1024U)
+#define RGXFWIF_DM_INDEPENDENT_KICK_CMD_SIZE	(256 * 1024U)
 
 typedef struct RGXFWIF_DEV_VIRTADDR_
 {
@@ -215,6 +217,15 @@ typedef struct
 	IMG_UINT32  ui32ReadOffset2;
 	IMG_UINT32  ui32ReadOffset3;
 	IMG_UINT32  ui32ReadOffset4;
+
+	/* Only used for linux guest hwr */
+#if (RGX_NUM_OS_SUPPORTED > 1)
+	IMG_UINT32 ui32WriteOffsetBackup;
+	IMG_UINT32 ui32ReadOffsetBackup;
+	IMG_UINT32 ui32DepOffsetBackup;
+	IMG_UINT32 ui32LastReadOffsetNeedSkip;
+	IMG_BOOL   bNeedSkip;
+#endif
 } UNCACHED_ALIGN RGXFWIF_CCCB_CTL;
 
 
@@ -320,7 +331,7 @@ static_assert((sizeof(RGXFWIF_CDM_REGISTERS_CSWITCH) % 8U) == 0U,
  */
 typedef struct
 {
-	RGXFWIF_TAREGISTERS_CSWITCH	RGXFW_ALIGN asCtxSwitch_GeomRegs[RGX_NUM_GEOM_CORES];
+	RGXFWIF_TAREGISTERS_CSWITCH RGXFW_ALIGN asCtxSwitch_GeomRegs[RGX_NUM_GEOM_CORES];
 	RGXFWIF_3DREGISTERS_CSWITCH RGXFW_ALIGN sCtxSwitch_3DRegs;  /*!< 3D registers for ctx switch */
 } RGXFWIF_STATIC_RENDERCONTEXT_STATE;
 
@@ -353,26 +364,38 @@ typedef struct
 /*!
 	@Brief Context reset reason. Last reset reason for a reset context.
 */
-typedef enum
-{
-	RGX_CONTEXT_RESET_REASON_NONE                = 0,	/*!< No reset reason recorded */
-	RGX_CONTEXT_RESET_REASON_GUILTY_LOCKUP       = 1,	/*!< Caused a reset due to locking up */
-	RGX_CONTEXT_RESET_REASON_INNOCENT_LOCKUP     = 2,	/*!< Affected by another context locking up */
-	RGX_CONTEXT_RESET_REASON_GUILTY_OVERRUNING   = 3,	/*!< Overran the global deadline */
-	RGX_CONTEXT_RESET_REASON_INNOCENT_OVERRUNING = 4,	/*!< Affected by another context overrunning */
-	RGX_CONTEXT_RESET_REASON_HARD_CONTEXT_SWITCH = 5,	/*!< Forced reset to ensure scheduling requirements */
-	RGX_CONTEXT_RESET_REASON_WGP_CHECKSUM        = 6,	/*!< CDM Mission/safety checksum mismatch */
-	RGX_CONTEXT_RESET_REASON_TRP_CHECKSUM        = 7,	/*!< TRP checksum mismatch */
-	RGX_CONTEXT_RESET_REASON_GPU_ECC_OK          = 8,	/*!< GPU ECC error (corrected, OK) */
-	RGX_CONTEXT_RESET_REASON_GPU_ECC_HWR         = 9,	/*!< GPU ECC error (uncorrected, HWR) */
-	RGX_CONTEXT_RESET_REASON_FW_ECC_OK           = 10,	/*!< FW ECC error (corrected, OK) */
-	RGX_CONTEXT_RESET_REASON_FW_ECC_ERR          = 11,	/*!< FW ECC error (uncorrected, ERR) */
-	RGX_CONTEXT_RESET_REASON_FW_WATCHDOG         = 12,	/*!< FW Safety watchdog triggered */
-	RGX_CONTEXT_RESET_REASON_FW_PAGEFAULT        = 13,	/*!< FW page fault (no HWR) */
-	RGX_CONTEXT_RESET_REASON_FW_EXEC_ERR         = 14,	/*!< FW execution error (GPU reset requested) */
-	RGX_CONTEXT_RESET_REASON_HOST_WDG_FW_ERR     = 15,	/*!< Host watchdog detected FW error */
-	RGX_CONTEXT_GEOM_OOM_DISABLED                = 16,	/*!< Geometry DM OOM event is not allowed */
-} RGX_CONTEXT_RESET_REASON;
+#define    RGX_CONTEXT_RESET_REASON_NONE                     0x000  /*!< No reset reason recorded */
+#define    RGX_CONTEXT_RESET_REASON_GUILTY_LOCKUP            0x001  /*!< Caused a reset due to locking up */
+#define    RGX_CONTEXT_RESET_REASON_INNOCENT_LOCKUP          0x002  /*!< Affected by another context locking up */
+#define    RGX_CONTEXT_RESET_REASON_GUILTY_OVERRUNING        0x004  /*!< Overran the global deadline */
+#define    RGX_CONTEXT_RESET_REASON_INNOCENT_OVERRUNING      0x008  /*!< Affected by another context overrunning */
+#define    RGX_CONTEXT_RESET_REASON_HARD_CONTEXT_SWITCH      0x010  /*!< Forced reset to ensure scheduling requirements */
+#define    RGX_CONTEXT_RESET_REASON_WGP_CHECKSUM             0x020  /*!< CDM Mission/safety checksum mismatch */
+#define    RGX_CONTEXT_RESET_REASON_TRP_CHECKSUM             0x040  /*!< TRP checksum mismatch */
+#define    RGX_CONTEXT_RESET_REASON_GPU_ECC_OK               0x080  /*!< GPU ECC error (corrected, OK) */
+#define    RGX_CONTEXT_RESET_REASON_GPU_ECC_HWR              0x100  /*!< GPU ECC error (uncorrected, HWR) */
+#define    RGX_CONTEXT_RESET_REASON_FW_ECC_OK                0x200 /*!< FW ECC error (corrected, OK) */
+#define    RGX_CONTEXT_RESET_REASON_FW_ECC_ERR               0x400 /*!< FW ECC error (uncorrected, ERR) */
+#define    RGX_CONTEXT_RESET_REASON_FW_WATCHDOG              0x800 /*!< FW Safety watchdog triggered */
+#define    RGX_CONTEXT_RESET_REASON_FW_PAGEFAULT             0x001000 /*!< FW page fault (no HWR) */
+#define    RGX_CONTEXT_RESET_REASON_FW_EXEC_ERR              0x002000 /*!< FW execution error (GPU reset requested) */
+#define    RGX_CONTEXT_RESET_REASON_HOST_WDG_FW_ERR          0x004000 /*!< Host watchdog detected FW error */
+#define    RGX_CONTEXT_GEOM_OOM_DISABLED                     0x008000 /*!< Geometry DM OOM event is not allowed */
+#define    MT_MP_EXCEPTION_WRITE                             0x010000 /*!< ICTRL/RTU/LSU/TCE/MOV */
+#define    MT_MP_EXCEPTION_READ                              0x020000 /*!< ICTRL */
+#define    MT_MP_EXCEPTION_US_RW_CONFLICT                    0x040000 /*!< US */
+#define    MT_MP_EXCEPTION_LMS_RW_NOBARRIER                  0x100000 /*!< LMS */
+#define    MT_MP_EXCEPTION_LMS_OOB                           0x200000 /*!< LMA/TME access lms oob */
+#define    MT_MP_EXCEPTION_ILLEGAL_INSTRUCTION               0x400000 /*!< ICTRL catch decode error */
+#define    MT_MP_EXCEPTION_INVALID_PC                        0x00800000 /*!< ICTRL get invalid pc  */
+#define    MT_MP_EXCEPTION_INVALID_MEMORY_SPACE              0x01000000 /*!< LMA: address target to unsupported memory space for pipeline */
+#define    MT_MP_EXCEPTION_MISALIGNED_ADDRESS                0x02000000 /*!< LMA/TME/LSU misaligned address */
+#define    MT_MP_EXCEPTION_ASYNC_TRANS_BAR_SIZE_OOB          0x04000000 /*!< TME/ASYNC: bar id is greater than bar size */
+#define    MT_MP_EXCEPTION_ASYNC_TRANS_BAR_TRANS_OOB         0x08000000 /*!< ASYNC: transaction count is overflow or underflow */
+#define    MT_MP_EXCEPTION_ASYNC_TRANS_BAR_ARRIVAL_OOB       0x10000000 /*!< ASYNC: arrival count is overflow or underflow */
+#define    MT_MP_EXCEPTION_TCE_ILLEGAL_ACTIVE_MASK           0x20000000 /*!< TCE: detect illegal active mask */
+#define    MT_MP_EXCEPTION_TME_ILLEGAL_PARAMETERS            0x40000000 /*!< TME: detect illegal parameters */
+#define    RGX_CONTEXT_ACE_STATUS_ERR                        0x80000000 /*!< AXI bus status error */
 
 typedef struct
 {

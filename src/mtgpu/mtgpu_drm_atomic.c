@@ -301,3 +301,52 @@ void mtgpu_atomic_helper_commit_modeset_disables(struct drm_device *dev,
 
 	mtgpu_crtc_set_mode(dev, old_state);
 }
+
+int mtgpu_atomic_helper_async_check(struct drm_device *dev,
+				    struct drm_atomic_state *state)
+{
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *crtc_state;
+	struct drm_plane *plane = NULL;
+	struct drm_plane_state *old_plane_state = NULL;
+	struct drm_plane_state *new_plane_state = NULL;
+	const struct drm_plane_helper_funcs *funcs;
+	int i, n_planes = 0;
+
+	for_each_new_crtc_in_state(state, crtc, crtc_state, i) {
+		if (drm_atomic_crtc_needs_modeset(crtc_state))
+			return -EINVAL;
+	}
+
+	for_each_oldnew_plane_in_state(state, plane, old_plane_state, new_plane_state, i)
+		n_planes++;
+
+	/* FIXME: we support only single plane updates for now */
+	if (n_planes != 1)
+		return -EINVAL;
+
+	if (!new_plane_state->crtc ||
+	    old_plane_state->crtc != new_plane_state->crtc)
+		return -EINVAL;
+
+	funcs = plane->helper_private;
+	if (!funcs->atomic_async_update)
+		return -EINVAL;
+
+	if (new_plane_state->fence)
+		return -EINVAL;
+
+	/*
+	 * Don't do an async update if there is an outstanding commit modifying
+	 * the plane.  This prevents our async update's changes from getting
+	 * overridden by a previous synchronous update's state.
+	 */
+	if (old_plane_state->commit &&
+	    !try_wait_for_completion(&old_plane_state->commit->hw_done))
+		return -EBUSY;
+#if defined(OS_DRM_PLANE_HELPER_FUNCS_USE_DRM_ATOMIC_STATE)
+	return funcs->atomic_async_check(plane, state);
+#else
+	return funcs->atomic_async_check(plane, new_plane_state);
+#endif
+}
