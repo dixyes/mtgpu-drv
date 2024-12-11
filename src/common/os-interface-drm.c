@@ -17,6 +17,7 @@
 #include <drm/display/drm_dp_helper.h>
 #endif
 #include <drm/drm_crtc.h>
+#include <drm/drm_edid.h>
 #include <drm/drm_encoder.h>
 #include <drm/drm_crtc_helper.h>
 #include <uapi/drm/drm.h>
