@@ -8,6 +8,7 @@
 
 struct _PVRSRV_DEVICE_NODE_;
 struct mtvpu_vm_context;
+struct drm_device;
 
 int mtvpu_vm_context_create(struct _PVRSRV_DEVICE_NODE_ *dev_node,
 			    struct mtvpu_vm_context **vm_ctx_out,
@@ -26,5 +27,6 @@ int mtvpu_vm_pmr_unmap_and_destroy(struct mtvpu_vm_context *vm_ctx,
 				   void *pmr_ptr,
 				   u64 dev_vaddr,
 				   void *cpu_vaddr);
+int mtvpu_get_fw_ctx_pc_root(struct drm_device *drm, u64 *fw_ctx_pc_root);
 
 #endif /* _MTVPU_VM_H_*/

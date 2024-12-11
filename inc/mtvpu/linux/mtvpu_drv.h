@@ -26,6 +26,10 @@
 #define MTVPU_SEGMENT_NUM       16
 #define MTVPU_SEGMENT_VM       -1
 
+#define VPU_SMMU_MEM_BASE1 0xFF00000000
+#define VPU_SMMU_MEM_BASE2 0xFE00000000
+#define VPU_SMMU_MEM_BASE_MASK 0xFF00000000
+
 #ifdef SUPPORT_ION
 #define ion_phys_addr_t phys_addr_t
 #endif
@@ -65,6 +69,17 @@ struct mt_intr_map {
 	u32 core_idx;
 	u32 intr_inst;
 	u32 intr_reason;
+	union {
+		struct {  // 517 result
+			u32 linear_y_addr;
+			u32 linear_y_addr_ext;
+			u32 tick_frame;
+			u32 err_reason;
+		};
+		struct {  // 627 result
+			u32 reserved;
+		};
+	};
 };
 
 struct mt_sync {
@@ -107,23 +122,23 @@ struct mt_node {
 #endif
 	u32 pool_id;
 	int vram_belonger;
-	dma_addr_t iova_addr;
 	u64 *cpu_pa_array;
 	u64 private_data;
 };
 
 struct umd_alloc_buffer_single {
 	u64 dev_addr;
+	u64 virt_addr; /* for smmu use */
 	u64 size;
 	bool used;
 };
 
 struct umd_alloc_buffer_union{
 	u64 start_pa;
+	u64 virt_addr; /* for smmu use */
 	u32 total_size;
 	u32 used_size;
 };
-
 
 struct mt_core {
 	int idx;
@@ -187,6 +202,7 @@ struct mt_core {
 	struct umd_alloc_buffer_single task_buffers[INST_MAX_SIZE];
 	struct umd_alloc_buffer_single etc_buffers[INST_MAX_SIZE][DEC_ETC_NUM];
 	struct umd_alloc_buffer_single def_cdf_buffers[INST_MAX_SIZE];
+	struct umd_alloc_buffer_single va_param[INST_MAX_SIZE];
 
 	struct mt_node *fwlog_node;
 	struct mutex *inst_lock[INST_MAX_SIZE];
@@ -292,6 +308,7 @@ struct mt_chip {
 	u64 bar_base;
 
 	struct mt_core core[CORE_MAX_SIZE];
+	int start_core_idx; /* for debug purpose */
 	struct semaphore *host_thread_semas[MAX_HOST_VPU_GROUPS_GEN1_GEN2];
 
 	struct mt_sync sync;
@@ -325,7 +342,7 @@ struct mt_chip {
 
 	struct iommu_group *io_group;
 	struct iommu_domain *io_domain;
-	struct iova_domain *iova_domain;
+	struct iova_domain *iova_domain[CORE_MAX_SIZE];
 };
 
 struct mt_open {
@@ -342,6 +359,8 @@ struct mtvpu_gem_priv {
 	struct mtvpu_mmu_ctx *mmu_ctx;
 	u64 dev_phy_addr;
 	void *pmr;
+	u64 priv_data; /* for vmap use in smmu */
+	void *virt_addr;
 };
 
 int get_mtvpu_log_level(void);

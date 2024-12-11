@@ -20,6 +20,8 @@
 #if defined(OS_DRM_DRM_PROBE_HELPER_H_EXIST)
 #include <drm/drm_probe_helper.h>
 #endif
+#include <drm/drm_device.h>
+#include <drm/drm_file.h>
 
 #include <linux/component.h>
 #include <linux/clk.h>
@@ -606,7 +608,7 @@ static const struct mtgpu_codec_ops mtgpu_dp_audio_codec_ops = {
 };
 #endif
 
-static int mtgpu_dp_audio_register(struct mtgpu_dp *dp)
+static int mtgpu_dp_audio_register(struct mtgpu_dp *dp, struct drm_device *drm)
 {
 	struct hdmi_codec_pdata codec_data = {
 		.ops = (struct hdmi_codec_ops *)&mtgpu_dp_audio_codec_ops,
@@ -614,10 +616,11 @@ static int mtgpu_dp_audio_register(struct mtgpu_dp *dp)
 		.i2s = 1,
 		.data = dp,
 	};
+	int idx = drm->primary->index;
 	char dev_name[64];
 	const char *name = dev_name;
 
-	sprintf(dev_name, "mtgpu-dp-audio-codec-%d", dp->ctx.id);
+	snprintf(dev_name, sizeof(dev_name), "mtgpu-%d-dp-audio-codec-%d", idx, dp->ctx.id);
 
 	dp->dp_audio = platform_device_register_data(dp->dev, name,
 						     PLATFORM_DEVID_AUTO, &codec_data,
@@ -865,7 +868,7 @@ static int mtgpu_dp_component_bind(struct device *dev,
 
 	mtgpu_phy_init(dp->phy);
 
-	ret = mtgpu_dp_audio_register(dp);
+	ret = mtgpu_dp_audio_register(dp, drm);
 	if (ret) {
 		DRM_DEV_ERROR(dev, "failed to register DP audio device: %d\n", ret);
 		goto err_free_dp;

@@ -20,7 +20,7 @@ struct drm_gem_object;
 struct drm_mode_create_dumb;
 struct vm_area_struct;
 struct mtgpu_gem_object;
-struct mtvpu_gem_object;
+struct mtgpu_codec_priv_data;
 
 #define vpu_warn(fmt, ...) os_pr_warn("[mtvpu] " fmt, ##__VA_ARGS__)
 #define vpu_info(fmt, ...) os_pr_info("[mtvpu] " fmt, ##__VA_ARGS__)
@@ -61,8 +61,7 @@ void vpu_vram_free(struct mtgpu_gem_object *mtgpu_obj);
 int vpu_gem_modify(struct drm_device *drm, struct mtgpu_gem_object *mtgpu_obj, u32 group_id, u32 inc_size, u32 copy);
 
 int mtvpu_vram_alloc(struct drm_device *drm, u32 group_id, size_t size,
-		     dma_addr_t *dev_addr, void **virt_addr, dma_addr_t *iova_addr, void **handle);
-void mtvpu_vram_free(struct drm_gem_object *obj, dma_addr_t dev_addr, void *virt_addr, dma_addr_t iova_addr, void *handle);
+		     dma_addr_t *dev_addr, void **handle);
 
 int mtvpu_drm_open(struct drm_device *drm, struct drm_file *file);
 void mtvpu_drm_release(struct drm_device *drm, struct drm_file *file);
@@ -75,14 +74,10 @@ void dcache_flush(void *addr, size_t len);
 int mtvpu_gem_mmap_obj(struct drm_gem_object *obj, struct vm_area_struct *vma);
 int mtvpu_gem_dmabuf_map(struct sg_table *sgt, struct mtgpu_gem_object *mtgpu_obj);
 
-int mtvpu_job_submit(struct drm_device *drm, struct drm_file *file_priv, void __user *data, uint32_t size);
+int mtvpu_job_submit(struct drm_device *drm, struct drm_file *file_priv, void __user *data,
+		     uint32_t size, struct mtgpu_codec_priv_data *data_priv);
 int mtvpu_bo_wait(struct drm_device *drm, struct drm_file *file_priv, u64 bo_handle, u32 offset, u32 flags, s64 timeout_ns);
 
-#ifdef __aarch64__
-u64 os_kernel_ds(void);
-u64 os_get_fs(void);
-void os_set_fs(u64 fs);
 long os_vfs_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
-#endif
 
 #endif /* _MTVPU_API_H_ */

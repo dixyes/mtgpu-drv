@@ -51,6 +51,7 @@ extern "C" {
 #include "km_apphint_defs.h"
 #include "htbuffer_types.h"
 #include "device.h"
+#include "mtfw_fwif_log.h"
 
 #define APPHINT_DEVICES_MAX 64
 
@@ -79,6 +80,29 @@ static const struct apphint_lookup htb_loggroup_tbl[] = {
 #define X(a, b) { #b, HTB_LOG_GROUP_FLAG(a) },
 	HTB_LOG_SFGROUPLIST
 #undef X
+};
+
+static const struct apphint_lookup mtfw_loggroup_tbl[] = {
+	{ "null", 1 << MTFW_GROUP_NULL },
+	{ "err",  1 << MTFW_GROUP_ERR },
+	{ "dbg",  1 << MTFW_GROUP_DBG },
+	{ "func", 1 << MTFW_GROUP_FUNC },
+	{ "reg",  1 << MTFW_GROUP_REG },
+	{ "mmu",  1 << MTFW_GROUP_MMU },
+	{ "int",  1 << MTFW_GROUP_INT },
+	{ "core", 1 << MTFW_GROUP_CORE },
+	{ "drv",  1 << MTFW_GROUP_DRV },
+	{ "sch",  1 << MTFW_GROUP_SCH },
+	{ "node", 1 << MTFW_GROUP_NODE },
+	{ "work", 1 << MTFW_GROUP_WORK },
+	{ "gpu",  1 << MTFW_GROUP_GPU },
+	{ "perf", 1 << MTFW_GROUP_PERF },
+	{ "pfm",  1 << MTFW_GROUP_PFM },
+	{ "pow",  1 << MTFW_GROUP_POW },
+	{ "csw",  1 << MTFW_GROUP_CSW },
+	{ "ccb",  1 << MTFW_GROUP_CCB },
+	{ "ctx",  1 << MTFW_GROUP_CTX },
+	{ "subm", 1 << MTFW_GROUP_SUBM }
 };
 
 static const struct apphint_lookup htb_opmode_tbl[] = {

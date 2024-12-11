@@ -45,8 +45,8 @@ u32 get_codec_count(struct mtsnd_chip *chip);
 u32 get_codec_pcm_index(struct mtsnd_chip *chip, int codec_idx);
 u32 get_chip_type(struct mtsnd_chip *chip);
 
+void get_codec_name(struct mtsnd_chip *chip, u32 index, char *codec_name);
 const char *get_jack_name(struct mtsnd_chip *chip, u32 index);
-const char *get_codec_name(struct mtsnd_chip *chip, u32 index);
 const char *get_kctrl_name(struct mtsnd_chip *chip, u32 index);
 codec_ops_cb *get_codec_cb(struct mtsnd_chip *chip, u32 index);
 #endif /* _MTSND_CONF_H */

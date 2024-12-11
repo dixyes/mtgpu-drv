@@ -13,6 +13,7 @@
 #include <linux/errno.h>
 
 #include "mtgpu_defs.h"
+#include "mtgpu_igpu.h"
 
 /* TODO: Currently assume the MTGPU default video ram size is 1G.
  * It should get the video ram size from SMC in the future for each
@@ -52,6 +53,10 @@ char *display = "mt";
 module_param(display, charp, 0444);
 MODULE_PARM_DESC(display, " <dummy>, <mt> The default value is mt");
 
+bool enable_haps_display;
+module_param(enable_haps_display, bool, 0444);
+MODULE_PARM_DESC(enable_haps_display, "mtgpu haps+display verify, enable(1)/disable(0).");
+
 unsigned long mtgpu_cursor_size = MTGPU_MAX_CURSOR_SIZE;
 module_param(mtgpu_cursor_size, ulong, 0444);
 MODULE_PARM_DESC(mtgpu_cursor_size, "max cursor size in pixel");
@@ -78,6 +83,10 @@ int mtgpu_drm_major = 1;
 #endif
 module_param(mtgpu_drm_major, int, 0444);
 MODULE_PARM_DESC(mtgpu_drm_major, "1 - ddk1.0, 2 - ddk2.0. The default value is 1");
+
+int mtgpu_shadow_sem_sysmem_enable = 1;
+module_param(mtgpu_shadow_sem_sysmem_enable, int, 0444);
+MODULE_PARM_DESC(mtgpu_shadow_sem_sysmem_enable, "create mirror semaphore  block on sysmem(1)/vram(0)");
 
 #if (RGX_NUM_OS_SUPPORTED > 1)
 long mtgpu_driver_mode = MTGPU_DRIVER_MODE_HOST;
@@ -227,9 +236,25 @@ bool disable_pcie_link_monitor;
 module_param(disable_pcie_link_monitor, bool, 0444);
 MODULE_PARM_DESC(disable_pcie_link_monitor, "disable pcie link monitor, default 0.");
 
-bool enable_reserved_memory = true;
+bool enable_reserved_memory;
 module_param(enable_reserved_memory, bool, 0444);
 MODULE_PARM_DESC(enable_reserved_memory, "enable reserved memory for igpu, default 0.");
+
+bool bypass_igpu_smmu = true;
+module_param(bypass_igpu_smmu, bool, 0444);
+MODULE_PARM_DESC(bypass_igpu_smmu, "bypass smmu for igpu, default true.");
+
+bool enable_gpu_dvfs = true;
+module_param(enable_gpu_dvfs, bool, 0444);
+MODULE_PARM_DESC(enable_gpu_dvfs, "enable dvfs for igpu, default true.");
+
+bool enable_rpm = true;
+module_param(enable_rpm, bool, 0444);
+MODULE_PARM_DESC(enable_rpm, "enable PM-Runtime for igpu, default true.");
+
+unsigned long mtgpu_rpm_suspend_delay_ms = MTGPU_IGPU_SUSPEND_DELAY_MS;
+module_param(mtgpu_rpm_suspend_delay_ms, ulong, 0444);
+MODULE_PARM_DESC(mtgpu_rpm_suspend_delay_ms, "PM-Runtime delay suspend time, default 100 ms.");
 
 #if (RGX_NUM_OS_SUPPORTED > 1)
 int mtgpu_vgpu_scheduling_policy;

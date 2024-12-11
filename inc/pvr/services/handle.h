@@ -148,6 +148,14 @@ typedef enum
 
 typedef struct _HANDLE_BASE_ PVRSRV_HANDLE_BASE;
 
+typedef struct _DEBUGFS_HANDLE_INFO_
+{
+	PVRSRV_HANDLE_BASE *psHandleBase;
+	IMG_CHAR **pszHandleInfo;
+	IMG_INT32 i32HandleIndex;
+	IMG_INT32 i32HandleCount;
+} DEBUGFS_HANDLE_INFO;
+
 typedef struct _PROCESS_HANDLE_BASE_
 {
 	PVRSRV_HANDLE_BASE *psHandleBase;
@@ -202,5 +210,7 @@ PVRSRV_ERROR PVRSRVReleaseProcessHandleBase(PROCESS_HANDLE_BASE *psBase, IMG_PID
 
 void LockHandle(PVRSRV_HANDLE_BASE *psBase);
 void UnlockHandle(PVRSRV_HANDLE_BASE *psBase);
+
+PVRSRV_ERROR DebugfsListHandlesInBase(PVRSRV_HANDLE_BASE *psBase, DEBUGFS_HANDLE_INFO *psHandleInfo);
 
 #endif /* !defined(HANDLE_API_H) */

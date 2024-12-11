@@ -17,6 +17,8 @@
 #define ENC_STREAM_BUF_COUNT 5
 #define ENC_STREAM_BUF_SIZE  0xF00000
 
+#define CORTEXA35_CODE                  0xA350
+
 #define BODA950_CODE                    0x9500
 #define CODA960_CODE                    0x9600
 #define CODA980_CODE                    0x9800
@@ -47,12 +49,12 @@
 #define WAVE521DEC_WORKBUF_SIZE         (1784*1024)
 
 #define MAX_INST_HANDLE_SIZE            48              /* DO NOT CHANGE THIS VALUE */
-#define MAX_NUM_INSTANCE                128
+#define MAX_NUM_INSTANCE            128
 #define MAX_NUM_CARD                    64
 #define MAX_NUM_VPU_CORE                256
 #define MAX_NUM_VCORE                   1
 #define MAX_INTERRUPT_QUEUE             (16*MAX_NUM_INSTANCE)
-#define MAX_NUM_INSTANCE_ORIGINAL       32
+#define NUM_INSTANCE_32             32
 
 #define MAX_ENC_AVC_PIC_WIDTH           4096
 #define MAX_ENC_AVC_PIC_HEIGHT          2304
@@ -78,6 +80,8 @@
 #define VPU_DEC_TIMEOUT                 (60000*10)
 #define VPU_BUSY_CHECK_TIMEOUT          (1000*2)        // 2 sec
 #define ATOMIC_SYNC_TIMEOUT             (60000)         // 60 sec
+#define VPU_EMU_TIMEOUT_INFLATION       (10)            // timeout inflation for emu platform only
+
 
 #define CBCR_INTERLEAVE			        1 //[default 1 for BW checking with CnMViedo Conformance] 0 (chroma separate mode), 1 (chroma interleave mode) // if the type of tiledmap uses the kind of MB_RASTER_MAP. must set to enable CBCR_INTERLEAVE
 
@@ -115,6 +119,7 @@
 #endif
 
 #define ENC_SRC_BUF_NUM                 20
+#define VAENC_MAX_NUM_MISC_PARAM        20
 
 #define ONE_TASKBUF_SIZE_FOR_W5DEC_CQ         (8*1024*1024)   /* upto 8Kx4K, need 8Mbyte per task*/
 #define ONE_TASKBUF_SIZE_FOR_W5ENC_CQ         (8*1024*1024)  /* upto 8Kx8K, need 8Mbyte per task.*/
@@ -126,10 +131,12 @@
 #define ONE_TASKBUF_MAX_SIZE_LIMIT_DEC          (8*1024*1024)
 #define ONE_TASKBUF_MAX_SIZE_LIMIT_ENC          (20*1024*1024)
 
-#define W_REMAP_INDEX0                 0
-#define W_REMAP_INDEX1                 1
-#define W_REMAP_INDEX2                 2
-#define W_REMAP_MAX_SIZE               (1024*1024)
+#define W_REMAP_INDEX0                  0
+#define W_REMAP_INDEX1                  1
+#define W_REMAP_INDEX2                  2
+#define W_REMAP_MAX_SIZE                (1024*1024)
+
+#define CORTEXA35_MAX_CODE_BUF_SIZE     (4*1024*1024)
 
 #define WAVE5_MAX_CODE_BUF_SIZE         (2*1024*1024)
 #define WAVE5_TEMPBUF_OFFSET            WAVE5_MAX_CODE_BUF_SIZE
@@ -146,9 +153,9 @@
 
 #define WAVE627ENC_WORKBUF_SIZE_PH      (1*1024*1024)
 #define WAVE627ENC_MAX_CODE_BUF_SIZE_PH (2*1024*1024)
-#define WAVE627ENC_TEMPBUF_OFFSET_PH    WAVE627ENC_MAX_CODE_BUF_SIZE_PH
 #define WAVE627ENC_TEMPBUF_SIZE_PH      (3*1024*1024)
-#define WAVE627ENC_SIZE_COMMON_PH       (WAVE627ENC_MAX_CODE_BUF_SIZE_PH + WAVE627ENC_TEMPBUF_SIZE_PH)
+#define WAVE627ENC_ARTABLE_SIZE_PH      (4*1024)
+#define WAVE627ENC_SIZE_COMMON_PH       WAVE627ENC_MAX_CODE_BUF_SIZE_PH
 
 #define W_VCPU_SPM_ADDR                 (0xfffef000UL)
 
@@ -160,6 +167,11 @@
 #define STREAM_END_SET_FLAG             0
 #define STREAM_END_CLEAR_FLAG           -1
 #define EXPLICIT_END_SET_FLAG           -2
+
+#define WAVE5_RET_VCORE3_BYPASS_FLAG    16
+#define WAVE5_RET_VCORE3_DISABLE_MMU    17
+#define WAVE6_RET_VCORE3_BYPASS_FLAG    21
+#define WAVE6_RET_VCORE3_DISABLE_MMU    20
 
 #define UPDATE_NEW_BS_BUF               0
 

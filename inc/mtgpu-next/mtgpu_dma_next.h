@@ -20,7 +20,9 @@ struct mtgpu_dma_work_data {
 	struct drm_mtgpu_dma_cmd * dma_cmds;
 	int dma_cmd_count;
 	u8 *args_buffer;
-	struct drm_mtgpu_semaphore *update_sema;
+	struct drm_mtgpu_semaphore *update_sem;
+	u32 update_sem_count;
+	u64 page_table_root_addr;
 };
 
 int mtgpu_dma_transfer_ioctl(struct drm_device *drm, void *data,
@@ -38,5 +40,10 @@ int mtgpu_dma_semaphore_submit(struct drm_mtgpu_semaphore_submit *args,
 			       struct _CONNECTION_DATA_ *conn,
 			       struct SYNC_CHECKPOINT_TAG *sync_checkpoint);
 void mtgpu_dma_job_submit_work(struct work_struct *work);
+int mtgpu_dma_job_submit_v3(struct drm_device *drm, struct drm_file *file_priv,
+			    CONNECTION_DATA *conn, struct drm_mtgpu_job_submit_v3 *args);
+int mtgpu_dma_context_create_v3(struct drm_mtgpu_job_context_create *args,
+				CONNECTION_DATA *conn,
+				PVRSRV_DEVICE_NODE *dev_node);
 
 #endif /* _MTGPU_DMA_NEXT_H */

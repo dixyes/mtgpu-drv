@@ -6,6 +6,8 @@
 #ifndef _MTGPU_CONTEXT_H_
 #define _MTGPU_CONTEXT_H_
 
+#include "mtgpu_job.h"
+
 struct drm_device;
 struct drm_file;
 struct _CONNECTION_DATA_;
@@ -28,6 +30,7 @@ struct mtgpu_compute_context {
 };
 
 struct mtgpu_dma_context {
+	struct mtgpu_job_context job_ctx;
 	u64 robustness_addr;
   	struct workqueue_struct *dma_workqueue;
 };
@@ -43,6 +46,5 @@ void mtgpu_job_context_destroy(struct mtgpu_job_context *job_ctx);
 
 int mtgpu_context_create_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
 int mtgpu_context_destroy_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
-int mtgpu_job_context_create_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
 
 #endif /* _MTGPU_CONTEXT_H_ */

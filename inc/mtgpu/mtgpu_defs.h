@@ -103,6 +103,7 @@
 #define MTGPU_SYS_BAR               0
 #define MTGPU_DDR_BAR               2
 #define MTGPU_VCPU_BAR              4 // vgpu linux-guest only
+#define MTGPU_PH1_SRAM_BAR          4
 
 #define MTGPU_MAX_CURSOR_SIZE	64
 

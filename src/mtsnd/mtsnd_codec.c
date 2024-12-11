@@ -292,6 +292,7 @@ int mtsnd_create_codec(struct mtsnd_chip *chip)
 	struct platform_device *pdev;
 	struct device *dev;
 	int i, count;
+	char codec_name[64];
 
 	count = get_codec_count(chip);
 	SND_DEBUG("%s codec count:%d\n", __func__, count);
@@ -334,7 +335,8 @@ int mtsnd_create_codec(struct mtsnd_chip *chip)
 	}
 
 	for (i = 0; i < count; i++) {
-		dev = find_device_by_name(chip, (char *)get_codec_name(chip, i));
+		get_codec_name(chip, i, codec_name);
+		dev = bus_find_device(&platform_bus_type, NULL, codec_name, pdev_match_name);
 		if (dev) {
 			hcd = (struct hdmi_codec_pdata *)dev_get_platdata(dev);
 			if (hcd) {

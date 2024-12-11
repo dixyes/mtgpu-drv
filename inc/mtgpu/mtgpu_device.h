@@ -139,6 +139,7 @@ struct mtgpu_driver_data {
 	struct mtgpu_ob_ops *ob_ops;
 	struct mtgpu_gpu_ss_ops *gpu_ss_ops;
 	struct mtgpu_pfm_ops *pfm_ops;
+	struct mtgpu_daa_ops *daa_ops;
 	int (*get_platform_device_info)(struct mtgpu_device *mtdev, u32 hw_module, u32 hw_id,
 					struct mtgpu_resource **mtgpu_res, u32 *num_res,
 					void **data, size_t *size_data);
@@ -220,4 +221,5 @@ struct platform_device *mtgpu_get_first_valid_drm_device(struct mtgpu_device *mt
 void mtgpu_set_gpu_page_size(struct device *dev, u32 page_size);
 void mtgpu_host_notify_linux_guest_start_hwr(struct device *dev, u32 mpc_id);
 void mtgpu_host_notify_linux_guest_end_hwr(struct device *dev, u32 mpc_id);
+bool mtgpu_device_node_is_active(struct mtgpu_device *mtdev);
 #endif /* __MTGPU_DEVICE_H__ */

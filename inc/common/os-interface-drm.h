@@ -101,6 +101,8 @@ void os_drm_connector_set_status(struct drm_connector *connector, int status);
 int os_drm_connector_get_status(struct drm_connector *connector);
 struct drm_device *os_drm_connector_get_dev(struct drm_connector *connector);
 void os_drm_edid_get_monitor_name(struct edid *edid, char *name, int bufsize);
+void os_videomode_set_hfront_porch(struct videomode *vm, u32 hfront_porch);
+void os_videomode_set_hback_porch(struct videomode *vm, u32 hback_porch);
 
 /**
  * Interface for get members of the structure.

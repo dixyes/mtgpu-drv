@@ -9,6 +9,8 @@
 #ifdef VPU_ENABLE
 #include "mtvpu_api.h"
 #else
+struct mtgpu_codec_priv_data;
+
 static inline int mtvpu_drm_open(void *arg1, void *arg2)
 {
 	return 0;
@@ -35,7 +37,8 @@ static inline void mtvpu_gem_free_obj(void *arg1)
 static inline int mtvpu_job_submit(struct drm_device *drm,
 				   struct drm_file *file_priv,
 				   void __user *data,
-				   uint32_t size)
+				   uint32_t size,
+				   struct mtgpu_codec_priv_data *data_priv)
 {
 	return 0;
 }

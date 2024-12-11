@@ -36,12 +36,13 @@ struct mtgpu_dispc_debugfs {
 	u64 underrun_cnt;
 };
 
+#define MAX_FMTS_NUM	24
 #define MAX_LAYER_NUM	4
 
 struct mtgpu_layer_capability {
-	u8 type;
+	s8 type;
 	u8 fmts_cnt;
-	u32 fmts_ptr[16];
+	u32 fmts_ptr[MAX_FMTS_NUM];
 	u8 modifier_cnt;
 	u64 modifiers[16];
 	u32 supported_encodings;
@@ -81,6 +82,9 @@ struct mtgpu_layer_config {
 
 struct mtgpu_dispc_ctx {
 	void __iomem *regs;
+	void __iomem *pre_regs;
+	void __iomem *post_regs;
+	void __iomem *out_regs;
 	void __iomem *glb_regs;
 	u64 cursor_mem_base;
 	u32 cursor_mem_size;
@@ -100,6 +104,11 @@ struct mtgpu_dispc_ctx {
 	bool gamma_restore;
 	/* Whether to configure csc when setting gamma. */
 	bool gamma_visiable;
+	bool vsyncoff_enable;
+#if 0 // for bringup
+	struct mt_dsc_config *mt_dsc_config;
+	struct mt_vrr_config *mt_vrr_config;
+#endif
 };
 
 struct mtgpu_cursor_info {
@@ -141,12 +150,13 @@ struct mtgpu_dispc_ops {
 	void (*capability)(struct mtgpu_dispc_ctx *ctx,
 			   struct mtgpu_dispc_capability *cap);
 	u32 (*mode_valid)(struct mtgpu_dispc_ctx *ctx,
-			   struct videomode *vm);
+			  struct videomode *vm);
 	void (*gamma_set)(struct mtgpu_dispc_ctx *ctx, u16 *r, u16 *g, u16 *b, u32 size);
 	void (*cursor_config)(struct mtgpu_dispc_ctx *ctx,
 			      struct mtgpu_layer_config *layer);
 	bool (*fbc_validate)(struct mtgpu_dispc_ctx *ctx,
 			     u32 format, u64 modifier, u32 index);
+	void (*mode_fixup)(struct mtgpu_dispc_ctx *ctx);
 };
 
 struct mtgpu_dispc_glb_ops {
@@ -216,6 +226,153 @@ u32 dispc_reg_read2(struct mtgpu_dispc_ctx *ctx, int offset)
 	return os_readl(ctx->regs + offset);
 }
 
+/* pre de */
+static inline
+void dispc_pre_reg_write(struct mtgpu_dispc_ctx *ctx, int offset, u32 val)
+{
+	os_writel(val, ctx->pre_regs + offset);
+	/* dummy read to make post write take effect */
+	os_readl(ctx->pre_regs + offset);
+	DISPC_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
+}
+
+static inline
+u32 dispc_pre_reg_read(struct mtgpu_dispc_ctx *ctx, int offset)
+{
+	u32 val = os_readl(ctx->pre_regs + offset);
+
+	DISPC_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
+
+	return val;
+}
+
+static inline
+void dispc_pre_reg_set(struct mtgpu_dispc_ctx *ctx, int offset, u32 bits)
+{
+	u32 reg_val = dispc_pre_reg_read(ctx, offset);
+
+	dispc_pre_reg_write(ctx, offset, reg_val | bits);
+}
+
+static inline
+void dispc_pre_reg_clr(struct mtgpu_dispc_ctx *ctx, int offset, u32 bits)
+{
+	u32 reg_val = dispc_pre_reg_read(ctx, offset);
+
+	dispc_pre_reg_write(ctx, offset, reg_val & ~bits);
+}
+
+static inline
+void dispc_pre_reg_write2(struct mtgpu_dispc_ctx *ctx, int offset, u32 val)
+{
+	os_writel(val, ctx->pre_regs + offset);
+	os_readl(ctx->pre_regs + offset);
+}
+
+static inline
+u32 dispc_pre_reg_read2(struct mtgpu_dispc_ctx *ctx, int offset)
+{
+	return os_readl(ctx->pre_regs + offset);
+}
+
+/* post regs */
+static inline
+void dispc_post_reg_write(struct mtgpu_dispc_ctx *ctx, int offset, u32 val)
+{
+	os_writel(val, ctx->post_regs + offset);
+	/* dummy read to make post write take effect */
+	os_readl(ctx->post_regs + offset);
+	DISPC_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
+}
+
+static inline
+u32 dispc_post_reg_read(struct mtgpu_dispc_ctx *ctx, int offset)
+{
+	u32 val = os_readl(ctx->post_regs + offset);
+
+	DISPC_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
+
+	return val;
+}
+
+static inline
+void dispc_post_reg_set(struct mtgpu_dispc_ctx *ctx, int offset, u32 bits)
+{
+	u32 reg_val = dispc_post_reg_read(ctx, offset);
+
+	dispc_post_reg_write(ctx, offset, reg_val | bits);
+}
+
+static inline
+void dispc_post_reg_clr(struct mtgpu_dispc_ctx *ctx, int offset, u32 bits)
+{
+	u32 reg_val = dispc_post_reg_read(ctx, offset);
+
+	dispc_post_reg_write(ctx, offset, reg_val & ~bits);
+}
+
+static inline
+void dispc_post_reg_write2(struct mtgpu_dispc_ctx *ctx, int offset, u32 val)
+{
+	os_writel(val, ctx->post_regs + offset);
+	os_readl(ctx->post_regs + offset);
+}
+
+static inline
+u32 dispc_post_reg_read2(struct mtgpu_dispc_ctx *ctx, int offset)
+{
+	return os_readl(ctx->post_regs + offset);
+}
+
+/* output regs */
+static inline
+void dispc_out_reg_write(struct mtgpu_dispc_ctx *ctx, int offset, u32 val)
+{
+	os_writel(val, ctx->out_regs + offset);
+	/* dummy read to make out write take effect */
+	os_readl(ctx->out_regs + offset);
+	DISPC_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
+}
+
+static inline
+u32 dispc_out_reg_read(struct mtgpu_dispc_ctx *ctx, int offset)
+{
+	u32 val = os_readl(ctx->out_regs + offset);
+
+	DISPC_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
+
+	return val;
+}
+
+static inline
+void dispc_out_reg_set(struct mtgpu_dispc_ctx *ctx, int offset, u32 bits)
+{
+	u32 reg_val = dispc_out_reg_read(ctx, offset);
+
+	dispc_out_reg_write(ctx, offset, reg_val | bits);
+}
+
+static inline
+void dispc_out_reg_clr(struct mtgpu_dispc_ctx *ctx, int offset, u32 bits)
+{
+	u32 reg_val = dispc_out_reg_read(ctx, offset);
+
+	dispc_out_reg_write(ctx, offset, reg_val & ~bits);
+}
+
+static inline
+void dispc_out_reg_write2(struct mtgpu_dispc_ctx *ctx, int offset, u32 val)
+{
+	os_writel(val, ctx->out_regs + offset);
+	os_readl(ctx->out_regs + offset);
+}
+
+static inline
+u32 dispc_out_reg_read2(struct mtgpu_dispc_ctx *ctx, int offset)
+{
+	return os_readl(ctx->out_regs + offset);
+}
+
 static inline
 void dispc_glb_reg_write(struct mtgpu_dispc_ctx *ctx, int offset, u32 val)
 {
@@ -253,6 +410,7 @@ void dispc_glb_reg_clr(struct mtgpu_dispc_ctx *ctx, int offset, u32 bits)
 extern struct mtgpu_dispc_chip mtgpu_dispc_sudi;
 extern struct mtgpu_dispc_chip mtgpu_dispc_qy1;
 extern struct mtgpu_dispc_chip mtgpu_dispc_qy2;
+extern struct mtgpu_dispc_chip mtgpu_dispc_ph1;
 extern struct mtgpu_dispc_ops mtgpu_dispc_fec;
 
 #endif /* _MTGPU_DISPC_COMMON_H_ */

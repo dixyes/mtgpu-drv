@@ -84,7 +84,6 @@ static int vpu_component_bind(struct device *dev, struct device *master, void *d
 	int i, j, ret;
 	int jpu_core_size = 0;
 	struct file_operations *vinfo, *fwinfo;
-	struct mt_node node;
 
 	bool is_host = mtgpu_get_driver_mode() == MTGPU_DRIVER_MODE_HOST;
 	bool is_guest = mtgpu_get_driver_mode() == MTGPU_DRIVER_MODE_GUEST;
@@ -311,6 +310,11 @@ static int vpu_component_bind(struct device *dev, struct device *master, void *d
 			chip->core[i].product_id = CODAJ12_CODE;
 			jpu_core_size++;
 			vpu_info("jpu core:%d available\n", i);
+		} else if (chip->conf.product[i] == CORTEXA35_CODE) {
+			chip->core[i].available = 1;
+			chip->core[i].drm = drm;
+			chip->core[i].product_id = CORTEXA35_CODE;
+			vpu_info("mcu core:%d available\n", i);
 		}
 		chip->core[i].idx = i;
 		chip->core[i].priv = chip;
@@ -340,27 +344,29 @@ static int vpu_component_bind(struct device *dev, struct device *master, void *d
 	}
 
 	if (chip->soc_mode) {
-		/* No need to check ret value */
+		if (enable_reserved_memory)
+			chip->mem_group_cnt = 1;
+		else
+			chip->mem_group_cnt = 2;
+
 		vpu_smmu_init(chip);
 
 		chip->bar_base = 0;
-		chip->mem_group_cnt = 1;
 		for (i = 0; i < chip->conf.core_size; i++) {
 			chip->core[i].mem_group_id = chip->conf.core_group[chip->mem_group_cnt - 1][i];
-
 			if (chip->io_domain) {
-				chip->core[i].mem_group_base = 0xFF00000000;
+				if (chip->core[i].mem_group_id == 1)
+					chip->core[i].mem_group_base = VPU_SMMU_MEM_BASE1;
+				else if (chip->core[i].mem_group_id == 2)
+					chip->core[i].mem_group_base = VPU_SMMU_MEM_BASE2;
 			} else if (enable_reserved_memory) {
-				chip->core[i].mem_group_base = mtdev->gpu_mem.base & 0xFF00000000;
+				chip->core[i].mem_group_base = mtdev->gpu_mem.base & VPU_SMMU_MEM_BASE_MASK;
 			} else {
-				node.cpu_addr = dma_alloc_coherent(drm->dev, gpu_page_size * 2, &node.dev_phys_addr,
-					GFP_USER | __GFP_NOWARN | __GFP_NOMEMALLOC | __GFP_HIGHMEM);
-				chip->core[i].mem_group_base = node.dev_phys_addr & 0xFF00000000;
-				dma_free_coherent(drm->dev, gpu_page_size * 2, node.cpu_addr, node.dev_phys_addr);
+				vpu_err("smmu must be enabled!\n");
+				goto err_lock;
 			}
+			vpu_info("core %d, mem base 0x%x\n", i, chip->core[i].mem_group_base >> 32);
 		}
-		vpu_info("enable reserved mem %d, mem base 0x%x\n", enable_reserved_memory,
-		 	  chip->core[0].mem_group_base >> 32);
 	} else {
 		chip->bar_base = pci_resource_start(pcid, 2);
 		ret = vpu_init_mpc(chip);
@@ -393,6 +399,11 @@ static int vpu_component_bind(struct device *dev, struct device *master, void *d
 				if (chip->conf.product[i] != CODA980_CODE)
 					vpu_load_firmware(chip, i, NULL);
 			}
+		}
+	} else if (chip->conf.type == TYPE_PIHU1) {
+		for (i = 0; i < chip->conf.core_size; i++) {
+			if (chip->conf.product[i] == CORTEXA35_CODE)
+				vpu_load_firmware(chip, i, NULL);
 		}
 	} else if (is_host) {
 		/* wake up the group1 thread, it is the main thread */
@@ -521,9 +532,6 @@ static void vpu_component_unbind(struct device *dev, struct device *master, void
 
 	kfree(chip->timer);
 
-	if (chip->soc_mode)
-		vpu_smmu_deinit(chip);
-
 	if (chip->debugfs)
 		debugfs_remove_recursive(chip->debugfs);
 
@@ -609,6 +617,9 @@ static void vpu_component_unbind(struct device *dev, struct device *master, void
 		kfree(chip->vm_locks[i]);
 		kfree(chip->host_thread_semas[i]);
 	}
+
+	if (chip->soc_mode)
+		vpu_smmu_deinit(chip);
 
 	if (chip->mmu_ctx) {
 		vpu_mmu_context_destroy(chip->mmu_ctx);

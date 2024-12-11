@@ -42,7 +42,7 @@ extern "C" {
 #define DRM_MTGPU_SEMAPHORE_DESTROY		0x21
 #define DRM_MTGPU_SEMAPHORE_SUBMIT		0x22
 #define DRM_MTGPU_SEMAPHORE_CPU_SIGNAL		0x23
-#define DRM_MTGPU_SEMAPHORE_TO_FD		0x24
+#define DRM_MTGPU_SEMAPHORE_EXPORT_FD		0x24
 #define DRM_MTGPU_CONTEXT_CREATE		0x25
 #define DRM_MTGPU_CONTEXT_DESTROY		0x26
 #define DRM_MTGPU_JOB_SUBMIT			0x27
@@ -65,7 +65,7 @@ extern "C" {
 #define DRM_MTGPU_CODEC_WAIT			0x34
 
 #define DRM_MTGPU_VERSION_CHECK			0x35
-#define DRM_MTGPU_SEMAPHORE_FROM_FD		0x36
+#define DRM_MTGPU_SEMAPHORE_IMPORT_FD		0x36
 #define DRM_MTGPU_SEMAPHORE_WAIT		0x37
 
 #define DRM_IOCTL_MTGPU_DEVICE_INIT \
@@ -128,9 +128,9 @@ extern "C" {
 #define DRM_IOCTL_MTGPU_SEMAPHORE_CPU_SIGNAL \
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_SEMAPHORE_CPU_SIGNAL, \
 		 struct drm_mtgpu_semaphore_cpu_signal)
-#define DRM_IOCTL_MTGPU_SEMAPHORE_TO_FD \
-	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_SEMAPHORE_TO_FD, \
-		 struct drm_mtgpu_semaphore_to_fd)
+#define DRM_IOCTL_MTGPU_SEMAPHORE_EXPORT_FD \
+	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_SEMAPHORE_EXPORT_FD, \
+		 struct drm_mtgpu_semaphore_export_fd)
 #define DRM_IOCTL_MTGPU_CONTEXT_CREATE \
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_CONTEXT_CREATE, \
 		 struct drm_mtgpu_context_create)
@@ -187,9 +187,9 @@ extern "C" {
 #define DRM_IOCTL_MTGPU_VERSION_CHECK \
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_VERSION_CHECK, \
 		 struct drm_mtgpu_version_check)
-#define DRM_IOCTL_MTGPU_SEMAPHORE_FROM_FD \
-	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_SEMAPHORE_FROM_FD, \
-		 struct drm_mtgpu_semaphore_from_fd)
+#define DRM_IOCTL_MTGPU_SEMAPHORE_IMPORT_FD \
+	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_SEMAPHORE_IMPORT_FD, \
+		 struct drm_mtgpu_semaphore_import_fd)
 #define DRM_IOCTL_MTGPU_SEMAPHORE_WAIT \
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_MTGPU_SEMAPHORE_WAIT, \
 		 struct drm_mtgpu_semaphore_wait)
@@ -1263,8 +1263,17 @@ enum drm_mtgpu_job_submission_type {
 	MTGPU_SUBMISSION_INVALID,
 };
 
+/* kmd will not execute gpu reset and subsequent cmd sending behavior by default. */
+#define MTGPU_SUBMISSION_FLAGS_DISABLE_HWR               BIT(0)
+
+/* FW schedule pause if this submission has ERROR. */
+#define MTGPU_SUBMISSION_FLAGS_ERROR_PAUSE               BIT(1)
+
+/* FW schedule pause when this submission finish. */
+#define MTGPU_SUBMISSION_FLAGS_USER_PAUSE                BIT(2)
+
 /* definition of drm_mtgpu_job_submit for ddk2.0 */
-struct drm_mtgpu_job_submit_v3 {	/* IGNORE STRUCT */
+struct drm_mtgpu_job_submit_v3 {
 	struct {
 		/**
 		 * @ctx_handle: [IN] handle of job context.
@@ -1307,9 +1316,14 @@ struct drm_mtgpu_job_submit_v3 {	/* IGNORE STRUCT */
 		 */
 		__u32 submission_size;
 		/**
-		 * @pad: just for padding
+		 * @submission_flags: For user debugging
 		 */
-		__u32 pad3;	/* IGNORE ALIGN CHECK */
+		__u32 submission_flags;
+		/**
+		 * @submission_id: [IN] id updated by submission makers
+		 * to track submitted job (for profiling purpose)
+		 */
+		__u64 submission_id;
 	} in;
 
 	struct {
@@ -1320,7 +1334,7 @@ struct drm_mtgpu_job_submit_v3 {	/* IGNORE STRUCT */
 	} out;
 };
 
-struct drm_mtgpu_job_append { /* IGNORE STRUCT */
+struct drm_mtgpu_job_append {
 	/**
 	 * @ctx_handle: [IN] handle of job context.
 	 */
@@ -1696,7 +1710,7 @@ struct drm_mtgpu_semaphore_cpu_signal {
 	struct drm_mtgpu_semaphore semaphore;
 };
 
-struct drm_mtgpu_semaphore_to_fd {
+struct drm_mtgpu_semaphore_export_fd {
 	struct {
 		/**
 		 * @semaphore: [IN] drm mtgpu semaphore.
@@ -1717,7 +1731,7 @@ struct drm_mtgpu_semaphore_to_fd {
 	} out;
 };
 
-struct drm_mtgpu_semaphore_from_fd {
+struct drm_mtgpu_semaphore_import_fd {
 	struct {
 		/**
 		 * @fd: [IN] fd

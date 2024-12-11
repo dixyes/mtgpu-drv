@@ -30,6 +30,7 @@ typedef struct DEVMEM_MEMDESC_TAG DEVMEM_MEMDESC;
 #define MTGPU_MMU_PAGE_SIZE_MASK	(0xFFLL << MTGPU_MMU_PAGE_SIZE_MASK_SHIFT)
 #define MTVPU_MMU_PAGE_SIZE_MASK_SHIFT	(16)
 
+#define SUPPORT_PH_M3D
 struct mtvpu_mmu_ctx
 {
 	u32 mmu_enable;			/* mmu enable flag, set to 1 to enable for PH */

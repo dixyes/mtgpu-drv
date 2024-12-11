@@ -41,6 +41,59 @@
 #include "os-interface-drm.h"
 #include "mtgpu_pstate.h"
 #include "os-interface.h"
+#include "mtgpu_dsc_common.h"
+
+static
+struct mtgpu_dsc *mtgpu_dispc_get_dsc(struct mtgpu_device *mtdev,
+				      struct mtgpu_dispc *dispc)
+{
+	struct platform_device *pdev;
+	struct device *dev;
+	struct mtgpu_dsc *dsc = NULL;
+	u32 disp;
+
+	for (disp = 0; disp < mtdev->disp_cnt; disp++) {
+		pdev = mtdev->disp_dev[disp];
+		if (os_strncmp(os_get_paltform_device_name(pdev), MTGPU_DEVICE_NAME_DSC,
+		    os_strlen(MTGPU_DEVICE_NAME_DSC)))
+			continue;
+
+		dev = os_get_platform_device_base(pdev);
+		dsc = os_dev_get_drvdata(dev);
+
+		if (dsc->ctx.id == dispc->ctx.id)
+			return dsc;
+	}
+
+	return NULL;
+}
+
+static void mtgpu_dispc_dsc_config(struct mtgpu_dispc *dispc, bool enable)
+{
+	struct device *dev = os_get_dev_parent_parent(dispc->dev);
+	struct mtgpu_device *mtdev = os_dev_get_drvdata(dev);
+	struct mtgpu_dsc *dsc = mtgpu_dispc_get_dsc(mtdev, dispc);
+
+	if (!dsc || !dispc->ctx.dsc_en)
+		return;
+
+	if (enable)
+		mtgpu_dsc_start(dsc);
+	else
+		mtgpu_dsc_stop(dsc);
+}
+
+static void mtgpu_dispc_dsc_status(struct mtgpu_dispc *dispc)
+{
+	struct device *dev = os_get_dev_parent_parent(dispc->dev);
+	struct mtgpu_device *mtdev = os_dev_get_drvdata(dev);
+	struct mtgpu_dsc *dsc = mtgpu_dispc_get_dsc(mtdev, dispc);
+
+	if (!dsc || !dispc->ctx.dsc_en)
+		return;
+
+	mtgpu_dsc_error_handle(dsc);
+}
 
 static bool mtgpu_dispc_idle_allowed(struct mtgpu_device *mtdev,
 				     struct mtgpu_dispc *m_dispc)
@@ -314,6 +367,19 @@ static bool mtgpu_crtc_mode_fixup(struct drm_crtc *crtc,
 				  const struct drm_display_mode *mode,
 				  struct drm_display_mode *adjusted_mode)
 {
+	struct mtgpu_dispc *dispc = to_mtgpu_dispc(crtc);
+
+	DRM_DEV_DEBUG(dispc->dev, DRM_MODE_FMT "\n", DRM_MODE_ARG(mode));
+
+	if (dispc->core->mode_fixup) {
+		drm_display_mode_to_videomode(mode, dispc->ctx.vm);
+
+		dispc->core->mode_fixup(&dispc->ctx);
+
+		drm_display_mode_from_videomode(dispc->ctx.vm, adjusted_mode);
+		DRM_DEV_DEBUG(dispc->dev, DRM_MODE_FMT "\n", DRM_MODE_ARG(adjusted_mode));
+	}
+
 	return true;
 }
 
@@ -335,6 +401,8 @@ static void mtgpu_crtc_atomic_enable(struct drm_crtc *crtc,
 
 	if (dispc->glb->enable)
 		dispc->glb->enable(&dispc->ctx);
+
+	mtgpu_dispc_dsc_config(dispc, true);
 
 	if (dispc->core->init)
 		dispc->core->init(&dispc->ctx);
@@ -369,6 +437,8 @@ static void mtgpu_crtc_atomic_disable(struct drm_crtc *crtc,
 
 	if (dispc->core->deinit)
 		dispc->core->deinit(&dispc->ctx);
+
+	mtgpu_dispc_dsc_config(dispc, false);
 
 	spin_lock_irqsave(&crtc->dev->event_lock, flags);
 	if (crtc->state->event) {
@@ -535,6 +605,9 @@ static void mtgpu_dispc_isr(void *data)
 
 	if (int_sts & DISPC_INT_BIT_UNDERRUN)
 		dispc->debugfs.underrun_cnt++;
+
+	if (dispc->ctx.dsc_en)
+		mtgpu_dispc_dsc_status(dispc);
 }
 
 static int mtgpu_dispc_component_bind(struct device *dev,
@@ -569,17 +642,44 @@ static int mtgpu_dispc_component_bind(struct device *dev,
 		goto err_free_dispc;
 	}
 
+	/* regs */
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "dispc-regs");
-	if (!res) {
-		DRM_DEV_ERROR(dev, "failed to get dispc-regs\n");
-		ret = -EIO;
-		goto err_free_dispc;
+	if (res) {
+		dispc->ctx.regs = devm_ioremap(dev, res->start, resource_size(res));
+		if (IS_ERR(dispc->ctx.regs)) {
+			ret = PTR_ERR(dispc->ctx.regs);
+			goto err_free_dispc;
+		}
 	}
 
-	dispc->ctx.regs = devm_ioremap(dev, res->start, resource_size(res));
-	if (IS_ERR(dispc->ctx.regs)) {
-		ret = PTR_ERR(dispc->ctx.regs);
-		goto err_free_dispc;
+	/* pre regs */
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "dispc-pre-regs");
+	if (res) {
+		dispc->ctx.pre_regs = devm_ioremap(dev, res->start, resource_size(res));
+		if (IS_ERR(dispc->ctx.pre_regs)) {
+			ret = PTR_ERR(dispc->ctx.pre_regs);
+			goto err_free_dispc;
+		}
+	}
+
+	/* post regs */
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "dispc-post-regs");
+	if (res) {
+		dispc->ctx.post_regs = devm_ioremap(dev, res->start, resource_size(res));
+		if (IS_ERR(dispc->ctx.post_regs)) {
+			ret = PTR_ERR(dispc->ctx.post_regs);
+			goto err_free_dispc;
+		}
+	}
+
+	/* output regs */
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "dispc-out-regs");
+	if (res) {
+		dispc->ctx.out_regs = devm_ioremap(dev, res->start, resource_size(res));
+		if (IS_ERR(dispc->ctx.out_regs)) {
+			ret = PTR_ERR(dispc->ctx.out_regs);
+			goto err_free_dispc;
+		}
 	}
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "glb-regs");
@@ -631,6 +731,9 @@ static int mtgpu_dispc_component_bind(struct device *dev,
 		break;
 	case GPU_SOC_GEN3:
 		chip = &mtgpu_dispc_qy2;
+		break;
+	case GPU_SOC_GEN4:
+		chip = &mtgpu_dispc_ph1;
 		break;
 	default:
 		DRM_DEV_ERROR(dev, "current SOC_GEN%d is not supported\n", pdata->soc_gen);

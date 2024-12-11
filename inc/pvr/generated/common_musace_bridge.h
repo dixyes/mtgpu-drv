@@ -12,7 +12,6 @@
 #include "img_types.h"
 #include "pvrsrv_error.h"
 
-#include "rgx_bridge.h"
 #include "pvrsrv_sync_km.h"
 
 #define PVRSRV_BRIDGE_MUSACE_CMD_FIRST                  0

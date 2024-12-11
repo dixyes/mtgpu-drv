@@ -29,6 +29,9 @@
 #define VDI_LOW_32BIT_MASK                        (0xFFFFFFFFULL)
 #define VDI_HIGH_32BIT_MASK                       (0xFFFFFFFF00000000ULL)
 
+#define VDI_VPU_READY                             (0)
+#define VDI_MCU_READY                             (1)
+
 #define VpuWriteReg(CORE, ADDR, DATA)              vdi_write_register(CORE, (Uint32)(ADDR), (Uint32)(DATA))
 #define VpuReadReg(CORE, ADDR)                     vdi_read_register(CORE, (Uint32)(ADDR))
 #define VpuWriteMem(CORE, VPU_BUFFER, OFFSET, DATA, LEN, ENDIAN)    \
@@ -76,6 +79,7 @@ typedef enum {
     DEC_MV        = 7,
     DEC_ETC       = 8,
     DEC_COMMON    = 9,
+    DEC_VA_PARAM  = 10,
     ENC_TASK      = 50,
     ENC_WORK      = 51,
     ENC_FBC       = 52,
@@ -141,6 +145,7 @@ int vdi_open_instance(Uint32 coreIdx, Uint32 instIdx);
 int vdi_close_instance(Uint32 coreIdx, Uint32 instIdx);
 
 Uint32 vdi_get_chip_type(Uint32 coreIdx);
+Uint32 vdi_is_mcu_core(Uint32 coreIdx);
 
 void vdi_write_register(Uint32 coreIdx, Uint32 addr, Uint32 data);
 Uint32 vdi_read_register(Uint32 coreIdx, Uint32 addr);
@@ -170,7 +175,7 @@ int vdi_set_bit_firmware_to_pm(Uint32 coreIdx, const Uint16 *code);
 
 int vdi_wait_interrupt(Uint32 coreIdx, Uint32 instIdx, int timeout);
 int vdi_wait_interrupt_poll(Uint32 coreIdx, Uint32 instIdx, int timeout);
-int vdi_wait_vpu_busy(Uint32 coreIdx, int timeout, Uint32 busy_flag);
+int vdi_wait_vpu_busy(Uint32 coreIdx, int timeout, Uint32 wait_addr, Uint32 wait_value);
 void vdi_delayms(int timeout);
 int vdi_wait_bus_busy(Uint32 coreIdx, int timeout, Uint32 busy_flag);
 int vdi_wait_vcpu_bus_busy(Uint32 coreIdx, int timeout, Uint32 busy_flag);

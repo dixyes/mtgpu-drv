@@ -9,6 +9,33 @@
 struct mtgpu_vm_context;
 struct MTFW_FWIF_TAG;
 
+/* TODO: This size may be assigned in configuration later. */
+#define PM_BUFFER_SIZE		(512 * 0x100000)
+#define PM_PAGE_SIZE		(1 << 12)
+#define FREELIST_PAGE_COUNT	(PM_BUFFER_SIZE / PM_PAGE_SIZE)
+#define PAGE_ENTRY_VA_ALIGN	(0x20)
+/* align page entry addr. */
+#define PM_PAGE_NUM_ALIGN	(PAGE_ENTRY_VA_ALIGN / sizeof(u32))
+
+#define FREELIST_STATE_COUNT \
+		(MTFW_SCG_FREELIST_COUNT + \
+		 MTFW_MCG2_FREELIST_COUNT + \
+		 MTFW_MCG3_FREELIST_COUNT + \
+		 MTFW_MCG4_FREELIST_COUNT + \
+		 MTFW_MCG5_FREELIST_COUNT + \
+		 MTFW_MCG6_FREELIST_COUNT + \
+		 MTFW_MCG7_FREELIST_COUNT + \
+		 MTFW_MCG8_FREELIST_COUNT)
+
+#define FREELIST_STATE_TOTAL_SIZE \
+		(FREELIST_STATE_COUNT * sizeof(struct mtgpu_pm_freelist_state))
+#define	FREELIST_PMR_SIZE \
+		(FREELIST_STATE_TOTAL_SIZE + FREELIST_PAGE_COUNT * sizeof(u32))
+
+#define PM_BUFFER_ALLOC_FLAG (PVRSRV_MEMALLOCFLAG_GPU_WRITEABLE | \
+			      PVRSRV_MEMALLOCFLAG_GPU_READABLE | \
+			      PVRSRV_MEMALLOCFLAG_GPU_CACHE_INCOHERENT)
+
 struct mtgpu_pm_freelist_state
 {
 	/* gpu va, required to be aligned to DWORD. */

@@ -200,6 +200,7 @@ typedef struct _PVRSRV_DEVICE_DEBUG_INFO_
 	DI_ENTRY *psAPMEnableEntry;
 	DI_ENTRY *psDumpDebugEntry;
 	DI_ENTRY *psPowerModeEntry;
+	DI_ENTRY *psDisableHWREntry;
 	DI_ENTRY *psHardwareResetEntry;
 #ifdef SUPPORT_RGX
 	DI_ENTRY *psFWTraceEntry;
@@ -226,6 +227,7 @@ typedef struct _PVRSRV_DEVICE_DEBUG_INFO_
 	DI_ENTRY *psGpuMemUseEntry;
 	DI_ENTRY *psGpuStatusEntry;
 	DI_ENTRY *psGpuIovaAllocatedSizeEntry;
+	DI_ENTRY *psGpuConnectionResEntry;
 
 #if defined(PVRSRV_ENABLE_PVR_ION_STATS)
 	struct _pvr_ion_stats_state_ *psPvrIonStatsState;
@@ -443,9 +445,10 @@ typedef struct _PVRSRV_DEVICE_NODE_
 	struct _PVRSRV_DEVICE_NODE_	**ppsThis;
 
 	/* Functions for notification about memory contexts */
-	PVRSRV_ERROR			(*pfnRegisterMemoryContext)(struct _PVRSRV_DEVICE_NODE_	*psDeviceNode,
-														MMU_CONTEXT					*psMMUContext,
-														IMG_HANDLE					*hPrivData);
+	PVRSRV_ERROR			(*pfnRegisterMemoryContext)(struct _PVRSRV_DEVICE_NODE_		*psDeviceNode,
+								    MMU_CONTEXT				*psMMUContext,
+								    IMG_BOOL				bVideoMemoryCtx,
+								    IMG_HANDLE				*hPrivData);
 	void					(*pfnUnregisterMemoryContext)(IMG_HANDLE hPrivData);
 
 	/* Functions for allocation/freeing of UFOs */

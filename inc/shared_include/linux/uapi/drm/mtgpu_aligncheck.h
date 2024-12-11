@@ -221,6 +221,20 @@
 	offsetof(struct drm_mtgpu_job_submit, in.ext_job_ref), \
 	offsetof(struct drm_mtgpu_job_submit, in.pdump_flags), \
 	offsetof(struct drm_mtgpu_job_submit, in.data), \
+	sizeof(struct drm_mtgpu_job_submit_v3), \
+	offsetof(struct drm_mtgpu_job_submit_v3, in.job_ctx_handle), \
+	offsetof(struct drm_mtgpu_job_submit_v3, in.check_semaphores), \
+	offsetof(struct drm_mtgpu_job_submit_v3, in.check_semaphore_count), \
+	offsetof(struct drm_mtgpu_job_submit_v3, in.update_semaphores), \
+	offsetof(struct drm_mtgpu_job_submit_v3, in.update_semaphore_count), \
+	offsetof(struct drm_mtgpu_job_submit_v3, in.submission_va), \
+	offsetof(struct drm_mtgpu_job_submit_v3, in.submission_size), \
+	offsetof(struct drm_mtgpu_job_submit_v3, in.submission_flags), \
+	offsetof(struct drm_mtgpu_job_submit_v3, in.submission_id), \
+	offsetof(struct drm_mtgpu_job_submit_v3, out.data), \
+	sizeof(struct drm_mtgpu_job_append), \
+	offsetof(struct drm_mtgpu_job_append, job_ctx_handle), \
+	offsetof(struct drm_mtgpu_job_append, stream_uid), \
 	sizeof(struct drm_mtgpu_dma_transfer), \
 	offsetof(struct drm_mtgpu_dma_transfer, in.bo_handle), \
 	offsetof(struct drm_mtgpu_dma_transfer, in.transfer_flag), \
@@ -301,15 +315,15 @@
 	sizeof(struct drm_mtgpu_semaphore_cpu_signal), \
 	offsetof(struct drm_mtgpu_semaphore_cpu_signal, vm_ctx_handle), \
 	offsetof(struct drm_mtgpu_semaphore_cpu_signal, semaphore), \
-	sizeof(struct drm_mtgpu_semaphore_to_fd), \
-	offsetof(struct drm_mtgpu_semaphore_to_fd, in.semaphore), \
-	offsetof(struct drm_mtgpu_semaphore_to_fd, out.fd), \
-	sizeof(struct drm_mtgpu_semaphore_from_fd), \
-	offsetof(struct drm_mtgpu_semaphore_from_fd, in.fd), \
-	offsetof(struct drm_mtgpu_semaphore_from_fd, in.vm_ctx_handle), \
-	offsetof(struct drm_mtgpu_semaphore_from_fd, out.semaphore), \
-	offsetof(struct drm_mtgpu_semaphore_from_fd, out.bo_handle), \
-	offsetof(struct drm_mtgpu_semaphore_from_fd, out.value_offset), \
+	sizeof(struct drm_mtgpu_semaphore_export_fd), \
+	offsetof(struct drm_mtgpu_semaphore_export_fd, in.semaphore), \
+	offsetof(struct drm_mtgpu_semaphore_export_fd, out.fd), \
+	sizeof(struct drm_mtgpu_semaphore_import_fd), \
+	offsetof(struct drm_mtgpu_semaphore_import_fd, in.fd), \
+	offsetof(struct drm_mtgpu_semaphore_import_fd, in.vm_ctx_handle), \
+	offsetof(struct drm_mtgpu_semaphore_import_fd, out.semaphore), \
+	offsetof(struct drm_mtgpu_semaphore_import_fd, out.bo_handle), \
+	offsetof(struct drm_mtgpu_semaphore_import_fd, out.value_offset), \
 	sizeof(struct drm_mtgpu_semaphore_wait), \
 	offsetof(struct drm_mtgpu_semaphore_wait, in.semaphores), \
 	offsetof(struct drm_mtgpu_semaphore_wait, in.count), \

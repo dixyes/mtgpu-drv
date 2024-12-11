@@ -104,6 +104,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "rgxdebug.h"
 #endif
 
+#include "rgxshader.h"
+
 long vram_lower_limit = 0x10000000;
 module_param(vram_lower_limit, long, 0444);
 MODULE_PARM_DESC(vram_lower_limit, "when the remaining memory space "
@@ -879,9 +881,31 @@ void PVRSRVDeviceRelease(PVRSRV_DEVICE_NODE *psDeviceNode,
 int
 drm_pvr_srvkm_init(struct drm_device *dev, void *arg, struct drm_file *psDRMFile)
 {
+	int iErr = 0;
 	struct drm_pvr_srvkm_init_data *data = arg;
 	struct pvr_drm_private *priv = dev->dev_private;
-	int iErr = 0;
+#if !defined(NO_HARDWARE)
+	PVRSRV_DEVICE_NODE *psDeviceNode = priv->dev_node;
+
+	/* The hardware must be powered on before accessing gpu's registers. */
+	if (psDeviceNode->psDevConfig->pfnSysPmRuntimeGet)
+	{
+		psDeviceNode->psDevConfig->pfnSysPmRuntimeGet(psDeviceNode->psDevConfig->hSysData);
+	}
+#endif
+
+#if (PVRSRV_DEVICE_INIT_MODE != PVRSRV_LINUX_DEV_INIT_ON_PROBE)
+	if (priv->dev_node->eDevState == PVRSRV_DEVICE_STATE_INIT)
+	{
+		PVRSRV_ERROR eError;
+
+		eError = PVRSRVTQLoadShaders(priv->dev_node);
+		if (eError != PVRSRV_OK)
+		{
+			return OSPVRSRVToNativeError(eError);
+		}
+	}
+#endif
 
 	switch (data->init_module)
 	{
@@ -904,6 +928,14 @@ drm_pvr_srvkm_init(struct drm_device *dev, void *arg, struct drm_file *psDRMFile
 			iErr = -EINVAL;
 		}
 	}
+
+#if !defined(NO_HARDWARE)
+	/* The hardware could be powered off after accessing gpu's registers. */
+	if (psDeviceNode->psDevConfig->pfnSysPmRuntimePut)
+	{
+		psDeviceNode->psDevConfig->pfnSysPmRuntimePut(psDeviceNode->psDevConfig->hSysData);
+	}
+#endif
 
 	return iErr;
 }

@@ -82,6 +82,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvr_vmap.h"
 #include "physheap.h"
 #include "physmem_usermem.h"
+#include "physmem_sysmem.h"
 
 /* ourselves */
 #include "physmem_osmem.h"
@@ -1637,45 +1638,37 @@ _AllocOSPage_CMA(PMR_OSPAGEARRAY_DATA *psPageArrayData,
 	do
 	{
 		DisableOOMKiller();
-#if defined(PVR_LINUX_PHYSMEM_SUPPRESS_DMA_AC)
-		virt_addr = NULL;
-#else
-		virt_addr = dma_alloc_coherent(dev, alloc_size, &bus_addr, gfp_flags);
-#endif
-		if (virt_addr == NULL)
+
+		page = alloc_pages(gfp_flags, ui32AllocOrder);
+		if (page)
 		{
-			/* The idea here is primarily to support some older kernels with
-			   broken or non-functioning DMA/CMA implementations (< Linux-3.4)
-			   and to also handle DMA/CMA allocation failures by attempting a
-			   normal page allocation though we expect dma_alloc_coherent()
-			   already attempts this internally also before failing but
-			   nonetheless it does no harm to retry the allocation ourselves */
-			page = alloc_pages(gfp_flags, ui32AllocOrder);
-			if (page)
-			{
-				/* Taint bus_addr as alloc_page, needed when freeing;
-				   also acquire the low memory page address only, this
-				   prevents mapping possible high memory pages into
-				   kernel virtual address space which might exhaust
-				   the VMALLOC address space */
-				bus_addr = DMA_SET_ALLOCPG_ADDR(page_to_phys(page));
-				virt_addr = (void*)(uintptr_t) DMA_VADDR_NOT_IN_USE;
-			}
-			else
+			/* Taint bus_addr as alloc_page, needed when freeing;
+			   also acquire the low memory page address only, this
+			   prevents mapping possible high memory pages into
+			   kernel virtual address space which might exhaust
+			   the VMALLOC address space */
+			bus_addr = DMA_SET_ALLOCPG_ADDR(page_to_phys(page));
+			virt_addr = (void*)(uintptr_t) DMA_VADDR_NOT_IN_USE;
+		}
+		else
+		{
+			virt_addr = dma_alloc_coherent(dev, alloc_size, &bus_addr, gfp_flags);
+			if (virt_addr == NULL)
 			{
 				EnableOOMKiller();
 				return PVRSRV_ERROR_OUT_OF_MEMORY;
 			}
-		}
-		else
-		{
+			else
+			{
 #if !defined(CONFIG_ARM) && !defined(CONFIG_ARM64)
-			page = pfn_to_page(bus_addr >> PAGE_SHIFT);
+				page = pfn_to_page(bus_addr >> PAGE_SHIFT);
 #else
-			/* Assumes bus address space is identical to physical address space */
-			page = phys_to_page(bus_addr);
+				/* Assumes bus address space is identical to physical address space */
+				page = phys_to_page(bus_addr);
 #endif
+			}
 		}
+
 		EnableOOMKiller();
 
 		/* Physical allocation alignment works/hidden behind the scene transparently,
@@ -2009,6 +2002,16 @@ _AllocOSPages_Fast(PMR_OSPAGEARRAY_DATA *psPageArrayData)
 			}
 		}
 	}
+
+#ifdef CONFIG_ARM64
+	if (PVRSRV_CHECK_CPU_UNCACHED(psPageArrayData->ui32CPUCacheFlags) ||
+	    PVRSRV_CHECK_CPU_WRITE_COMBINE(psPageArrayData->ui32CPUCacheFlags))
+	{
+		PhysmemSetCpuPagesMapAttrUncached(ppsPageArray, uiOSPagesToAlloc,
+						  psPageArrayData->uiLog2AllocPageSize,
+						  NULL);
+	}
+#endif
 
 	if (bIncreaseMaxOrder && (g_uiMaxOrder < PVR_LINUX_PHYSMEM_MAX_ALLOC_ORDER_NUM))
 	{	/* All successful allocations on max order. Let's ask for more next time */
@@ -2346,6 +2349,16 @@ _AllocOSPages_Sparse(PMR_OSPAGEARRAY_DATA *psPageArrayData,
 		}
 	}
 
+#ifdef CONFIG_ARM64
+	if (PVRSRV_CHECK_CPU_UNCACHED(psPageArrayData->ui32CPUCacheFlags) ||
+	    PVRSRV_CHECK_CPU_WRITE_COMBINE(psPageArrayData->ui32CPUCacheFlags))
+	{
+		PhysmemSetCpuPagesMapAttrUncached(ppsPageArray, uiDevPagesToAlloc,
+						  psPageArrayData->uiLog2AllocPageSize,
+						  puiAllocIndices);
+	}
+#endif
+
 	if (BIT_ISSET(ui32AllocFlags, FLAG_ZERO) && uiOrder == 0)
 	{
 		/* At this point this array contains pages allocated from the page pool at its start
@@ -2676,6 +2689,16 @@ _FreeOSPages_Sparse(PMR_OSPAGEARRAY_DATA *psPageArrayData,
 		}
 	}
 
+#ifdef CONFIG_ARM64
+	if (PVRSRV_CHECK_CPU_UNCACHED(psPageArrayData->ui32CPUCacheFlags) ||
+	    PVRSRV_CHECK_CPU_WRITE_COMBINE(psPageArrayData->ui32CPUCacheFlags))
+	{
+		PhysmemSetCpuPagesMapAttrCached(ppsPageArray, uiNumPages,
+						psPageArrayData->uiLog2AllocPageSize,
+						pai32FreeIndices);
+	}
+#endif
+
 	if (BIT_ISSET(psPageArrayData->ui32AllocFlags, FLAG_IS_CMA))
 	{
 		IMG_UINT32 uiDevNumPages = uiNumPages;
@@ -2829,6 +2852,16 @@ _FreeOSPages_Fast(PMR_OSPAGEARRAY_DATA *psPageArrayData)
 			                  PVRSRV_POISON_ON_FREE_VALUE);
 		}
 	}
+
+#ifdef CONFIG_ARM64
+	if (PVRSRV_CHECK_CPU_UNCACHED(psPageArrayData->ui32CPUCacheFlags) ||
+	    PVRSRV_CHECK_CPU_WRITE_COMBINE(psPageArrayData->ui32CPUCacheFlags))
+	{
+		PhysmemSetCpuPagesMapAttrCached(ppsPageArray, uiNumPages,
+						psPageArrayData->uiLog2AllocPageSize,
+						NULL);
+	}
+#endif
 
 	/* Try to move the page array to the pool */
 	bSuccess = _PutPagesToPoolLocked(psPageArrayData->ui32CPUCacheFlags,

@@ -111,6 +111,7 @@ struct mt_node *gem_malloc_node(struct mt_chip *chip, int idx, int inst_idx, u32
 	struct mt_core *core = &chip->core[idx];
 	struct mt_node *node;
 	int ret = 0;
+	int i;
 
 	if (mmu_ctx && mmu_ctx->mmu_enable)
 		size = ALIGN(size, mmu_ctx->page_size);
@@ -128,17 +129,17 @@ struct mt_node *gem_malloc_node(struct mt_chip *chip, int idx, int inst_idx, u32
 	}
 	node->mmu_ctx = mmu_ctx;
 
-	if ((UMD_ALLOC_BUFFER(type) || chip->driver_mode == MTGPU_DRIVER_MODE_HOST)
-	    && (chip->conf.type != TYPE_PIHU1)) {
+	if (UMD_ALLOC_BUFFER(type) || chip->driver_mode == MTGPU_DRIVER_MODE_HOST) {
 		/* for sudi, qy1 host, use the buffers allocated from guest */
 		if (type == DEC_FBCC_TBL || type == DEC_FBCY_TBL) {
 			struct umd_alloc_buffer_union *tbl = &core->fbc_tbl[inst_idx];
 
 			if (tbl->start_pa && tbl->used_size + size <= tbl->total_size) {
 				node->dev_phys_addr = tbl->start_pa + tbl->used_size;
+				if (chip->soc_mode && chip->io_domain)
+					node->cpu_addr = (void *)(tbl->virt_addr + tbl->used_size);
 				tbl->used_size += size;
 				node->vram_belonger = UMD_ALLOC;
-				node->iova_addr = node->dev_phys_addr;
 				VLOG(INFO, "get umd alloc fbc_tbl buffer! core:%d, inst:%d,"
 				     "addr:%llx, size:%llx, type: %d, free:%llx\n",
 				     idx, inst_idx, node->dev_phys_addr, size, type,
@@ -150,17 +151,16 @@ struct mt_node *gem_malloc_node(struct mt_chip *chip, int idx, int inst_idx, u32
 				goto nomem;
 			}
 		} else if (type == DEC_FBC) {
-			int i;
-
 			/* find a free fbc buffer */
 			for (i = 0; i < FBC_COUNT_MAX; i++) {
 				if (!core->fbc_buffers[inst_idx][i].used &&
 				    core->fbc_buffers[inst_idx][i].dev_addr &&
 				    core->fbc_buffers[inst_idx][i].size >= size) {
 					node->dev_phys_addr = core->fbc_buffers[inst_idx][i].dev_addr;
+					if (chip->soc_mode && chip->io_domain)
+						node->cpu_addr = (void *)core->fbc_buffers[inst_idx][i].virt_addr;
 					core->fbc_buffers[inst_idx][i].used = 1;
 					node->vram_belonger = UMD_ALLOC;
-					node->iova_addr = node->dev_phys_addr;
 					VLOG(INFO, "get umd alloc fbc buffer! core:%d, inst:%d,"
 					     "fbc_idx:%d, addr:%llx, size:%llx, type:%d, free:%d\n",
 					     idx, inst_idx, i, node->dev_phys_addr, size, type,
@@ -180,9 +180,10 @@ struct mt_node *gem_malloc_node(struct mt_chip *chip, int idx, int inst_idx, u32
 			struct umd_alloc_buffer_union *mv = &core->mv_buffers[inst_idx];
 			if (mv->start_pa && mv->used_size + size <= mv->total_size) {
 				node->dev_phys_addr = mv->start_pa + mv->used_size;
+				if (chip->soc_mode && chip->io_domain)
+					node->cpu_addr = (void *)(mv->virt_addr + mv->used_size);
 				mv->used_size += size;
 				node->vram_belonger = UMD_ALLOC;
-				node->iova_addr = node->dev_phys_addr;
 				VLOG(INFO, "get umd alloc mv buffer! core:%d, inst:%d,"
 				     "addr:%llx, size:%llx, type: %d, free:%llx\n",
 				     idx, inst_idx, node->dev_phys_addr, size, type,
@@ -196,13 +197,14 @@ struct mt_node *gem_malloc_node(struct mt_chip *chip, int idx, int inst_idx, u32
 			}
 		} else if ((type == DEC_WORK || type == ENC_WORK) &&
 			   chip->driver_mode != MTGPU_DRIVER_MODE_HOST) {
-			if(!core->work_buffers[inst_idx].used &&
+			if (!core->work_buffers[inst_idx].used &&
 			   core->work_buffers[inst_idx].dev_addr &&
 			   core->work_buffers[inst_idx].size >= size) {
 				node->dev_phys_addr = core->work_buffers[inst_idx].dev_addr;
+				if (chip->soc_mode && chip->io_domain)
+					node->cpu_addr = (void *)core->work_buffers[inst_idx].virt_addr;
 				core->work_buffers[inst_idx].used = 1;
 				node->vram_belonger = UMD_ALLOC;
-				node->iova_addr = node->dev_phys_addr;
 				VLOG(INFO, "get umd alloc work buffer! core:%d, inst_idx:%d,"
 				     "addr:%llx, size:%llx, type: %d, free:%llx\n",
 				     idx, inst_idx, node->dev_phys_addr, size, type,
@@ -214,13 +216,14 @@ struct mt_node *gem_malloc_node(struct mt_chip *chip, int idx, int inst_idx, u32
 				goto nomem;
 			}
 		} else if (type == DEC_TASK && chip->driver_mode != MTGPU_DRIVER_MODE_HOST) {
-			if(!core->task_buffers[inst_idx].used &&
+			if (!core->task_buffers[inst_idx].used &&
 			   core->task_buffers[inst_idx].dev_addr &&
 			   core->task_buffers[inst_idx].size >= size) {
 				node->dev_phys_addr = core->task_buffers[inst_idx].dev_addr;
+				if (chip->soc_mode && chip->io_domain)
+					node->cpu_addr = (void *)core->task_buffers[inst_idx].virt_addr;
 				core->task_buffers[inst_idx].used = 1;
 				node->vram_belonger = UMD_ALLOC;
-				node->iova_addr = node->dev_phys_addr;
 				VLOG(INFO, "get umd alloc task buffer! core:%d, inst:%d, addr:%llx,"
 				     "size:%llx, type:%d, free:%d\n", idx, inst_idx, node->dev_phys_addr,
 				      size, type, core->task_buffers[inst_idx].size - size);
@@ -231,17 +234,16 @@ struct mt_node *gem_malloc_node(struct mt_chip *chip, int idx, int inst_idx, u32
 				goto nomem;
 			}
 		} else if (type == DEC_ETC && chip->driver_mode != MTGPU_DRIVER_MODE_HOST) {
-			int i;
-
 			/* find a free etc buffer */
 			for (i = 0; i < DEC_ETC_NUM; i++) {
 				if (!core->etc_buffers[inst_idx][i].used &&
 				    core->etc_buffers[inst_idx][i].dev_addr &&
 				    core->etc_buffers[inst_idx][i].size >= size) {
 					node->dev_phys_addr = core->etc_buffers[inst_idx][i].dev_addr;
+					if (chip->soc_mode && chip->io_domain)
+						node->cpu_addr = (void *)core->etc_buffers[inst_idx][i].virt_addr;
 					core->etc_buffers[inst_idx][i].used = 1;
 					node->vram_belonger = UMD_ALLOC;
-					node->iova_addr = node->dev_phys_addr;
 					VLOG(INFO, "get umd alloc etc buffer! core:%d, inst:%d, fbc_idx: %d,"
 					     "addr:%llx, size:%llx, type: %d\n",
 					     idx, inst_idx, i, node->dev_phys_addr, size, type);
@@ -256,14 +258,30 @@ struct mt_node *gem_malloc_node(struct mt_chip *chip, int idx, int inst_idx, u32
 				     core->etc_buffers[inst_idx][0].size, type);
 				goto nomem;
 			}
+		} else if (type == DEC_VA_PARAM && chip->driver_mode != MTGPU_DRIVER_MODE_HOST) {
+			if (core->va_param[inst_idx].dev_addr && core->va_param[inst_idx].size >= size) {
+				node->dev_phys_addr = core->va_param[inst_idx].dev_addr;
+				if (chip->soc_mode && chip->io_domain)
+					node->cpu_addr = (void *)core->va_param[inst_idx].virt_addr;
+				node->vram_belonger = UMD_ALLOC;
+				VLOG(INFO, "get umd alloc va param buffer! core:%d, inst:%d,"
+				     "addr:%llx, size:%llx, type: %d\n",
+				     idx, inst_idx, node->dev_phys_addr, size, type);
+			} else {
+				VLOG(ERR, "get umd alloc va param buffer failed! core:%d, inst:%d,"
+				     "need size:%llx, type: %d\n",
+				     idx, inst_idx, size, type);
+				goto nomem;
+			};
 		} else if (type == ENC_DEF_CDF && chip->driver_mode != MTGPU_DRIVER_MODE_HOST) {
 			if (!core->def_cdf_buffers[inst_idx].used &&
 			    core->def_cdf_buffers[inst_idx].dev_addr &&
 			    core->def_cdf_buffers[inst_idx].size >= size) {
 				node->dev_phys_addr = core->def_cdf_buffers[inst_idx].dev_addr;
+				if (chip->soc_mode && chip->io_domain)
+					node->cpu_addr = (void *)core->def_cdf_buffers[inst_idx].virt_addr;
 				core->def_cdf_buffers[inst_idx].used = 1;
 				node->vram_belonger = UMD_ALLOC;
-				node->iova_addr = node->dev_phys_addr;
 				VLOG(INFO, "get umd alloc enc_cdf buffer! core:%d, inst:%d, addr:%llx,"
 				     "size:%llx, type: %d\n",
 				     idx, inst_idx, node->dev_phys_addr, size, type);
@@ -275,10 +293,10 @@ struct mt_node *gem_malloc_node(struct mt_chip *chip, int idx, int inst_idx, u32
 			}
 		} else {	/* chip->driver_mode == MTGPU_DRIVER_MODE_HOST */
 			if (chip->soc_mode) {
-				size = ALIGN(size, gpu_page_size * 2);
-				ret = mtvpu_vram_alloc(drm, core->mem_group_id - 1, size,
-						       &node->dev_phys_addr, &node->cpu_addr,
-						       &node->iova_addr, &node->handle);
+				if (!chip->io_domain && !enable_reserved_memory)
+					size = ALIGN(size, gpu_page_size * 2);
+				ret = mtvpu_vram_alloc(drm, core->mem_group_id, size,
+						       &node->dev_phys_addr, &node->handle);
 				if (ret) {
 					vpu_err("soc mode alloc vram failed, core:%d, inst:%d!",
 						idx, inst_idx);
@@ -321,8 +339,10 @@ struct mt_node *gem_malloc_node(struct mt_chip *chip, int idx, int inst_idx, u32
 							&node->dev_phys_addr,
 							&node->cpu_addr);
 		} else if (chip->soc_mode) {
-			size = ALIGN(size, gpu_page_size * 2);
-			ret = mtvpu_vram_alloc(drm, core->mem_group_id - 1, size, &node->dev_phys_addr, &node->cpu_addr, &node->iova_addr, &node->handle);
+			if (!chip->io_domain && !enable_reserved_memory)
+				size = ALIGN(size, gpu_page_size * 2);
+			ret = mtvpu_vram_alloc(drm, core->mem_group_id, size, &node->dev_phys_addr,
+						&node->handle);
 		} else {
 			ret = mtgpu_vram_alloc(drm, core->mem_group_id, size, &node->dev_phys_addr, &node->handle);
 		}
@@ -335,6 +355,9 @@ struct mt_node *gem_malloc_node(struct mt_chip *chip, int idx, int inst_idx, u32
 		goto unref;
 	}
 
+	/*
+	vpu_info("node dev addr %llx, cpu_addr %llx\n", node->dev_phys_addr, node->cpu_addr);
+	*/
 	node->size = size;
 	node->pool_id = pool_id;
 	return node;
@@ -395,15 +418,8 @@ struct mt_node *gem_malloc(struct mt_chip *chip, int idx, int inst_idx, u64 size
 			node->dev_phys_addr + size, size);
 
 			if (node->handle) {
-				if (chip->soc_mode) {
-					if (chip->io_domain)
-						vpu_smmu_unmap(chip, node->iova_addr);
-					else if (!enable_reserved_memory)
-						os_dma_free_coherent(node->obj->dev->dev,
-								node->obj->size,
-								node->cpu_addr,
-								node->dev_phys_addr);
-				}
+				if (chip->soc_mode && chip->io_domain)
+					vpu_smmu_unmap(chip, node->dev_phys_addr);
 				mtgpu_vram_free(node->handle);
 			}
 			if (node->obj) {
@@ -422,19 +438,19 @@ struct mt_node *gem_malloc(struct mt_chip *chip, int idx, int inst_idx, u64 size
 	return node;
 }
 
-struct mt_node *get_node_by_iova(struct mt_core *core, dma_addr_t iova_addr)
+struct mt_node *get_node_by_addr(struct mt_core *core, dma_addr_t addr)
 {
 	int inst;
 	struct mt_node *node = NULL;
 
 	for (inst = 0; inst < INST_MAX_SIZE; inst++) {
 		list_for_each_entry(node, &core->mm_head[inst], list) {
-			if (node->iova_addr == iova_addr) {
+			if (node->dev_phys_addr == addr) {
 				return node;
 			}
 		}
 	}
-	vpu_err("cannot find mt node for iova %llx\n", iova_addr);
+	vpu_err("cannot find mt node for dev addr %llx\n", addr);
 	return NULL;
 }
 
@@ -445,11 +461,10 @@ void gem_free_node(struct mt_chip *chip, struct mt_node *node)
 	/* only do unmap when mmu disable */
 	if (node->cpu_addr && (!mmu_ctx || !mmu_ctx->mmu_enable)) {
 		if (chip->soc_mode) {
-			if (chip->io_domain) {
+			if (chip->io_domain && node->vram_belonger != UMD_ALLOC)
 				vpu_gem_vunmap_internal(node->handle, node->private_data);
-			} else if (enable_reserved_memory) {
+			else if (enable_reserved_memory)
 				os_memunmap(node->cpu_addr);
-			}
 		} else {
 			iounmap(node->cpu_addr);
 		}
@@ -461,7 +476,6 @@ void gem_free_node(struct mt_chip *chip, struct mt_node *node)
 #ifdef SUPPORT_ION
 	ion_free_node(node);
 #else
-
 	/* VDI case will not destroy the pool here */
 	if (node->pool_id > 0)
 		vpu_mem_pool_free(chip, node->pool_id);
@@ -470,12 +484,7 @@ void gem_free_node(struct mt_chip *chip, struct mt_node *node)
 			mtvpu_vm_pmr_unmap_and_destroy(mmu_ctx->vpu_ctx, node->handle, node->dev_virt_addr, node->cpu_addr);
 		} else if (chip->soc_mode) {
 			if (chip->io_domain)
-				vpu_smmu_unmap(chip, node->iova_addr);
-			else if (!enable_reserved_memory)
-				os_dma_free_coherent(node->obj->dev->dev,
-							  node->obj->size,
-							  node->cpu_addr,
-							  node->dev_phys_addr);
+				vpu_smmu_unmap(chip, node->dev_phys_addr);
 			mtgpu_vram_free(node->handle);
 		} else {
 			mtgpu_vram_free(node->handle);

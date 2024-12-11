@@ -29,6 +29,7 @@ struct mt_inst_extra {
 	u32 min_cycle;
 	u32 mem_alloc;
 	u32 mem_free;
+	u64 last_frame_cycle;
 };
 
 void vpu_monitor(struct timer_list *timer_list);

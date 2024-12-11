@@ -373,6 +373,7 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 	IMG_UINT32 ui32LoopCount = 1;
 	IMG_UINT64 ui64VmOffset;
 	IMG_CPU_PHYADDR sCpuPAddr;
+	IMG_UINT64 ui64Pfn;
 
 	eError = PMRLockSysPhysAddresses(psPMR);
 	if (eError != PVRSRV_OK)
@@ -398,7 +399,8 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 	}
 
 	eError = CpuCacheFlag2Pgprot(&sPageProt, ui32CPUCacheFlags,
-				     PMR_IsUser(psPMR) || PMR_IsSystem(psPMR));
+				     PMR_IsUser(psPMR) || PMR_IsSystem(psPMR),
+				     PhysHeapGetType(PMR_PhysHeap(psPMR)) == PHYS_HEAP_TYPE_UMA);
 	if (eError != PVRSRV_OK)
 		goto e1;
 
@@ -480,116 +482,145 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 	}
 
 	/*
-	 * Scan the map range for pfns without struct page* handling. If
-	 * we find one, this is a mixed map, and we can't use vm_insert_page()
-	 * NOTE: vm_insert_page() allows insertion of individual pages into user
-	 * VMA space _only_ if said page is an order-zero allocated page.
+	 * If the memory region is contiguous VRAM, then map the entire range
+	 * at once. This approach avoids mapping page by page, which is less efficient.
 	 */
-	if (bUseVMInsertPage)
+	if ((PhysHeapGetType(PMR_PhysHeap(psPMR)) != PHYS_HEAP_TYPE_UMA) &&
+	    PMR_IsVram(psPMR) && (!PMR_IsSparse(psPMR)))
 	{
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0))
-		pfn_t sPFN;
-#else
-		unsigned long uiPFN;
-#endif
+		ui64Pfn = PHYS_PFN(psCpuPAddr[0].uiAddr);
 
-		for (uiOffsetIdx = 0; uiOffsetIdx < uiNumOfPFNs; ++uiOffsetIdx)
+		iStatus = remap_pfn_range(ps_vma,
+					  ps_vma->vm_start,
+					  ui64Pfn,
+					  ps_vma->vm_end - ps_vma->vm_start,
+					  ps_vma->vm_page_prot);
+		if (iStatus)
 		{
-			if (pbValid[uiOffsetIdx])
-			{
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0))
-				sPFN = phys_to_pfn_t(psCpuPAddr[uiOffsetIdx].uiAddr, 0);
-
-				if (!pfn_t_valid(sPFN) || page_count(pfn_t_to_page(sPFN)) == 0)
-#else
-				uiPFN = psCpuPAddr[uiOffsetIdx].uiAddr >> PAGE_SHIFT;
-				PVR_ASSERT(((IMG_UINT64)uiPFN << PAGE_SHIFT) == psCpuPAddr[uiOffsetIdx].uiAddr);
-
-				if (!pfn_valid(uiPFN) || page_count(pfn_to_page(uiPFN)) == 0)
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)) */
-				{
-					bUseMixedMap = IMG_TRUE;
-					break;
-				}
-			}
-		}
-
-		if (bUseMixedMap)
-		{
-			OSSetVMAFlags(ps_vma, VM_MIXEDMAP);
+			/* Failure error code doesn't get propagated */
+			eError = PVRSRV_ERROR_PMR_CPU_PAGE_MAP_FAILED;
+			PVR_ASSERT(0);
+			goto e3;
 		}
 	}
 	else
 	{
-		OSSetVMAFlags(ps_vma, VM_PFNMAP);
-	}
+		/*
+		 * Scan the map range for pfns without struct page* handling. If
+		 * we find one, this is a mixed map, and we can't use vm_insert_page()
+		 * NOTE: vm_insert_page() allows insertion of individual pages into user
+		 * VMA space _only_ if said page is an order-zero allocated page.
+		 */
+		if (bUseVMInsertPage)
+		{
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0))
+			pfn_t sPFN;
+#else
+			unsigned long uiPFN;
+#endif
 
-	/*
-	 * For SYSTEM PMR, VM_PFNMAP should not be included,
-	 * ui32LoopCount could be bigger than 1.
-	 */
-	if (PMR_IsSystem(psPMR) || PMR_GetType(psPMR) == PMR_TYPE_OSMEM)
-	{
-		OSClearVMAFlags(ps_vma, VM_PFNMAP);
-		ui32LoopCount = (1 << (uiLog2PageSize - PAGE_SHIFT));
-		ui32MapPageShift = PAGE_SHIFT;
-	}
+			for (uiOffsetIdx = 0; uiOffsetIdx < uiNumOfPFNs; ++uiOffsetIdx)
+			{
+				if (pbValid[uiOffsetIdx])
+				{
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0))
+					sPFN = phys_to_pfn_t(psCpuPAddr[uiOffsetIdx].uiAddr, 0);
 
-	/* For each PMR page-size contiguous bytes, map page(s) into user VMA */
-	for (ui64OffsetByGPUPage = 0; ui64OffsetByGPUPage < uiLength; ui64OffsetByGPUPage += (1ULL << uiLog2PageSize))
-	{
-		PVR_ASSERT(uiLog2PageSize >= PAGE_SHIFT);
-		uiOffsetIdx = ui64OffsetByGPUPage >> uiLog2PageSize;
-		ui64VmOffset = ui64OffsetByGPUPage;
-		sCpuPAddr.uiAddr = psCpuPAddr[uiOffsetIdx].uiAddr;
+					if (!pfn_t_valid(sPFN) || page_count(pfn_t_to_page(sPFN)) == 0)
+#else
+					uiPFN = psCpuPAddr[uiOffsetIdx].uiAddr >> PAGE_SHIFT;
+					PVR_ASSERT(((IMG_UINT64)uiPFN << PAGE_SHIFT) == psCpuPAddr[uiOffsetIdx].uiAddr);
+
+					if (!pfn_valid(uiPFN) || page_count(pfn_to_page(uiPFN)) == 0)
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)) */
+					{
+						bUseMixedMap = IMG_TRUE;
+						break;
+					}
+				}
+			}
+
+			if (bUseMixedMap)
+			{
+				OSSetVMAFlags(ps_vma, VM_MIXEDMAP);
+			}
+		}
+		else
+		{
+			OSSetVMAFlags(ps_vma, VM_PFNMAP);
+		}
 
 		/*
-		 * Only map in pages that are valid, any that aren't will be
-		 * picked up by the nopage handler which will return a zeroed
-		 * page for us.
+		 * For SYSTEM PMR, VM_PFNMAP should not be included,
+		 * ui32LoopCount could be bigger than 1.
 		 */
-		if (pbValid[uiOffsetIdx])
+		if (PMR_IsSystem(psPMR) || PMR_GetType(psPMR) == PMR_TYPE_OSMEM)
 		{
-			for (i = 0; i < ui32LoopCount; i++)
+			OSClearVMAFlags(ps_vma, VM_PFNMAP);
+			ui32LoopCount = (1 << (uiLog2PageSize - PAGE_SHIFT));
+			ui32MapPageShift = PAGE_SHIFT;
+		}
+
+		/* For each PMR page-size contiguous bytes, map page(s) into user VMA */
+		for (ui64OffsetByGPUPage = 0; ui64OffsetByGPUPage < uiLength; ui64OffsetByGPUPage += (1ULL << uiLog2PageSize))
+		{
+			PVR_ASSERT(uiLog2PageSize >= PAGE_SHIFT);
+			uiOffsetIdx = ui64OffsetByGPUPage >> uiLog2PageSize;
+			ui64VmOffset = ui64OffsetByGPUPage;
+			sCpuPAddr.uiAddr = psCpuPAddr[uiOffsetIdx].uiAddr;
+
+			/*
+			 * Only map in pages that are valid, any that aren't will be
+			 * picked up by the nopage handler which will return a zeroed
+			 * page for us.
+			 */
+			if (pbValid[uiOffsetIdx])
 			{
-				iStatus = _OSMMapPMR(psDevNode,
-						     ps_vma,
-						     ui64VmOffset,
-						     &sCpuPAddr,
-						     ui32MapPageShift,
-						     bUseVMInsertPage,
-						     bUseMixedMap);
-				ui64VmOffset += PAGE_SIZE;
-				sCpuPAddr.uiAddr += PAGE_SIZE;
-				if (iStatus)
+				for (i = 0; i < ui32LoopCount; i++)
 				{
-					/* Failure error code doesn't get propagated */
-					eError = PVRSRV_ERROR_PMR_CPU_PAGE_MAP_FAILED;
-					PVR_ASSERT(0);
-					goto e3;
+					iStatus = _OSMMapPMR(psDevNode,
+							     ps_vma,
+							     ui64VmOffset,
+							     &sCpuPAddr,
+							     ui32MapPageShift,
+							     bUseVMInsertPage,
+							     bUseMixedMap);
+					ui64VmOffset += PAGE_SIZE;
+					sCpuPAddr.uiAddr += PAGE_SIZE;
+					if (iStatus)
+					{
+						/* Failure error code doesn't get propagated */
+						eError = PVRSRV_ERROR_PMR_CPU_PAGE_MAP_FAILED;
+						PVR_ASSERT(0);
+						goto e3;
+					}
 				}
 			}
 		}
+	}
+
 #if defined(PVRSRV_ENABLE_PROCESS_STATS) && defined(PVRSRV_ENABLE_MEMORY_STATS)
 #define PMR_OS_BAD_CPUADDR 0x0BAD0BAD
-		{
-			IMG_CPU_PHYADDR sPAddr;
-			sPAddr.uiAddr = pbValid[uiOffsetIdx] ?
-					psCpuPAddr[uiOffsetIdx].uiAddr :
-					IMG_CAST_TO_CPUPHYADDR_UINT(PMR_OS_BAD_CPUADDR);
+	for (ui64OffsetByGPUPage = 0; ui64OffsetByGPUPage < uiLength; ui64OffsetByGPUPage += (1ULL << uiLog2PageSize))
+	{
+		IMG_CPU_PHYADDR sPAddr;
 
-			PVRSRVStatsAddMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_MAP_UMA_LMA_PAGES,
-						     (void *)(uintptr_t)(ps_vma->vm_start + ui64OffsetByGPUPage),
-						     sPAddr,
-						     1 << uiLog2PageSize,
-						     NULL,
-						     OSGetCurrentClientProcessIDKM(),
-						     psDevNode
-						     DEBUG_MEMSTATS_VALUES);
-		}
+		uiOffsetIdx = ui64OffsetByGPUPage >> uiLog2PageSize;
+		sPAddr.uiAddr = pbValid[uiOffsetIdx] ?
+				psCpuPAddr[uiOffsetIdx].uiAddr :
+				IMG_CAST_TO_CPUPHYADDR_UINT(PMR_OS_BAD_CPUADDR);
+
+		PVRSRVStatsAddMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_MAP_UMA_LMA_PAGES,
+					     (void *)(uintptr_t)(ps_vma->vm_start + ui64OffsetByGPUPage),
+					     sPAddr,
+					     1 << uiLog2PageSize,
+					     NULL,
+					     OSGetCurrentClientProcessIDKM(),
+					     psDevNode
+					     DEBUG_MEMSTATS_VALUES);
+	}
 #undef PMR_OS_BAD_CPUADDR
 #endif
-	}
 
 #if defined(PVRSRV_ENABLE_PROCESS_STATS) && !defined(PVRSRV_ENABLE_MEMORY_STATS)
 	PVRSRVStatsIncrMemAllocStat(PVRSRV_MEM_ALLOC_TYPE_MAP_UMA_LMA_PAGES,

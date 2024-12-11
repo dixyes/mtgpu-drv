@@ -335,6 +335,16 @@ void os_drm_connector_set_status(struct drm_connector *connector, int status)
 	connector->status = status;
 }
 
+void os_videomode_set_hfront_porch(struct videomode *vm, u32 hfront_porch)
+{
+	vm->hfront_porch = hfront_porch;
+}
+
+void os_videomode_set_hback_porch(struct videomode *vm, u32 hback_porch)
+{
+	vm->hback_porch = hback_porch;
+}
+
 int os_drm_connector_get_status(struct drm_connector *connector)
 {
 	return connector->status;

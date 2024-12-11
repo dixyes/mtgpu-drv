@@ -64,6 +64,7 @@ mtgpu-objs += src/common/os-interface.o \
 	src/pvr/pvr_sync_ioctl_common.o \
 	src/pvr/pvr_sync_ioctl_drm.o \
 	src/pvr/trace_events.o \
+	src/pvr/pvr_dvfs_device.o \
 	objs/$(ARCH)/mtgpu_core.o
 
 # build for audio
@@ -99,6 +100,7 @@ ccflags-y += -I$(OBJ_DIR)/inc \
 	-I$(OBJ_DIR)/inc/common \
 	-I$(OBJ_DIR)/inc/mtgpu \
 	-I$(OBJ_DIR)/inc/shared_include/linux/uapi/drm \
+	-I$(OBJ_DIR)/inc/shared_include/fwif \
 	-I$(OBJ_DIR)/inc/mtgpu-next \
 	-I$(OBJ_DIR)/inc/mtgpu/vgpu \
 	-I$(OBJ_DIR)/inc/mtgpu/ion \

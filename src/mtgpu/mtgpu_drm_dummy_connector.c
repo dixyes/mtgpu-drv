@@ -26,6 +26,46 @@ static struct dummy_display_mode {
 	int vdisplay;
 	int vrefresh;
 } extra_modes[] = {
+#if (RGX_NUM_OS_SUPPORTED > 1)
+	{  800,  600, 30 },
+	{  800,  600, 60 },
+	{ 1024,  768, 30 },
+	{ 1024,  768, 60 },
+	{ 1152,  864, 30 },
+	{ 1152,  864, 60 },
+	{ 1280,  720, 30 },
+	{ 1280,  720, 60 },
+	{ 1280,  768, 30 },
+	{ 1280,  768, 60 },
+	{ 1280,  800, 30 },
+	{ 1280,  800, 60 },
+	{ 1280,  960, 30 },
+	{ 1280,  960, 60 },
+	{ 1280, 1024, 30 },
+	{ 1280, 1024, 60 },
+	{ 1360,  768, 30 },
+	{ 1360,  768, 60 },
+	{ 1600,  900, 30 },
+	{ 1600,  900, 60 },
+	{ 1600, 1024, 30 },
+	{ 1600, 1024, 60 },
+	{ 1600, 1200, 30 },
+	{ 1600, 1200, 60 },
+	{ 1680, 1050, 30 },
+	{ 1680, 1050, 60 },
+	{ 1920, 1080, 30 },
+	{ 1920, 1080, 60 },
+	{ 1920, 1200, 30 },
+	{ 1920, 1200, 60 },
+	{ 2560, 1440, 30 },
+	{ 2560, 1440, 60 },
+	{ 2560, 1600, 30 },
+	{ 2560, 1600, 60 },
+	{ 3840, 2160, 30 },
+	{ 3840, 2160, 60 },
+	{ 4096, 2160, 30 },
+	{ 4096, 2160, 60 },
+#else
 	{ 1920, 1080, 30 },
 	{ 1920, 1080, 120 },
 	{ 1920, 1080, 144 },
@@ -41,6 +81,16 @@ static struct dummy_display_mode {
 	{ 3840, 2160, 60 },
 	{ 3840, 2160, 120 },
 	{ 3840, 2160, 144 },
+#endif
+};
+
+static struct drm_display_mode custom_modes[] = {
+	{ DRM_MODE("1366x768", DRM_MODE_TYPE_DRIVER, 40028, 1366, 1400,
+		   1534, 1702, 0, 768, 771, 781, 784, 0,
+		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC) },
+	{ DRM_MODE("1366x768", DRM_MODE_TYPE_DRIVER, 85250, 1366, 1400,
+		   1574, 1782, 0, 768, 771, 781, 798, 0,
+		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC) },
 };
 
 static int dummy_connector_add_extra_modes(struct drm_connector *connector,
@@ -58,6 +108,16 @@ static int dummy_connector_add_extra_modes(struct drm_connector *connector,
 					    extra_modes[i].vrefresh, false, false, false);
 			drm_mode_probed_add(connector, mode);
 
+			count++;
+		}
+	}
+
+	for (i = 0; mtgpu_get_driver_mode() == MTGPU_DRIVER_MODE_GUEST &&
+	     i < ARRAY_SIZE(custom_modes); i++) {
+		if ((max_hres >= custom_modes[i].hdisplay || max_vres >= custom_modes[i].vdisplay) &&
+		    ((max_hres * max_vres) >= (custom_modes[i].hdisplay * custom_modes[i].vdisplay))) {
+			mode = drm_mode_duplicate(dev, &custom_modes[i]);
+			drm_mode_probed_add(connector, mode);
 			count++;
 		}
 	}
@@ -98,10 +158,13 @@ static int dummmy_connector_get_max_resolution(struct drm_connector *connector,
 
 static int dummy_connector_get_modes(struct drm_connector *connector)
 {
-	int count, max_hres, max_vres;
+	int count = 0, max_hres, max_vres;
 
 	dummmy_connector_get_max_resolution(connector, &max_hres, &max_vres);
-	count = drm_add_modes_noedid(connector, max_hres, max_vres);
+
+	if (mtgpu_get_driver_mode() != MTGPU_DRIVER_MODE_GUEST)
+		count = drm_add_modes_noedid(connector, max_hres, max_vres);
+
 	count += dummy_connector_add_extra_modes(connector, max_hres, max_vres);
 
 	/* set dmt mode 1920x1080@60 preferred */

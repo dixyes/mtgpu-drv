@@ -155,6 +155,8 @@ X(CheckMList,                       BOOL,           ALWAYS,      PVRSRV_APPHINT_
 X(EnableCalcDMUtil,                 BOOL,           ALWAYS,      PVRSRV_APPHINT_ENABLECALCDMUTIL,                 NO_PARAM_TABLE   ) \
 X(EnableLogGroup,                   UINT32Bitfield, ALWAYS,      PVRSRV_APPHINT_ENABLELOGGROUP,                   fwt_loggroup_tbl ) \
 X(FirmwareLogType,                  UINT32List,     ALWAYS,      PVRSRV_APPHINT_FIRMWARELOGTYPE,                  fwt_logtype_tbl  ) \
+X(EnableMetaLogGroup,               UINT32Bitfield, ALWAYS,      PVRSRV_APPHINT_ENABLEMETALOGGROUP,               mtfw_loggroup_tbl) \
+X(EnableFecLogGroup,                UINT32Bitfield, ALWAYS,      PVRSRV_APPHINT_ENABLEFECLOGGROUP,                mtfw_loggroup_tbl) \
 X(HWRDebugDumpLimit,                UINT32,         ALWAYS,      PVRSRV_APPHINT_HWRDEBUGDUMPLIMIT,                NO_PARAM_TABLE   ) \
 X(TimeCorrClock,                    UINT32List,     ALWAYS,      PVRSRV_APPHINT_TIMECORRCLOCK,                    timecorr_clk_tbl ) \
 X(HWPerfFWFilter,                   UINT64,         ALWAYS,      PVRSRV_APPHINT_HWPERFFWFILTER,                   NO_PARAM_TABLE   ) \

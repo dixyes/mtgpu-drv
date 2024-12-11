@@ -17,6 +17,7 @@
 #define GPU_SOC_GEN1		1
 #define GPU_SOC_GEN2		2
 #define GPU_SOC_GEN3		3
+#define GPU_SOC_GEN4		4
 
 #define MAX_NUM_DEV		256
 

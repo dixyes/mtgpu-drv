@@ -1382,6 +1382,7 @@ typedef enum {
     PRODUCT_ID_517,
     PRODUCT_ID_627,
     PRODUCT_ID_637,
+    PRODUCT_ID_A35,
 } ProductId;
 
 #define PRODUCT_ID_W5_SERIES(x)     (x == PRODUCT_ID_521 || x == PRODUCT_ID_511 || x == PRODUCT_ID_517)

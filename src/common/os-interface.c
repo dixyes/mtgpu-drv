@@ -13,6 +13,8 @@
 #include <asm/ptrace.h>
 #include <drm/drm_modes.h>
 #include <drm/drm_print.h>
+#include <drm/drm_property.h>
+#include <drm/drm_color_mgmt.h>
 #include <linux/bits.h>
 #include <linux/bitops.h>
 #include <linux/suspend.h>
@@ -84,6 +86,7 @@
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/acpi.h>
+#include <linux/pm_runtime.h>
 #include <acpi/acpixf.h>
 #include <asm-generic/bitsperlong.h>
 #if defined(OS_LINUX_FIND_H_EXIST)
@@ -99,6 +102,9 @@
 #include <linux/genalloc.h>
 #include <linux/netlink.h>
 #include <net/sock.h>
+#if defined(OS_FUNC_DEVICE_BYPASS_SMMU_EXIST)
+#include <linux/sva.h>
+#endif
 
 #include "mtgpu_device.h"
 #include "os-interface.h"
@@ -440,6 +446,24 @@ void os_device_attr_destroy(struct device_attribute *dev_attr)
 	kfree(dev_attr);
 }
 
+int os_device_bypass_smmu(struct device *dev)
+{
+#if defined(OS_FUNC_DEVICE_BYPASS_SMMU_EXIST)
+	return device_bypass_smmu(dev);
+#else
+	/* Missing device_bypass_smmu().
+	 * It's implemented in apollo-linux-kernel.
+	 */
+	dev_err(dev, "kernel doesn't support bypass SMMU!");
+	return -EEXIST;
+#endif
+}
+
+int os_device_property_read_u32(struct device *dev, const char *propname, u32 *val)
+{
+	return device_property_read_u32(dev, propname, val);
+}
+
 struct attribute *os_get_device_attr_attr(struct device_attribute *dev_attr)
 {
 	return &dev_attr->attr;
@@ -458,6 +482,11 @@ int os_dev_to_node(struct device *dev)
 struct pci_dev *os_to_pci_dev(struct device *dev)
 {
 	return container_of(dev, struct pci_dev, dev);
+}
+
+int os_in_interrupt(void)
+{
+	return in_interrupt();
 }
 
 int os_find_first_bit(const unsigned long *p, unsigned int size)
@@ -607,6 +636,11 @@ unsigned int os_sg_dma_len(struct scatterlist *sg)
 void os_set_sg_dma_address(struct scatterlist *sg, dma_addr_t dev_addr)
 {
 	sg_dma_address(sg) = dev_addr;
+}
+
+struct page *os_sg_page(struct scatterlist *sg)
+{
+	return sg_page(sg);
 }
 
 void os_set_sg_dma_len(struct scatterlist *sg, unsigned int dma_len)
@@ -779,9 +813,13 @@ unsigned long os_get_vm_area_struct_vm_page_prot(struct vm_area_struct *vma)
 
 IMPLEMENT_GET_OS_MEMBER_FUNC(vm_area_struct, vm_start);
 IMPLEMENT_GET_OS_MEMBER_FUNC(vm_area_struct, vm_end);
-IMPLEMENT_GET_OS_MEMBER_FUNC(vm_area_struct, vm_flags);
 IMPLEMENT_GET_OS_MEMBER_FUNC(vm_area_struct, vm_pgoff);
 IMPLEMENT_GET_OS_MEMBER_FUNC(vm_area_struct, vm_file);
+
+unsigned long os_get_vm_area_struct_vm_flags(struct vm_area_struct *vma)
+{
+	return vma->vm_flags;
+}
 
 void os_set_vm_area_struct_vm_pgoff(struct vm_area_struct *vma, unsigned long vm_pgoff)
 {
@@ -1827,6 +1865,11 @@ unsigned short os_get_pci_subsystem_device_id(struct pci_dev *pdev)
 struct pci_bus *os_get_pci_bus(struct pci_dev *pdev)
 {
 	return pdev->bus;
+}
+
+u8 os_get_pci_hdr_type(struct pci_dev *pdev)
+{
+	return pdev->hdr_type;
 }
 
 struct resource *os_get_pci_resource(struct pci_dev *pdev)
@@ -3042,6 +3085,11 @@ int os_atomic_inc_return(atomic_t *v)
 	return atomic_inc_return(v);
 }
 
+bool os_atomic_inc_not_zero(atomic_t *v)
+{
+	return atomic_inc_not_zero(v);
+}
+
 void os_atomic_add(int i, atomic_t *v)
 {
 	atomic_add(i, v);
@@ -3412,6 +3460,56 @@ resource_size_t os_get_system_total_ram_size(void)
 	si_meminfo(&mem_info);
 
 	return mem_info.totalram * mem_info.mem_unit;
+}
+
+void os_pm_runtime_set_autosuspend_delay(struct device *dev, int delay)
+{
+	pm_runtime_set_autosuspend_delay(dev, delay);
+}
+
+void os_pm_runtime_use_autosuspend(struct device *dev)
+{
+	pm_runtime_use_autosuspend(dev);
+}
+
+void os_pm_runtime_dont_use_autosuspend(struct device *dev)
+{
+	return pm_runtime_dont_use_autosuspend(dev);
+}
+
+int os_pm_runtime_set_suspended(struct device *dev)
+{
+	return pm_runtime_set_suspended(dev);
+}
+
+void os_pm_runtime_enable(struct device *dev)
+{
+	pm_runtime_enable(dev);
+}
+
+void os_pm_runtime_disable(struct device *dev)
+{
+	return pm_runtime_disable(dev);
+}
+
+int os_pm_runtime_get_sync(struct device *dev)
+{
+	return pm_runtime_get_sync(dev);
+}
+
+void os_pm_runtime_mark_last_busy(struct device *dev)
+{
+	pm_runtime_mark_last_busy(dev);
+}
+
+int os_pm_runtime_put_autosuspend(struct device *dev)
+{
+	return pm_runtime_put_autosuspend(dev);
+}
+
+void os_pm_runtime_put_noidle(struct device *dev)
+{
+	pm_runtime_put_noidle(dev);
 }
 
 int os_register_pm_notifier(struct notifier_block *nb)

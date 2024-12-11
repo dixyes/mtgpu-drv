@@ -26,6 +26,9 @@
 #if defined(OS_DRM_DRM_SCDC_HELPER_H_EXIST)
 #include <drm/drm_scdc_helper.h>
 #endif
+#include <drm/drm_device.h>
+#include <drm/drm_file.h>
+
 #include <video/videomode.h>
 #include <sound/hdmi-codec.h>
 
@@ -176,6 +179,9 @@ mtgpu_hdmi_connector_detect(struct drm_connector *connector, bool force)
 	mtgpu_hdmi_get_edid(connector);
 
 	drm_connector_update_edid_property(connector, hdmi->edid);
+
+	/* update eld earlier for audio for kylin */
+	drm_add_edid_modes(connector, hdmi->edid);
 
 	if (hdmi->edid && hdmi->fixed_edid)
 		return connector_status_connected;
@@ -905,7 +911,7 @@ static const struct mtgpu_codec_ops mtgpu_hdmi_audio_codec_ops = {
 };
 #endif
 
-static int mtgpu_hdmi_audio_register(struct mtgpu_hdmi *hdmi)
+static int mtgpu_hdmi_audio_register(struct mtgpu_hdmi *hdmi, struct drm_device *drm)
 {
 	struct hdmi_codec_pdata codec_data = {
 		.ops = (struct hdmi_codec_ops *)&mtgpu_hdmi_audio_codec_ops,
@@ -913,8 +919,12 @@ static int mtgpu_hdmi_audio_register(struct mtgpu_hdmi *hdmi)
 		.i2s = 1,
 		.data = hdmi,
 	};
+	int idx = drm->primary->index;
+	char dev_name[64];
+	const char *name = dev_name;
 
-	hdmi->hdmi_audio = platform_device_register_data(hdmi->dev, "mtgpu-hdmi-audio-codec",
+	snprintf(dev_name, sizeof(dev_name), "mtgpu-%d-hdmi-audio-codec", idx);
+	hdmi->hdmi_audio = platform_device_register_data(hdmi->dev, name,
 							 PLATFORM_DEVID_AUTO, &codec_data,
 							 sizeof(codec_data));
 	if (IS_ERR(hdmi->hdmi_audio))
@@ -1126,7 +1136,7 @@ static int mtgpu_hdmi_component_bind(struct device *dev,
 		goto err_free_hdmi;
 	}
 
-	ret = mtgpu_hdmi_audio_register(hdmi);
+	ret = mtgpu_hdmi_audio_register(hdmi, drm);
 	if (ret) {
 		DRM_DEV_ERROR(dev, "failed to register HDMI audio device: %d\n", ret);
 		goto err_free_hdmi;

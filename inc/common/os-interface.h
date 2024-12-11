@@ -16,6 +16,18 @@
 #define BIT_ULL(b) (1ULL << (b))
 #endif
 
+#ifndef GENMASK_32
+#define GENMASK_32(h, l) \
+	(((~(0u)) - ((1u) << (l)) + 1u) & \
+	(~(0u) >> (32 - 1 - (h))))
+#endif
+
+#ifndef GENMASK_64
+#define GENMASK_64(h, l) \
+	(((~(0ull)) - ((1ull) << (l)) + 1ull) & \
+	(~(0ull) >> (64 - 1 - (h))))
+#endif
+
 #ifndef ALIGN
 #define __ALIGN_MASK(x, mask)	(((x) + (mask)) & ~(mask))
 #define __ALIGN(x, a)		__ALIGN_MASK(x, (typeof(x))(a) - 1)
@@ -167,9 +179,11 @@
 	X(PCI_EXP_TYPE_RC_EC)\
 	X(PCIE_SPEED_2_5GT)\
 	X(PCI_STD_HEADER_SIZEOF)\
+	X(PCI_HEADER_TYPE_BRIDGE)\
 	X(IRQF_SHARED)\
 	X(MODE_OK)\
 	X(DRM_UT_CORE)\
+	X(DRM_COLOR_YCBCR_LIMITED_RANGE)\
 	X(DISPLAY_FLAGS_HSYNC_LOW)\
 	X(DISPLAY_FLAGS_HSYNC_HIGH)\
 	X(DISPLAY_FLAGS_VSYNC_LOW)\
@@ -636,6 +650,7 @@ void os_put_device(struct device *dev);
 int os_device_attach(struct device *dev);
 const void *os_device_get_match_data(struct device *dev);
 
+int os_in_interrupt(void);
 int os_find_first_bit(const unsigned long *p, unsigned int size);
 int os_find_next_bit(const unsigned long *p, int size, int offset);
 void *os_kmalloc(size_t size);
@@ -663,6 +678,7 @@ struct scatterlist *os_sg_next(struct scatterlist *sg);
 dma_addr_t os_sg_dma_address(struct scatterlist *sg);
 unsigned int os_sg_dma_len(struct scatterlist *sg);
 void os_set_sg_dma_address(struct scatterlist *sg, dma_addr_t dev_addr);
+struct page *os_sg_page(struct scatterlist *sg);
 void os_set_sg_dma_len(struct scatterlist *sg, unsigned int dma_len);
 void os_set_sg_page(struct scatterlist *sg, struct page *page,
 		    unsigned int len, unsigned int offset);
@@ -891,6 +907,8 @@ int os_device_attr_create(struct device_attribute **dev_attr, const char *name, 
 					   const char *buf,
 					   size_t count));
 void os_device_attr_destroy(struct device_attribute *dev_attr);
+int os_device_bypass_smmu(struct device *dev);
+int os_device_property_read_u32(struct device *dev, const char *propname, u32 *val);
 struct attribute *os_get_device_attr_attr(struct device_attribute *dev_attr);
 int os_sysfs_create_file(struct kobject *kobj, const struct attribute *attr);
 void os_sysfs_remove_file(struct kobject *kobj, const struct attribute *attr);
@@ -992,6 +1010,7 @@ unsigned short os_get_pci_subsystem_vendor(struct pci_dev *pdev);
 unsigned short os_get_pci_device_id(struct pci_dev *dev);
 unsigned short os_get_pci_subsystem_device_id(struct pci_dev *pdev);
 struct pci_bus *os_get_pci_bus(struct pci_dev *pdev);
+u8 os_get_pci_hdr_type(struct pci_dev *pdev);
 struct resource *os_get_pci_resource(struct pci_dev *pdev);
 pci_power_t os_get_pci_current_state(struct pci_dev *pdev);
 kernel_ulong_t os_get_pci_device_data(const struct pci_device_id *id);
@@ -1140,6 +1159,16 @@ void os_udelay(unsigned long secs);
 void os_mdelay(unsigned long secs);
 void os_usleep_range(unsigned long min, unsigned long max);
 
+void os_pm_runtime_set_autosuspend_delay(struct device *dev, int delay);
+void os_pm_runtime_use_autosuspend(struct device *dev);
+int os_pm_runtime_set_suspended(struct device *dev);
+void os_pm_runtime_dont_use_autosuspend(struct device *dev);
+void os_pm_runtime_enable(struct device *dev);
+void os_pm_runtime_disable(struct device *dev);
+int os_pm_runtime_get_sync(struct device *dev);
+void os_pm_runtime_put_noidle(struct device *dev);
+void os_pm_runtime_mark_last_busy(struct device *dev);
+int os_pm_runtime_put_autosuspend(struct device *dev);
 int os_register_pm_notifier(struct notifier_block *nb);
 int os_unregister_pm_notifier(struct notifier_block *nb);
 
@@ -1448,6 +1477,7 @@ int os_atomic_xchg(atomic_t *v, int val);
 void os_atomic_set(atomic_t *v, int val);
 void os_atomic_inc(atomic_t *v);
 int os_atomic_inc_return(atomic_t *v);
+bool os_atomic_inc_not_zero(atomic_t *v);
 void os_atomic_add(int i, atomic_t *v);
 int os_atomic_sub_return(int i, atomic_t *v);
 bool os_atomic_dec_and_test(atomic_t *v);

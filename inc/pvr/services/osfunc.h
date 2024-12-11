@@ -2081,7 +2081,7 @@ int PVRDmaBufOpsAttach(struct dma_buf *psDmaBuf,
 		       struct device *psDev,
 #endif
 		       struct dma_buf_attachment *psAttachment);
-int OSDmaBufVmap(struct dma_buf *psDmaBuf, void *pvPriv, void *pvMap, void **vaddr);
+int OSDmaBufVmap(struct dma_buf *psDmaBuf, void *pvPriv, void **pvMap, void **vaddr);
 int OSDmaBufKmap(struct dma_buf *psDmaBuf, int iValue, const char *szFunc);
 int OSSetDmaBufValue(struct dma_buf *psDmaBuf, int iValue, void *pvMap, void *vaddr);
 void OSDmaBufKunmap(struct dma_buf *psDmaBuf, unsigned long ulPageNum,
@@ -2195,6 +2195,9 @@ struct sync_file *OSSyncFileCreate(struct dma_fence *fence);
 int OSGetUnusedFDFlags(unsigned flag);
 void OSFDInstallSyncFile(int fd, struct sync_file *sync_file);
 struct dma_fence *OSSyncFileGetFence(int fd);
+
+void OSArchLinearMapAttrSetCached(phys_addr_t addr, size_t size);
+void OSArchLinearMapAttrSetUncached(phys_addr_t addr, size_t size);
 
 #endif /* OSFUNC_H */
 /******************************************************************************

@@ -151,7 +151,7 @@ bool  mtgpu_drm_get_fixed_edid_flag(struct drm_connector *connector)
 	char *filename;
 	int len;
 	loff_t pos = 0;
-	char op[16];
+	char op[16] = { 0 };
 	struct file *fp = NULL;
 	int idx = connector->dev->primary->index;
 	bool ret = true;

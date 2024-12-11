@@ -32,12 +32,12 @@ int mtgpu_semaphore_create_ioctl(struct drm_device *drm, void *data, struct drm_
 int mtgpu_semaphore_destroy_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
 int mtgpu_semaphore_submit_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
 int mtgpu_semaphore_cpu_signal_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
-int mtgpu_semaphore_to_fd_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
-int mtgpu_semaphore_from_fd_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
+int mtgpu_semaphore_export_fd_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
+int mtgpu_semaphore_import_fd_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
 void mtgpu_semaphore_signal_fences(void *data);
 int mtgpu_semaphore_signal_callback_register(void);
 void mtgpu_semaphore_signal_callback_unregister(void);
-struct mtgpu_syncobj *mtgpu_get_syncobj_from_handle(CONNECTION_DATA *conn, void *handle);
+
 PVRSRV_ERROR mtgpu_semaphore_resolve(struct _CONNECTION_DATA_ *conn,
 				     struct drm_mtgpu_semaphore *check_semas,
 				     u32 check_sema_count,
@@ -46,6 +46,11 @@ PVRSRV_ERROR mtgpu_semaphore_resolve(struct _CONNECTION_DATA_ *conn,
 				     u32 **values_out,
 				     u64 *sem_uid);
 struct SYNC_CHECKPOINT_TAG *mtgpu_get_checkpoint_from_handle(CONNECTION_DATA *conn, void *handle);
+int mtgpu_semaphore_cpu_signal_submit(struct drm_device *drm_dev,
+				      struct mtgpu_syncobj *syncobj,
+				      u64 page_table_root_addr,
+				      u64 value);
 int mtgpu_semaphore_wait_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
+bool mtgpu_semaphore_is_signaled(PSYNC_CHECKPOINT checkpoint, u32 value);
 
 #endif /* _MTGPU_SEMAPHORE_H_ */

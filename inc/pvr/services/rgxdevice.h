@@ -457,12 +457,6 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 	DEVMEM_MEMDESC			*psWorkEstFirmwareCCBMemDesc;      /*!< memdesc for Workload Estimation Firmware CCB */
 	IMG_UINT8				*psWorkEstFirmwareCCB;             /*!< kernel mapping for Workload Estimation Firmware CCB */
 
-	/* DDK2.0 */
-	DEVMEM_MEMDESC			*psFWIFMemDesc;         /*!< memdesc for mtfw_fwif */
-	struct MTFW_FWIF_TAG		*psFWIF;                /*!< kernel mapping for mtfw_fwif */
-	POS_LOCK			hLockFWIF;
-	/* DDK2.0 */
-
 	PVRSRV_MEMALLOCFLAGS_T  uiFWPoisonOnFreeFlag;           /*!< Flag for poisoning FW allocations when freed */
 
 	IMG_BOOL				bIgnoreHWReportedBVNC;			/*!< Ignore BVNC reported by HW */
@@ -859,12 +853,16 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 
 	PB_DATA                         sGlobalPBData;
 
-	/* DDK2.0 */
-	struct mtgpu_fw_info		*psMTFwInfo;
-	struct mtgpu_fec_work_data	*psFecWorkData;
-
 	/* RGXHWReset reset time of the last reset */
 	IMG_UINT64                      ui64OldTime;
+
+	/* DDK2.0 */
+	DEVMEM_MEMDESC			*psFWIFMemDesc;         /*!< memdesc for mtfw_fwif */
+	struct MTFW_FWIF_TAG		*psFWIF;                /*!< kernel mapping for mtfw_fwif */
+	POS_LOCK			hLockFWIF;
+	struct mtgpu_fw_info		*psMTFwInfo;
+	struct mtgpu_fec_work_data	*psFecWorkData;
+	struct wait_queue_head		*psSyncCmdWQ;
 } PVRSRV_RGXDEV_INFO;
 
 

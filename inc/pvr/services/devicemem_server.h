@@ -219,6 +219,7 @@ DevmemIntCtxCreate(CONNECTION_DATA *psConnection,
                    PVRSRV_DEVICE_NODE *psDeviceNode,
                    /* devnode / perproc etc */
                    IMG_BOOL bKernelMemoryCtx,
+                   IMG_BOOL bVideoMemoryCtx,
                    DEVMEMINT_CTX **ppsDevmemCtxPtr,
                    IMG_HANDLE *hPrivData,
                    IMG_UINT32 *pui32CPUCacheLineSize);

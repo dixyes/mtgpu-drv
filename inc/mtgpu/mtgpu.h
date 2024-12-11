@@ -38,6 +38,7 @@ struct mtgpu_softirq_ctrl;
 struct mtgpu_vdma_buffer;
 struct wait_queue_head;
 struct mtgpu_fec_umd_init_info;
+struct mtgpu_igpu_dvfs;
 
 #if defined(CONFIG_VPS)
 struct vps_dma;
@@ -150,8 +151,8 @@ struct mtgpu_int_ops {
 	int (*complete)(struct mtgpu_device *mtgpu, int int_vec, int target);
 	void (*exit)(struct mtgpu_device *mtgpu);
 	bool (*pending)(struct mtgpu_device *mtgpu, int intc_id);
-	int (*mask)(struct mtgpu_device *mtgpu, u32 int_vec);
-	int (*unmask)(struct mtgpu_device *mtgpu, u32 int_vec);
+	int (*refetch)(struct mtgpu_device *mtgpu, u32 int_vec);
+	int (*dump)(struct mtgpu_device *mtgpu, char *buff, size_t buf_sz);
 };
 
 struct mtgpu_pcie_local_mgmt_ops {
@@ -227,6 +228,10 @@ struct mtgpu_pfm_ops {
 
 };
 
+struct mtgpu_daa_ops {
+	void (*daa_sid_init)(struct mtgpu_device *mtdev);
+};
+
 struct pci_dev_config {
 	u8 pci_config_data[256];
 };
@@ -295,6 +300,7 @@ struct mtgpu_device {
 	struct mtlink_ops *link_ops;
 	struct mtgpu_ob_ops *ob_ops;
 	struct mtgpu_gpu_ss_ops *gpu_ss_ops;
+	struct mtgpu_daa_ops *daa_ops;
 
 	struct mtgpu_softirq_info *softirq_info;
 	struct mtgpu_irq_info *irq_info;
@@ -412,10 +418,15 @@ struct mtgpu_device {
 
 	struct mtgpu_pcie_link_monitor *pcie_link_monitor;
 
+	/* device freq and volt scaling for igpu */
+	struct mtgpu_igpu_dvfs *dvfs;
+
 #if defined(SUPPORT_VGPU_HWPERF)
 	void *vgpu_perf_data;
 #endif
 	struct mtgpu_fec_umd_init_info *fec_umd_init_info;
+
+	struct device *display_device;
 
 	u64 hw_capability;
 };

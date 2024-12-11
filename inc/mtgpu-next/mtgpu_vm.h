@@ -34,6 +34,8 @@ struct mtgpu_vm_context {
 	struct DEVMEM_HEAP_TAG **reserved_heap_array;
 	struct mtgpu_vm_bo *yuv_csc_buffer;
 	struct mtgpu_vm_bo *pb_bo;
+
+	struct mtgpu_job_item_list *job_list;
 };
 
 int mtgpu_vm_bo_create_and_map(PVRSRV_DEVICE_NODE *dev_node,

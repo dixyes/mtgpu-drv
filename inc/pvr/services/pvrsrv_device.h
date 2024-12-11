@@ -114,6 +114,12 @@ typedef PVRSRV_ERROR
 						  PVRSRV_SYS_POWER_STATE eCurrentPowerState,
 						  PVRSRV_POWER_FLAGS ePwrFlags);
 
+typedef PVRSRV_ERROR
+(*PFN_SYS_PM_RUNTIME_GET)(IMG_HANDLE hSysData);
+
+typedef PVRSRV_ERROR
+(*PFN_SYS_PM_RUNTIME_PUT)(IMG_HANDLE hSysData);
+
 /*************************************************************************/ /*!
 @Brief          Callback function type PFN_SYS_GET_POWER
 
@@ -344,6 +350,9 @@ struct _PVRSRV_DEVICE_CONFIG_
 	PFN_SYS_POST_POWER pfnPostPowerState;
 	PFN_SYS_GET_POWER  pfnGpuDomainPower;
 	PFN_SYS_SET_PSTATE pfnSetPerformanceState;
+
+	PFN_SYS_PM_RUNTIME_GET pfnSysPmRuntimeGet;
+	PFN_SYS_PM_RUNTIME_PUT pfnSysPmRuntimePut;
 
 	/*! Callback to obtain the clock frequency from the device (optional). */
 	PFN_SYS_DEV_CLK_FREQ_GET pfnClockFreqGet;

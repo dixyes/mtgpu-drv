@@ -26,6 +26,7 @@ struct file;
 struct mtgpu_gem_object {
 	struct drm_gem_object *obj;
 	struct sg_table *sgt;
+	struct sg_table *sgt_iova;
 	phys_addr_t cpu_addr;
 	dma_addr_t dev_addr;
 	void *handle;

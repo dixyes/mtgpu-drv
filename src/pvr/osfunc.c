@@ -92,6 +92,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <crypto/public_key.h>
 #include <linux/sync_file.h>
 
+#if defined(OS_FUNC_ARCH_LINEAR_MAP_ATTR_SET_CACHED_EXIST)
+#include <linux/dma-map-ops.h>
+#endif
+
 #if defined(OS_LINUX_MODULE_SIGNATURE_H_EXIST)
 #include <linux/module_signature.h>
 #else
@@ -4227,11 +4231,13 @@ int OSDmaBufBeginCpuAccess(struct dma_buf *psDmBuf, int eDirection)
 	return dma_buf_begin_cpu_access(psDmBuf, eDirection);
 }
 
-int OSDmaBufVmap(struct dma_buf *psDmaBuf, void *pvPriv, void *pvMap, void **vaddr)
+int OSDmaBufVmap(struct dma_buf *psDmaBuf, void *pvPriv, void **pvMapOut, void **vaddr)
 {
 	PMR_DMA_BUF_DATA *psPrivData = pvPriv;
 
 #if defined(OS_STRUCT_DMA_BUF_MAP_EXIST) || defined(OS_STRUCT_IOSYS_MAP_EXIST)
+	void *pvMap;
+
 	if (pvPriv)
 	{
 		if (dma_buf_vmap(psDmaBuf, psPrivData->psMap) || !psPrivData->psMap->vaddr)
@@ -4247,11 +4253,14 @@ int OSDmaBufVmap(struct dma_buf *psDmaBuf, void *pvPriv, void *pvMap, void **vad
 			PVR_DPF((PVR_DBG_ERROR, "%s: Couldn't allocate IosysMap", __func__));
 			return -ENOMEM;
 		}
+
 		if (dma_buf_vmap(psDmaBuf, (struct iosys_map *)pvMap))
 		{
 			OSFreeMem(pvMap);
 			return -ENOMEM;
 		}
+
+		*pvMapOut = pvMap;
 	}
 #else
 	if (pvPriv)
@@ -4745,4 +4754,20 @@ void OSFDInstallSyncFile(int fd, struct sync_file *sync_file)
 struct dma_fence *OSSyncFileGetFence(int fd)
 {
 	return sync_file_get_fence(fd);
+}
+
+/* Change the linux kernel's mapping of this address to cpu uncached wc. */
+void OSArchLinearMapAttrSetCached(phys_addr_t addr, size_t size)
+{
+#if defined(OS_FUNC_ARCH_LINEAR_MAP_ATTR_SET_CACHED_EXIST)
+	arch_linear_map_attr_set_cached(addr, size);
+#endif
+}
+
+/* Change the linux kernel's mapping of this address to cpu cached. */
+void OSArchLinearMapAttrSetUncached(phys_addr_t addr, size_t size)
+{
+#if defined(OS_FUNC_ARCH_LINEAR_MAP_ATTR_SET_CACHED_EXIST)
+	arch_linear_map_attr_set_uncached(addr, size);
+#endif
 }

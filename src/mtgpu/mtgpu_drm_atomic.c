@@ -222,6 +222,43 @@ static void mtgpu_atomic_helper_commit_writebacks(struct drm_device *dev,
 	}
 }
 
+void mtgpu_atomic_helper_encoder_detect(struct drm_device *dev,
+					struct drm_atomic_state *old_state)
+{
+	struct drm_atomic_state *original_state;
+	struct drm_connector *connector;
+	struct drm_connector_state *new_conn_state;
+	int i;
+
+	for_each_new_connector_in_state(old_state, connector, new_conn_state, i) {
+		const struct drm_encoder_helper_funcs *funcs;
+		struct drm_encoder *encoder;
+
+		if (!new_conn_state || !new_conn_state->best_encoder)
+				continue;
+
+		if (new_conn_state->best_encoder->encoder_type != DRM_MODE_ENCODER_DPMST || !connector)
+			continue;
+
+		encoder = new_conn_state->best_encoder;
+		funcs = encoder->helper_private;
+
+		/*
+		 * Each encoder has at most one connector (since we always steal
+		 * it away), so we won't call enable hooks twice.
+		 */
+		if (!connector->state)
+			continue;
+
+		original_state = connector->state->state;
+		connector->state->state = old_state;
+		if (funcs && funcs->detect)
+			funcs->detect(encoder, connector);
+		connector->state->state = original_state;
+	}
+
+}
+
 void mtgpu_atomic_helper_commit_modeset_enables(struct drm_device *dev,
 						struct drm_atomic_state *old_state)
 {

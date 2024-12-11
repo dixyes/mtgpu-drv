@@ -145,6 +145,7 @@ int mtgpu_smc_get_rtos_version(struct device *dev);
 int mtgpu_smc_get_dp_phy_cfg(struct device *dev, void **dp_phy_cfg);
 bool mtgpu_smc_get_secure_bit(struct device *dev);
 int mtgpu_smc_get_board_config(struct device *dev);
+int mtgpu_smc_realtime_sync(struct device *dev);
 void mtgpu_smc_release_board_config(struct device *dev);
 int mtgpu_smc_set_gpu_cfg(struct device *dev, struct gpu_cfg_req *gpu_req);
 int mtgpu_smc_get_gpu_cfg(struct device *dev, struct gpu_cfg_info *gpu_info);

@@ -13,6 +13,7 @@
 #if defined(OS_LINUX_DEVICE_BUS_H_EXIT)
 #include <linux/device/bus.h>
 #endif
+#include <linux/iommu.h>
 
 #if defined(OS_DRM_DRMP_H_EXIST)
 #include <drm/drmP.h>
@@ -99,7 +100,9 @@ static void mtgpu_atomic_helper_commit_tail_rpm(struct drm_atomic_state *old_sta
 		drm_atomic_helper_commit_modeset_disables(dev, old_state);
 		drm_atomic_helper_commit_modeset_enables(dev, old_state);
 	} else {
+		mtgpu_atomic_helper_encoder_detect(dev, old_state);
 		mtgpu_atomic_helper_commit_modeset_disables(dev, old_state);
+		mtgpu_atomic_helper_encoder_detect(dev, old_state);
 		mtgpu_atomic_helper_commit_modeset_enables(dev, old_state);
 	}
 
@@ -488,6 +491,8 @@ static acpi_status register_acpi_device(acpi_handle handle, u32 level, void *dat
 	struct match_info *match_info = data;
 	const struct acpi_device_id *id;
 	enum mtgpu_of_component_type comp_type;
+	struct device *parent_dev = match_info->drm_dev->parent;
+	struct mtgpu_device *mtdev = parent_dev->driver_data;
 
 #if defined(OS_FUNC_ACPI_BUS_GET_DEVICE_EXIST)
 	if (acpi_bus_get_device(handle, &adev))
@@ -514,14 +519,19 @@ static acpi_status register_acpi_device(acpi_handle handle, u32 level, void *dat
 	if (!id)
 		return AE_OK;
 
+	comp_type = (enum mtgpu_of_component_type)id->driver_data;
 	if (mtgpu_display_is_dummy() || mtgpu_display_is_none()) {
-		comp_type = (enum mtgpu_of_component_type)id->driver_data;
 		if (comp_type == MTGPU_COMP_TYPE_DP ||
 		    comp_type == MTGPU_COMP_TYPE_DC) {
 			dev_dbg(match_info->drm_dev, "Skipping display component: %s\n", id->id);
 			return AE_OK;
 		}
 	}
+
+	if (comp_type == MTGPU_COMP_TYPE_DC &&
+	    !mtdev->display_device &&
+	    iommu_present(dev->bus))
+		mtdev->display_device = dev;
 
 	/* Add compnent device. */
 	component_match_add(match_info->drm_dev, match_info->match, compare_dev, dev);

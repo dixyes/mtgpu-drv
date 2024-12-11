@@ -152,5 +152,5 @@ PVRSRV_ERROR CacheOpLog(PMR *psPMR,
  * Convert cpu cache flag to page prot.
  */
 PVRSRV_ERROR CpuCacheFlag2Pgprot(void *sPageProt, IMG_UINT32 ui32CPUCacheFlags,
-				 IMG_BOOL bSystemMem);
+				 IMG_BOOL bSystemMem, IMG_BOOL bIsUMA);
 #endif	/* CACHE_KM_H */

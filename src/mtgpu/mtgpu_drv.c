@@ -22,6 +22,7 @@
 #include <linux/module.h>
 #include <linux/debugfs.h>
 #include <linux/platform_device.h>
+#include <linux/pm_runtime.h>
 
 #ifndef CONFIG_LOONGARCH
 #include <asm/dmi.h>
@@ -165,7 +166,7 @@ const struct proc_ops process_util_proc_ops = {
 
 const struct proc_ops event_message_proc_ops = {
 	.proc_open = mtgpu_proc_event_msg_open,
-	.proc_read = os_seq_read,
+	.proc_read = mtgpu_proc_event_msg_read,
 	.proc_lseek = os_seq_lseek,
 	.proc_release = os_single_release,
 	.proc_poll = mtgpu_proc_event_msg_poll,
@@ -508,6 +509,10 @@ static const struct acpi_device_id mtgpu_acpi_table[] = {
 	{ }, /* end of all entries */
 };
 
+static const struct dev_pm_ops igpu_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend, pm_runtime_force_resume)
+};
+
 static struct platform_driver mtgpu_platform_driver = {
 	.probe = mtgpu_igpu_probe,
 	.remove = mtgpu_igpu_remove,
@@ -515,6 +520,7 @@ static struct platform_driver mtgpu_platform_driver = {
 		.name = DRIVER_NAME_IGPU,
 		.of_match_table = mtgpu_of_tbl,
 		.acpi_match_table = mtgpu_acpi_table,
+		.pm = &igpu_pm_ops,
 	},
 };
 
