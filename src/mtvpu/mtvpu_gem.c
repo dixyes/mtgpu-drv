@@ -7,6 +7,7 @@
 #include <linux/device.h>
 
 #include <linux/io.h>
+#include <linux/vmalloc.h>
 #include <drm/drm_file.h>
 #include <drm/drm_gem.h>
 #if defined(OS_DRM_DRMP_H_EXIST)

@@ -14,6 +14,7 @@
 #include <linux/version.h>
 #include <linux/moduleparam.h>
 #include <linux/dma-mapping.h>
+#include <linux/vmalloc.h>
 #include <drm/drm_gem.h>
 #include <drm/drm_drv.h>
 #include <linux/acpi.h>
@@ -680,6 +681,13 @@ static const struct dev_pm_ops vpu_pm_ops = {
 	.restore = vpu_resume,
 };
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+static void _vpu_remove(struct platform_device *pdev)
+{
+	vpu_remove(pdev);
+}
+#endif // KERNEL_VERSION
+
 struct platform_driver vpu_driver = {
 	.driver = {
 		.name = "mtgpu_vde",
@@ -688,7 +696,11 @@ struct platform_driver vpu_driver = {
 		.acpi_match_table = vpu_acpi_id_tbl,
 	},
 	.probe = vpu_probe,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+	.remove = _vpu_remove,
+#else
 	.remove = vpu_remove,
+#endif // KERNEL_VERSION
 	.id_table = vpu_id_tbl,
 };
 

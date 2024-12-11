@@ -20,6 +20,7 @@
 #endif
 #include <drm/drm_edid.h>
 #include <drm/drm_crtc.h>
+#include <drm/drm_edid.h>
 #include <drm/drm_encoder.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/gpu_scheduler.h>
