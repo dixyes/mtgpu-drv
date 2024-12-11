@@ -138,6 +138,13 @@ static struct platform_device_id pvr_platform_ids[] = {
 MODULE_DEVICE_TABLE(platform, pvr_platform_ids);
 #endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+static void _pvr_remove(struct platform_device *pdev)
+{
+	pvr_remove(pdev);
+}
+#endif // KERNEL_VERSION
+
 struct platform_driver pvr_platform_driver = {
 	.driver = {
 		.name		= DRVNAME,
@@ -148,7 +155,11 @@ struct platform_driver pvr_platform_driver = {
 	},
 	.id_table		= pvr_platform_ids,
 	.probe			= pvr_probe,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+	.remove			= _pvr_remove,
+#else
 	.remove			= pvr_remove,
+#endif // KERNEL_VERSION
 	.shutdown		= pvr_shutdown,
 };
 
