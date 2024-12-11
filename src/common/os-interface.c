@@ -148,6 +148,9 @@ struct mt_miscdevice {
 	void *data;
 };
 
+#ifndef PCI_IRQ_LEGACY
+#define PCI_IRQ_LEGACY PCI_IRQ_INTX
+#endif // PCI_IRQ_LEGACY
 const u64 os_value[] = {
 #define X(VALUE) VALUE,
 	DECLEAR_OS_VALUE
