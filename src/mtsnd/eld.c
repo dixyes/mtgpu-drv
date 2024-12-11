@@ -11,7 +11,7 @@
 #include <linux/init.h>
 #include <linux/slab.h>
 #include <sound/core.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <sound/hda_chmap.h>
 #include <sound/hdmi-codec.h>
 
