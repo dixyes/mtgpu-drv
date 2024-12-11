@@ -1519,7 +1519,11 @@ void os_fdput(struct fd *fd)
 
 struct file *os_get_fd_file(struct fd *fd)
 {
+#ifdef fd_file
+	return fd_file(*fd);
+#else
 	return fd->file;
+#endif // fd_file
 }
 
 void os_kref_init(mt_kref *kref)
