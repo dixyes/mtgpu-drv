@@ -227,6 +227,9 @@ const struct file_operations mtgpu_drm_driver_fops = {
 	.read		= drm_read,
 	.llseek		= noop_llseek,
 	.mmap		= mtgpu_mmap,
+#ifdef FOP_UNSIGNED_OFFSET
+	.fop_flags = FOP_UNSIGNED_OFFSET,
+#endif // FOP_UNSIGNED_OFFSET
 };
 
 static struct drm_driver mtgpu_drm_driver = {
