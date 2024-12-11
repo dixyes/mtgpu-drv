@@ -630,7 +630,11 @@ static int vpu_rpm_core_probe(struct platform_device *pdev)
 	return 0;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+static void vpu_rpm_core_remove(struct platform_device *pdev)
+#else
 static int vpu_rpm_core_remove(struct platform_device *pdev)
+#endif
 {
 	struct mt_core *core = platform_get_drvdata(pdev);
 	struct mt_chip *chip = core->priv;
@@ -640,7 +644,9 @@ static int vpu_rpm_core_remove(struct platform_device *pdev)
 	if (core->fw)
 		vpu_hw_deinit(chip->conf.core_base + core->idx);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
 	return 0;
+#endif
 }
 
 static const struct component_ops mtvpu_component_ops = {

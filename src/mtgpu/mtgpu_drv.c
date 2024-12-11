@@ -572,9 +572,20 @@ static const struct dev_pm_ops igpu_pm_ops = {
 	SET_RUNTIME_PM_OPS(mtgpu_igpu_pm_suspend, mtgpu_igpu_pm_resume, NULL)
 };
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+static void _mtgpu_igpu_remove(struct platform_device *pdev)
+{
+	mtgpu_igpu_remove(pdev);
+}
+#endif // KERNEL_VERSION
+
 static struct platform_driver mtgpu_platform_driver = {
 	.probe = mtgpu_igpu_probe,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+	.remove = _mtgpu_igpu_remove,
+#else
 	.remove = mtgpu_igpu_remove,
+#endif // KERNEL_VERSION
 	.driver = {
 		.name = DRIVER_NAME_IGPU,
 		.of_match_table = mtgpu_of_tbl,
