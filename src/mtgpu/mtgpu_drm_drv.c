@@ -38,6 +38,9 @@
 #if defined(OS_DRM_DRM_FBDEV_GENERIC_H_EXIST)
 #include <drm/drm_fbdev_generic.h>
 #endif
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+#include <drm/drm_fbdev_shmem.h>
+#endif // LINUX_VERSION
 #if defined(OS_DRM_DRM_SELF_REFRESH_HELPER_H_EXIST)
 #include <drm/drm_self_refresh_helper.h>
 #endif
@@ -322,8 +325,11 @@ static int mtgpu_component_bind(struct device *dev)
 
 	if (!disable_fbdev) {
 		mtgpu_kick_out_firmware_fb(pdata->fb_base, pdata->fb_size);
-
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+		drm_fbdev_shmem_setup(drm, 32);
+#else
 		drm_fbdev_generic_setup(drm, 32);
+#endif // KERNEL_VERSION
 	}
 
 	DRM_INFO("MooreThreads GPU drm driver loaded successfully\n");
@@ -619,9 +625,20 @@ const struct dev_pm_ops mtgpu_drm_pm_ops = {
 	.restore = mtgpu_drm_resume,
 };
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+static void _mtgpu_drm_remove(struct platform_device *pdev)
+{
+	mtgpu_drm_remove(pdev);
+}
+#endif // KERNEL_VERSION
+
 static struct platform_driver mtgpu_drm_platform_driver = {
 	.probe		= mtgpu_drm_probe,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+	.remove		= _mtgpu_drm_remove,
+#else
 	.remove		= mtgpu_drm_remove,
+#endif // KERNEL_VERSION
 	.driver		= {
 		.owner  = THIS_MODULE,
 		.name	= "mtgpu-drm-driver",
