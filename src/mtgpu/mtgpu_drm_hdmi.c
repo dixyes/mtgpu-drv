@@ -1287,9 +1287,20 @@ static void mtgpu_hdmi_shutdown(struct platform_device *pdev)
 		hdmi->core->disable(&hdmi->ctx);
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+static void _mtgpu_hdmi_remove(struct platform_device *pdev)
+{
+	mtgpu_hdmi_remove(pdev);
+}
+#endif // KERNEL_VERSION
+
 struct platform_driver mtgpu_hdmi_driver = {
 	.probe    = mtgpu_hdmi_probe,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+	.remove   = _mtgpu_hdmi_remove,
+#else
 	.remove   = mtgpu_hdmi_remove,
+#endif // KERNEL_VERSION
 	.shutdown = mtgpu_hdmi_shutdown,
 	.driver   = {
 		.owner  = THIS_MODULE,

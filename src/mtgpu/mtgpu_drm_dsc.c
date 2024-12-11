@@ -185,9 +185,21 @@ static struct platform_device_id mtgpu_dsc_device_id[] = {
 	{ },
 };
 
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+static void _mtgpu_dsc_remove(struct platform_device *pdev)
+{
+	mtgpu_dsc_remove(pdev);
+}
+#endif // KERNEL_VERSION
+
 struct platform_driver mtgpu_dsc_driver = {
 	.probe    = mtgpu_dsc_probe,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+	.remove   = _mtgpu_dsc_remove,
+#else
 	.remove   = mtgpu_dsc_remove,
+#endif // KERNEL_VERSION
 	.driver   = {
 		.owner  = THIS_MODULE,
 		.name   = "mtgpu-dsc-drv",

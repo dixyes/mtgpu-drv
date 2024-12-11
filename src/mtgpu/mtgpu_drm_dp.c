@@ -1006,9 +1006,20 @@ const struct dev_pm_ops mtgpu_dp_pm_ops = {
 	.freeze		= mtgpu_dp_suspend,
 };
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+static void _mtgpu_dp_remove(struct platform_device *pdev)
+{
+	mtgpu_dp_remove(pdev);
+}
+#endif // KERNEL_VERSION
+
 struct platform_driver mtgpu_dp_driver = {
 	.probe    = mtgpu_dp_probe,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+	.remove   = _mtgpu_dp_remove,
+#else
 	.remove   = mtgpu_dp_remove,
+#endif // KERNEL_VERSION
 	.driver   = {
 		.owner  = THIS_MODULE,
 		.name   = "mtgpu-dp-drv",

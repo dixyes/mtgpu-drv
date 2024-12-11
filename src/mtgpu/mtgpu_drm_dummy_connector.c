@@ -312,9 +312,21 @@ static struct platform_device_id dummy_device_id[] = {
 	{ },
 };
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+static void _dummy_connector_remove(struct platform_device *pdev)
+{
+	dummy_connector_remove(pdev);
+}
+#endif // KERNEL_VERSION
+
+
 struct platform_driver dummy_connector_driver = {
 	.probe    = dummy_connector_probe,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+	.remove   = _dummy_connector_remove,
+#else
 	.remove   = dummy_connector_remove,
+#endif // KERNEL_VERSION
 	.driver   = {
 		.owner  = THIS_MODULE,
 		.name   = "dummy-connector-drv",
