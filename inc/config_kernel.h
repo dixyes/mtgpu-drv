@@ -10,7 +10,7 @@
 #define MT_BUILD_OS_TYPE "Desktop"
 #define MT_BUILD_VER "20240822_develop-30-g44c3aadfb09a"
 #define MT_BUILD_TAG "44c3aad"
-#define MT_BUILD_VPU "8e7e93c"
+#define MT_BUILD_VPU "8e7e93c4"
 #define MT_BUILD_SND "e030ec8"
 #define SUPPORT_RGX 1
 #define PVRSRV_HWPERF_COUNTERS_PERBLK 12
@@ -192,6 +192,6 @@
 #define EFUSE_CHECK_ENABLE 0
 #define SND_ENABLE
 #define VPU_ENABLE
-#define PACKAGE_VERSION "2.7.0"
+#define PACKAGE_VERSION "2.7.1"
 #define PVRSRV_VZ_NUM_OSID 1
 #define PVRSRV_VZ_MPC_MAX_OSID
