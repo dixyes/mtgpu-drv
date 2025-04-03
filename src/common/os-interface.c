@@ -676,7 +676,12 @@ void os_sg_free_table(struct sg_table *sgt)
 
 void os_get_task_comm(char *to, int size)
 {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+	WARN_ON(size < TASK_COMM_LEN);
+	sized_strscpy_pad(to, current->comm, size);
+#else
 	__get_task_comm(to, size, current);
+#endif // LINUX_VERSION
 }
 
 void *os_vmap(struct page **pages, unsigned int count)
