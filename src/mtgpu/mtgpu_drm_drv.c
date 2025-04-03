@@ -40,7 +40,15 @@
 #if defined(OS_DRM_DRM_FBDEV_GENERIC_H_EXIST)
 #include <drm/drm_fbdev_generic.h>
 #endif
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0)
+#include <linux/aperture.h>
+#include <drm/drm_fourcc.h>
+#endif // LINUX_VERSION
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0)
+#include <drm/clients/drm_client_setup.h>
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+#include <drm/drm_client_setup.h>
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
 #include <drm/drm_fbdev_shmem.h>
 #endif // LINUX_VERSION
 #if defined(OS_DRM_DRM_SELF_REFRESH_HELPER_H_EXIST)
@@ -322,9 +330,15 @@ static struct drm_driver mtgpu_drm_driver = {
 
 	.name				= DRIVER_NAME,
 	.desc				= DRIVER_DESC,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 14, 0)
 	.date				= DRIVER_DATE,
+#endif
 	.major				= DRIVER_MAJOR,
 	.minor				= DRIVER_MINOR,
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+	DRM_FBDEV_SHMEM_DRIVER_OPS,
+#endif // LINUX_VERSION
 };
 
 static int mtgpu_component_bind(struct device *dev)
@@ -387,7 +401,13 @@ static int mtgpu_component_bind(struct device *dev)
 		goto err_kms_helper_poll_fini;
 
 	if (!disable_fbdev)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+		drm_client_setup(drm, NULL);
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+		drm_fbdev_shmem_setup(drm, 32);
+#else
 		drm_fbdev_generic_setup(drm, 32);
+#endif
 
 	DRM_INFO("MooreThreads GPU drm driver loaded successfully\n");
 
@@ -714,7 +734,13 @@ static struct platform_driver mtgpu_drm_platform_driver = {
 /* WARNING: fb base/size should be acquired from pcie bar before pcie resize. */
 int mtgpu_kick_out_firmware_fb(resource_size_t base, resource_size_t size)
 {
-#if defined(OS_FUNC_REMOVE_CONFLICTING_FRAMEBUFFERS_EXIST)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+	aperture_remove_conflicting_devices(
+		base,
+		size,
+		mtgpu_drm_driver.name
+	);
+#elif defined(OS_FUNC_REMOVE_CONFLICTING_FRAMEBUFFERS_EXIST)
 	struct apertures_struct *ap;
 
 	ap = alloc_apertures(1);

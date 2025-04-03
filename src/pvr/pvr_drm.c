@@ -342,7 +342,9 @@ struct drm_driver pvr_drm_generic_driver = {
 
 	.name			= PVR_DRM_DRIVER_NAME,
 	.desc			= PVR_DRM_DRIVER_DESC,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 14, 0)
 	.date			= PVR_DRM_DRIVER_DATE,
+#endif
 	.major			= PVRVERSION_MAJ,
 	.minor			= PVRVERSION_MIN,
 	.patchlevel		= PVRVERSION_BUILD,
