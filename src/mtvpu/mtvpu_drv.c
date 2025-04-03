@@ -735,6 +735,8 @@ static struct platform_driver vpu_rpm_core_driver = {
 	.remove = vpu_rpm_core_remove,
 };
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 16, 0))
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+MODULE_IMPORT_NS("DMA_BUF");
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 16, 0))
 MODULE_IMPORT_NS(DMA_BUF);
 #endif
