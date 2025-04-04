@@ -81,6 +81,13 @@ static int mtgpu_dsc_probe(struct platform_device *pdev)
 	struct resource *res;
 	int ret;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+	extern int mtgpu_platform_bus_iommu_presented;
+	if (device_iommu_mapped(dev)) {
+		pr_warn("FUCK plat iommu enabled %p\n", dev);
+		mtgpu_platform_bus_iommu_presented = 1;
+	}
+#endif // KERNEL_VERSION
 	dsc =  kzalloc(sizeof(*dsc), GFP_KERNEL);
 	if (!dsc)
 		return -ENOMEM;

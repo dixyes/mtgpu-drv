@@ -103,6 +103,14 @@ static int mtgpu_phy_probe(struct platform_device *pdev)
 	struct resource *res;
 	struct mtgpu_dp_phy_platform_data *phy_pdata = dev_get_platdata(dev);
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+	extern int mtgpu_platform_bus_iommu_presented;
+	if (device_iommu_mapped(dev)) {
+		pr_warn("FUCK plat iommu enabled %p\n", dev);
+		mtgpu_platform_bus_iommu_presented = 1;
+	}
+#endif // KERNEL_VERSION
+
 	mtgpu = devm_kzalloc(dev, sizeof(*mtgpu), GFP_KERNEL);
 	if (!mtgpu)
 		return -ENOMEM;

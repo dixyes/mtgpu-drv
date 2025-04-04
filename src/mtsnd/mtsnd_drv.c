@@ -364,6 +364,15 @@ static int mtsnd_probe(struct pci_dev *pci, const struct pci_device_id *pci_id)
 	int err;
 	int i;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+	extern int mtgpu_pci_bus_iommu_presented;
+	struct device *dev = &pci->dev;
+	if (device_iommu_mapped(dev)) {
+		pr_warn("FUCK plat iommu enabled %p\n", dev);
+		mtgpu_pci_bus_iommu_presented = 1;
+	}
+#endif // KERNEL_VERSION
+
 	mutex_lock(&g_mtsnd_data_mutex);
 	if (g_mtsnd_card_idx >= SNDRV_CARDS) {
 		err = -ENODEV;
@@ -372,8 +381,8 @@ static int mtsnd_probe(struct pci_dev *pci, const struct pci_device_id *pci_id)
 
 	err = snd_card_new(&pci->dev, index[g_mtsnd_card_idx], id[g_mtsnd_card_idx], THIS_MODULE, 0, &card);
 	if (err < 0) {
-		dev_err(&pci->dev, "Error snd_card_new\n");
-		goto out_unlock;
+			dev_err(&pci->dev, "Error snd_card_new\n");
+			goto out_unlock;
 	}
 
 	err = mtsnd_create(card, pci, &chip, g_mtsnd_card_idx);

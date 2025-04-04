@@ -119,6 +119,7 @@
 #include <uapi/linux/sched/types.h>
 #endif
 
+#define IOMMU_PRESENT_MARK_DEFINE
 #include "mtgpu_device.h"
 #include "os-interface.h"
 #if defined(SUPPORT_ION)
@@ -3579,7 +3580,13 @@ void os_iommu_detach_group(struct iommu_domain *domain, struct iommu_group *grou
 
 struct iommu_domain *os_iommu_domain_alloc(struct bus_type *bus)
 {
+	pr_warn("FUCK os_iommu_domain_alloc %p\n", bus);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+	return NULL;
+	// return iommu_paging_domain_alloc(dev);
+#else
 	return iommu_domain_alloc(bus);
+#endif
 }
 
 void os_iommu_domain_free(struct iommu_domain *domain)
@@ -3602,10 +3609,32 @@ unsigned int os_get_iommu_domain_type(struct iommu_domain *domain)
 	return domain->type;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+/**
+ * dirty hack for 6.13 iommu_present removal
+ * this will check iommu enablement using device_iommu_mapped when probing devices
+ */
+int mtgpu_pci_bus_iommu_presented = 0;
+int mtgpu_platform_bus_iommu_presented = 0;
+
+bool os_iommu_present(struct bus_type *bus)
+{
+	if (mtgpu_pci_bus_iommu_presented && bus == &pci_bus_type) {
+		pr_warn("FUCK pci iommu present\n");
+		return true;
+	}
+	if (mtgpu_platform_bus_iommu_presented && bus == &platform_bus_type) {
+		pr_warn("FUCK plat iommu present\n");
+		return true;
+	}
+	return false;
+}
+#else
 bool os_iommu_present(struct bus_type *bus)
 {
 	return iommu_present(bus);
 }
+#endif // LINUX_VERSION
 
 int os_iommu_group_for_each_dev(struct iommu_group *group, void *data,
 				int (*fn)(struct device *, void *))

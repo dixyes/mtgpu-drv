@@ -409,6 +409,14 @@ static const struct component_ops dummy_crtc_component_ops = {
 
 static int dummy_crtc_probe(struct platform_device *pdev)
 {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+	extern int mtgpu_platform_bus_iommu_presented;
+	struct device *dev = &pdev->dev;
+	if (device_iommu_mapped(dev)) {
+		pr_warn("FUCK plat iommu enabled %p\n", dev);
+		mtgpu_platform_bus_iommu_presented = 1;
+	}
+#endif // KERNEL_VERSION
 	return component_add(&pdev->dev, &dummy_crtc_component_ops);
 }
 
