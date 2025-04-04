@@ -550,7 +550,12 @@ static acpi_status register_acpi_device(acpi_handle handle, u32 level, void *dat
 
 	if (comp_type == MTGPU_COMP_TYPE_DC &&
 	    !mtdev->display_device &&
-	    iommu_present(dev->bus))
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+		device_iommu_mapped(dev)
+#else
+	    iommu_present(dev->bus)
+#endif
+	)
 		mtdev->display_device = dev;
 
 	/* Add compnent device. */
@@ -571,6 +576,14 @@ static int mtgpu_drm_probe(struct platform_device *pdev)
 {
 	struct component_match *match = NULL;
 	struct device *dev = &pdev->dev;
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+	extern int mtgpu_platform_bus_iommu_presented;
+	if (device_iommu_mapped(dev)) {
+		pr_warn("FUCK plat iommu enabled %p\n", dev);
+		mtgpu_platform_bus_iommu_presented = 1;
+	}
+#endif // KERNEL_VERSION
 
 	/* This is just for MPC when unbind and rebind drm devices. */
 	if (!platform_get_drvdata(pdev))

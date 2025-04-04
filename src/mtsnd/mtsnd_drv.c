@@ -361,6 +361,15 @@ static int mtsnd_probe(struct pci_dev *pci, const struct pci_device_id *pci_id)
 	int err;
 	int i;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+	extern int mtgpu_pci_bus_iommu_presented;
+	struct device *dev = &pci->dev;
+	if (device_iommu_mapped(dev)) {
+		pr_warn("FUCK plat iommu enabled %p\n", dev);
+		mtgpu_pci_bus_iommu_presented = 1;
+	}
+#endif // KERNEL_VERSION
+
 	if (idx >= SNDRV_CARDS)
 		return -ENODEV;
 

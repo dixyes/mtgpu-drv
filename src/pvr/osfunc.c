@@ -3553,10 +3553,32 @@ struct bus_type *OSGetDevBusType(struct device *psDev)
 #endif
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+/**
+ * dirty hack for 6.13 iommu_present removal
+ * this will check iommu enablement using device_iommu_mapped when probing devices
+ */
+extern int mtgpu_pci_bus_iommu_presented;
+extern int mtgpu_platform_bus_iommu_presented;
+
+IMG_BOOL OSIsIOMMUOn(struct bus_type *psBusType)
+{
+	if (mtgpu_pci_bus_iommu_presented && psBusType == &pci_bus_type) {
+		pr_warn("FUCK pci iommu present\n");
+		return IMG_TRUE;
+	}
+	if (mtgpu_platform_bus_iommu_presented && psBusType == &platform_bus_type) {
+		pr_warn("FUCK plat iommu present\n");
+		return IMG_TRUE;
+	}
+	return IMG_FALSE;
+}
+#else
 IMG_BOOL OSIsIOMMUOn(struct bus_type *psBusType)
 {
 	return iommu_present(psBusType);
 }
+#endif // LINUX_VERSION
 
 IMG_BOOL
 OSIsPcieEndpoint(struct device *psDev)

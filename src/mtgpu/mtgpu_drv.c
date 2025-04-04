@@ -486,10 +486,28 @@ static const struct dev_pm_ops mtgpu_pm_ops = {
 	.restore_early = mtgpu_pm_resume_early,
 };
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+static int _mtgpu_probe(struct pci_dev *pdev, const struct pci_device_id *id)
+{
+	extern int mtgpu_pci_bus_iommu_presented;
+	struct device *dev = &pdev->dev;
+	if (device_iommu_mapped(dev)) {
+		pr_warn("FUCK PCI iommu enabled %p\n", dev);
+		mtgpu_pci_bus_iommu_presented = 1;
+	}
+
+	return mtgpu_probe(pdev, id);
+}
+#endif // LINUX_VERSION
+
 static struct pci_driver mtgpu_pci_driver = {
 	.name = DRIVER_NAME,
 	.id_table = mtgpu_pci_tbl,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+	.probe = _mtgpu_probe,
+#else
 	.probe = mtgpu_probe,
+#endif // LINUX_VERSION
 	.remove = mtgpu_remove,
 	.shutdown = mtgpu_shutdown,
 	.err_handler = &err_handler,
@@ -520,8 +538,27 @@ static void _mtgpu_igpu_remove(struct platform_device *pdev)
 }
 #endif // KERNEL_VERSION
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+extern int mtgpu_platform_bus_iommu_presented;
+
+static int _mtgpu_igpu_probe(struct platform_device *pdev)
+{
+	struct device *dev = &pdev->dev;
+	if (device_iommu_mapped(dev)) {
+		pr_warn("FUCK plat iommu enabled %p\n", dev);
+		mtgpu_platform_bus_iommu_presented = 1;
+	}
+
+	return mtgpu_igpu_probe(pdev);
+}
+#endif // KERNEL_VERSION
+
 static struct platform_driver mtgpu_platform_driver = {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 13, 0)
+	.probe = _mtgpu_igpu_probe,
+#else
 	.probe = mtgpu_igpu_probe,
+#endif // LINUX_VERSION
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
 	.remove = _mtgpu_igpu_remove,
 #else
