@@ -2,7 +2,11 @@
 
 摩尔线程 MooreThreads MTT mtgpu dkms 驱动
 
-大约适配了6.12内核
+## 6.13问题
+
+6.13移除了`iommu_domain_alloc`和`os_iommu_present`，而私有二进制种似乎用到了这两个函数。
+
+没有简单的替代手段，这可能导致IOMMU相关的问题
 
 ## modification notes
 
