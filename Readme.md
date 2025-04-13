@@ -24,7 +24,7 @@ musa_sdk[下载链接](https://developer.mthreads.com/sdk/download/musa)
 
 修改后，重新编译内核
 
-`dpkg-reconfigure musa`
+`sudo dpkg-reconfigure musa`
 
 ## 6.13问题
 
