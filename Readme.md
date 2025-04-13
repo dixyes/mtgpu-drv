@@ -22,6 +22,10 @@ musa_sdk[下载链接](https://developer.mthreads.com/sdk/download/musa)
 
 本仓库的文件是位于 `/usr/src/mtgpu-x.y.z` 下面的（xyz为版本号），可以对照进行修改。
 
+修改后，重新编译内核
+
+`dpkg-reconfigure musa`
+
 ## 6.13问题
 
 6.13移除了`iommu_domain_alloc`和`os_iommu_present`，而私有二进制中似乎用到了这两个函数。
