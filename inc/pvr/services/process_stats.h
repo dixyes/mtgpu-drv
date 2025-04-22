@@ -225,7 +225,7 @@ void SetFirmwareHandshakeIdleTime(IMG_UINT64 ui64Duration);
 /* Functions used for calculating the memory usage statistics of a process */
 PVRSRV_ERROR PVRSRVFindProcessMemStats(IMG_PID pid, IMG_UINT32 ui32ArrSize,
 				       IMG_BOOL bAllProcessStats,
-				       IMG_UINT32 *pui32MemoryStats,
+				       IMG_UINT64 *pui64MemoryStats,
 				       PVRSRV_DEVICE_NODE *psDeviceNode);
 
 typedef struct {
@@ -247,7 +247,6 @@ int GpuMemStatDumpShow(PVRSRV_DEVICE_NODE *psDeviceNode, OSDI_IMPL_ENTRY *psEntr
 void VgpuIncreaseStatValue(PVRSRV_DEVICE_NODE *psDeviceNode, size_t byte);
 void VgpuDecreaseStatValue(PVRSRV_DEVICE_NODE *psDeviceNode, size_t byte);
 IMG_UINT64 VgpuGetHostUsedLMAMem(PVRSRV_DEVICE_NODE *psDeviceNode);
-IMG_UINT32 VgpuGetFWTraceBackcup(PVRSRV_DEVICE_NODE *psDeviceNode);
 #endif
 
 #endif /* PROCESS_STATS_H */

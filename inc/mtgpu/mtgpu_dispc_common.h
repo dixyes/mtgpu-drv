@@ -36,7 +36,8 @@ struct mtgpu_dispc_debugfs {
 	u64 underrun_cnt;
 };
 
-#define MAX_FMTS_NUM	24
+#define MAX_FMTS_NUM	32
+#define MAX_MODS_NUM	16
 #define MAX_LAYER_NUM	4
 
 struct mtgpu_layer_capability {
@@ -44,7 +45,7 @@ struct mtgpu_layer_capability {
 	u8 fmts_cnt;
 	u32 fmts_ptr[MAX_FMTS_NUM];
 	u8 modifier_cnt;
-	u64 modifiers[16];
+	u64 modifiers[MAX_MODS_NUM];
 	u32 supported_encodings;
 	u32 supported_ranges;
 };
@@ -125,6 +126,7 @@ struct mtgpu_dispc {
 	struct mtgpu_dispc_ctx ctx;
 	struct mtgpu_dispc_ops *core;
 	struct mtgpu_dispc_glb_ops *glb;
+	struct mtgpu_dispc_capability *caps;
 	struct device *dev;
 	struct mtgpu_cursor_info cursor_info;
 	struct mtgpu_dispc_debugfs debugfs;
@@ -231,8 +233,7 @@ static inline
 void dispc_pre_reg_write(struct mtgpu_dispc_ctx *ctx, int offset, u32 val)
 {
 	os_writel(val, ctx->pre_regs + offset);
-	/* dummy read to make post write take effect */
-	os_readl(ctx->pre_regs + offset);
+
 	DISPC_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
 }
 
@@ -266,7 +267,6 @@ static inline
 void dispc_pre_reg_write2(struct mtgpu_dispc_ctx *ctx, int offset, u32 val)
 {
 	os_writel(val, ctx->pre_regs + offset);
-	os_readl(ctx->pre_regs + offset);
 }
 
 static inline
@@ -280,8 +280,7 @@ static inline
 void dispc_post_reg_write(struct mtgpu_dispc_ctx *ctx, int offset, u32 val)
 {
 	os_writel(val, ctx->post_regs + offset);
-	/* dummy read to make post write take effect */
-	os_readl(ctx->post_regs + offset);
+
 	DISPC_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
 }
 
@@ -315,7 +314,6 @@ static inline
 void dispc_post_reg_write2(struct mtgpu_dispc_ctx *ctx, int offset, u32 val)
 {
 	os_writel(val, ctx->post_regs + offset);
-	os_readl(ctx->post_regs + offset);
 }
 
 static inline
@@ -329,8 +327,7 @@ static inline
 void dispc_out_reg_write(struct mtgpu_dispc_ctx *ctx, int offset, u32 val)
 {
 	os_writel(val, ctx->out_regs + offset);
-	/* dummy read to make out write take effect */
-	os_readl(ctx->out_regs + offset);
+
 	DISPC_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
 }
 
@@ -364,7 +361,6 @@ static inline
 void dispc_out_reg_write2(struct mtgpu_dispc_ctx *ctx, int offset, u32 val)
 {
 	os_writel(val, ctx->out_regs + offset);
-	os_readl(ctx->out_regs + offset);
 }
 
 static inline
@@ -377,8 +373,7 @@ static inline
 void dispc_glb_reg_write(struct mtgpu_dispc_ctx *ctx, int offset, u32 val)
 {
 	os_writel(val, ctx->glb_regs + offset);
-	/* dummy read to make post write take effect */
-	os_readl(ctx->glb_regs + offset);
+
 	GLB_DBG_REG("offset = 0x%04x value = 0x%08x\n", offset, val);
 }
 

@@ -65,6 +65,7 @@ X(HWPerfClientBufferSize,           UINT32,         ALWAYS,      PVRSRV_APPHINT_
 /* name,                            type,           class,       default,                                         helper,         */ \
 X(GeneralNon4KHeapPageSize,         UINT32,         ALWAYS,      PVRSRV_APPHINT_GENERALNON4KHEAPPAGESIZE,         NO_PARAM_TABLE   ) \
 X(GeneralSVMHeapPageSize,           UINT32,         ALWAYS,      PVRSRV_APPHINT_GENERALSVMHEAPPAGESIZE,           NO_PARAM_TABLE   ) \
+X(HighSVMHeapPageSizeBitMask,       UINT32,         ALWAYS,      PVRSRV_APPHINT_HIGHSVMHEAPPAGESIZEBITMASK,       NO_PARAM_TABLE   ) \
 \
 X(EnableSignatureChecks,            BOOL,           PDUMP,       PVRSRV_APPHINT_ENABLESIGNATURECHECKS,            NO_PARAM_TABLE   ) \
 X(SignatureChecksBufSize,           UINT32,         PDUMP,       PVRSRV_APPHINT_SIGNATURECHECKSBUFSIZE,           NO_PARAM_TABLE   ) \
@@ -153,6 +154,7 @@ X(AssertOnHWRTrigger,               BOOL,           ALWAYS,      APPHNT_BLDVAR_A
 X(AssertOutOfMemory,                BOOL,           ALWAYS,      PVRSRV_APPHINT_ASSERTOUTOFMEMORY,                NO_PARAM_TABLE   ) \
 X(CheckMList,                       BOOL,           ALWAYS,      PVRSRV_APPHINT_CHECKMLIST,                       NO_PARAM_TABLE   ) \
 X(EnableCalcDMUtil,                 BOOL,           ALWAYS,      PVRSRV_APPHINT_ENABLECALCDMUTIL,                 NO_PARAM_TABLE   ) \
+X(GpuUtilConfig,                    UINT32,         ALWAYS,      PVRSRV_APPHINT_GPUUTILCONFIG,                    NO_PARAM_TABLE) \
 X(EnableLogGroup,                   UINT32Bitfield, ALWAYS,      PVRSRV_APPHINT_ENABLELOGGROUP,                   fwt_loggroup_tbl ) \
 X(FirmwareLogType,                  UINT32List,     ALWAYS,      PVRSRV_APPHINT_FIRMWARELOGTYPE,                  fwt_logtype_tbl  ) \
 X(EnableMetaLogGroup,               UINT32Bitfield, ALWAYS,      PVRSRV_APPHINT_ENABLEMETALOGGROUP,               mtfw_loggroup_tbl) \

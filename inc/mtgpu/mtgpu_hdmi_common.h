@@ -37,8 +37,10 @@ struct mtgpu_hdmi_ctx {
 	u16 max_pclk_100khz;
 	int pclk;
 	u8 bpp;
+	u8 conn_state;
 	u32 update_done;
 	wait_queue_head_t *waitq;
+	bool is_dvi;
 	void *private;
 };
 

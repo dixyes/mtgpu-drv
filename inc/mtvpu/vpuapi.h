@@ -29,6 +29,8 @@
 #endif // !UNDER_UM
 #endif
 
+#define DEC_PARAM_SIZE 0x2000
+
 #define DEC_ETC_NUM 2
 #define FBC_COUNT_MAX 18
 
@@ -279,8 +281,11 @@ typedef enum {
     RETCODE_VPU_STILL_RUNNING,          /**< This means that VPU cannot be flushed or closed now, because VPU is running. (WAVE5 only) */
     RETCODE_REPORT_NOT_READY,           /**< This means that report is not ready for Query(GET_RESULT) command. (WAVE5 only) */
     RETCODE_VLC_BUF_FULL,               /**< This means that VLC buffer is full in encoder. (WAVE5 only) */
-    RETCODE_VPU_BUS_ERROR,              /**< This means that unrecoverable failure is occurred like as VPU bus error. In this case, host should call VPU_SwReset with SW_RESET_FORCE mode. (WAVE5 only) */
+    RETCODE_VPU_BUS_ERROR,              /**< This means that unrecoverable failure is occurred like as VPU bus error. In this case, host should call VPU_SWReset with SW_RESET_FORCE mode. (WAVE5 only) */
     RETCODE_INVALID_SFS_INSTANCE,       /**< This means that current instance can't run sub-framesync. (already an instance was running with sub-frame sync (WAVE5 only) */
+    RETCODE_VPU_BLOCKED,                /**< This means that VPU idle_thread response time is too long, use for check vpu is hang or deadloop */
+    RETCODE_INST_ID_CONFLICT,           /**< This means that The ID used by KMD conflicts with the one in VPU */
+    RETCODE_INST_FAILED,                /**< This means that The instance has already failed, can't do next action else close */
 } RetCode;
 
 /************************************************************************/
@@ -1172,13 +1177,20 @@ typedef enum {
     FORMAT_420_P10_32BIT_MSB ,    /* lsb |00xxxxxxxxxxxxxxxxxxxxxxxxxxx| msb */
     FORMAT_420_P10_32BIT_LSB ,    /* lsb |xxxxxxxxxxxxxxxxxxxxxxxxxxx00| msb */
 
-                                  /* 4:2:2 packed format */
-                                  /* Little Endian Perspective     */
-                                  /*     | addr 0  | addr 1  |     */
     FORMAT_422_P10_16BIT_MSB ,    /* lsb |000000xx |xxxxxxxx | msb */
     FORMAT_422_P10_16BIT_LSB ,    /* lsb |xxxxxxxx |xx000000 | msb */
     FORMAT_422_P10_32BIT_MSB ,    /* lsb |00xxxxxxxxxxxxxxxxxxxxxxxxxxx| msb */
     FORMAT_422_P10_32BIT_LSB ,    /* lsb |xxxxxxxxxxxxxxxxxxxxxxxxxxx00| msb */
+
+    FORMAT_444_P10_16BIT_MSB ,    /* lsb |000000xx |xxxxxxxx | msb */
+    FORMAT_444_P10_16BIT_LSB ,    /* lsb |xxxxxxxx |xx000000 | msb */
+    FORMAT_444_P10_32BIT_MSB ,    /* lsb |00xxxxxxxxxxxxxxxxxxxxxxxxxxx| msb */
+    FORMAT_444_P10_32BIT_LSB ,    /* lsb |xxxxxxxxxxxxxxxxxxxxxxxxxxx00| msb */
+
+    FORMAT_400_P10_16BIT_MSB ,    /* lsb |000000xx |xxxxxxxx | msb */
+    FORMAT_400_P10_16BIT_LSB ,    /* lsb |xxxxxxxx |xx000000 | msb */
+    FORMAT_400_P10_32BIT_MSB ,    /* lsb |00xxxxxxxxxxxxxxxxxxxxxxxxxxx| msb */
+    FORMAT_400_P10_32BIT_LSB ,    /* lsb |xxxxxxxxxxxxxxxxxxxxxxxxxxx00| msb */
 
     FORMAT_YUYV              ,    /**< 8bit packed format : Y0U0Y1V0 Y2U1Y3V1 ... */
     FORMAT_YUYV_P10_16BIT_MSB,    /* lsb |000000xxxxxxxxxx | msb */ /**< 10bit packed(YUYV) format(1Pixel=2Byte) */
@@ -1203,12 +1215,12 @@ typedef enum {
     FORMAT_VYUY_P10_16BIT_LSB,    /* lsb |xxxxxxxxxx000000 | msb */ /**< 10bit packed(VYUY) format(1Pixel=2Byte) */
     FORMAT_VYUY_P10_32BIT_MSB,    /* lsb |00xxxxxxxxxxxxxxxxxxxxxxxxxxx| msb */ /**< 10bit packed(VYUY) format(3Pixel=4Byte) */
     FORMAT_VYUY_P10_32BIT_LSB,    /* lsb |xxxxxxxxxxxxxxxxxxxxxxxxxxx00| msb */ /**< 10bit packed(VYUY) format(3Pixel=4Byte) */
-    FORMAT_PVRIC_YUV420_8X8    = 60,      /**< YUV 8-bit Tile type 8x8 PVRIC format */
-    FORMAT_PVRIC_YUV420_16X4,             /**< YUV 8-bit Tile type 16x4 PVRIC format */
-    FORMAT_PVRIC_YUV420_32X2,             /**< YUV 8-bit Tile type 32x2 PVRIC format */
-    FORMAT_PVRIC_YUV420_P10_16BIT_8X8,    /**< YUV 10-bit(1Pixel=2Byte) Tile type 8x8 PVRIC format */
-    FORMAT_PVRIC_YUV420_P10_16BIT_16X4,   /**< YUV 10-bit(1Pixel=2Byte) Tile type 16x4 PVRIC format */
-    FORMAT_PVRIC_YUV420_P10_16BIT_32X2,   /**< YUV 10-bit(1Pixel=2Byte) Tile type 32x2 PVRIC format */
+    FORMAT_PVRIC_YUV420_8X8    = 60,      /**< YUV 8-bit 420 Tile type 8x8 PVRIC format */
+    FORMAT_PVRIC_YUV420_16X4,             /**< YUV 8-bit 420 Tile type 16x4 PVRIC format */
+    FORMAT_PVRIC_YUV420_32X2,             /**< YUV 8-bit 420 Tile type 32x2 PVRIC format */
+    FORMAT_PVRIC_YUV420_P10_16BIT_8X8,    /**< YUV 10-bit(1Pixel=2Byte) 420 Tile type 8x8 PVRIC format */
+    FORMAT_PVRIC_YUV420_P10_16BIT_16X4,   /**< YUV 10-bit(1Pixel=2Byte) 420 Tile type 16x4 PVRIC format */
+    FORMAT_PVRIC_YUV420_P10_16BIT_32X2,   /**< YUV 10-bit(1Pixel=2Byte) 420 Tile type 32x2 PVRIC format */
     FORMAT_PVRIC_RGB_24BIT_UUU_8X8,       /**< RGB 8-bit U8U8U8(24bit) Tile type 8x8 PVRIC format */
     FORMAT_PVRIC_RGB_24BIT_UUU_16X4,      /**< RGB 8-bit U8U8U8(24bit) Tile type 16x4 PVRIC format */
     FORMAT_PVRIC_RGB_24BIT_UUU_32X2,      /**< RGB 8-bit U8U8U8(24bit)) Tile type 32x2 PVRIC format */
@@ -1221,6 +1233,18 @@ typedef enum {
     FORMAT_PVRIC_RGB_P10_32BIT_RBGA_8X8,  /**< RGB 10-bit R10B10G10A2(32bit) Tile type 8x8 PVRIC format */
     FORMAT_PVRIC_RGB_P10_32BIT_RBGA_16X4, /**< RGB 10-bit R10B10G10A2(32bit) Tile type 16x4 PVRIC format */
     FORMAT_PVRIC_RGB_P10_32BIT_RBGA_32X2, /**< RGB 10-bit R10B10G10A2(32bit) Tile type 32x2 PVRIC format */
+    FORMAT_PVRIC_YUV422_8X8,              /**< YUV 8-bit 422 Tile type 8x8 PVRIC format */
+    FORMAT_PVRIC_YUV422_16X4,             /**< YUV 8-bit 422 Tile type 16x4 PVRIC format */
+    FORMAT_PVRIC_YUV422_32X2,             /**< YUV 8-bit 422 Tile type 32x2 PVRIC format */
+    FORMAT_PVRIC_YUV422_P10_16BIT_8X8,    /**< YUV 10-bit(1Pixel=2Byte) 422 Tile type 8x8 PVRIC format */
+    FORMAT_PVRIC_YUV422_P10_16BIT_16X4,   /**< YUV 10-bit(1Pixel=2Byte) 422 Tile type 16x4 PVRIC format */
+    FORMAT_PVRIC_YUV422_P10_16BIT_32X2,   /**< YUV 10-bit(1Pixel=2Byte) 422 Tile type 32x2 PVRIC format */
+    FORMAT_PVRIC_YUV444_8X8,              /**< YUV 8-bit 444 Tile type 8x8 PVRIC format */
+    FORMAT_PVRIC_YUV444_16X4,             /**< YUV 8-bit 444 Tile type 16x4 PVRIC format */
+    FORMAT_PVRIC_YUV444_32X2,             /**< YUV 8-bit 444 Tile type 32x2 PVRIC format */
+    FORMAT_PVRIC_YUV444_P10_16BIT_8X8,    /**< YUV 10-bit(1Pixel=2Byte) 444 Tile type 8x8 PVRIC format */
+    FORMAT_PVRIC_YUV444_P10_16BIT_16X4,   /**< YUV 10-bit(1Pixel=2Byte) 444 Tile type 16x4 PVRIC format */
+    FORMAT_PVRIC_YUV444_P10_16BIT_32X2,   /**< YUV 10-bit(1Pixel=2Byte) 444 Tile type 32x2 PVRIC format */
     FORMAT_RGB_32BIT_PACKED = 90,   /**< 8bit RGB A8R8G8B8(32bit) CSC 1plane packed format */
     FORMAT_YUV444_32BIT_PACKED,     /**< 8bit YUV444 A8Y8U8V8(32bit) CSC 1plane packed format */
     FORMAT_RGB_P10_32BIT_PACKED,    /**< 10bit RGB A2R10G10B10(32bit) CSC 1plane packed format */
@@ -1279,6 +1303,7 @@ typedef enum {
     INT_WAVE5_DEC_PIC           = 8,
     INT_WAVE5_ENC_PIC           = 8,
     INT_WAVE5_ENC_SET_PARAM     = 9,
+    INT_WAVE5_CRITICAL          = 12,
     INT_WAVE5_DEC_QUERY         = 14,
     INT_WAVE5_BSBUF_EMPTY       = 15,
     INT_WAVE5_BSBUF_FULL        = 15,
@@ -1302,6 +1327,7 @@ typedef enum {
     INT_WAVE6_ENC_PIC           = 8,
     INT_WAVE6_ENC_SET_PARAM     = 9,
     INT_WAVE6_UPDATE_FB         = 10,
+    INT_WAVE6_CRITICAL          = 12,
     INT_WAVE6_BSBUF_EMPTY       = 15,
     INT_WAVE6_BSBUF_FULL        = 15,
 } Wave6InterruptBit;
@@ -1369,6 +1395,25 @@ typedef enum {
     SW_RESET_BEFORE_HW_RESET, /** need sw reset b-clk before hw reset, because act tests looks hw reset without it */
     SW_RESET_ON_UNBIND,      /** let vpu sleep into a relatively safe mode and then uninstall the driver */
 } SWResetMode;
+
+/**
+ * @brief  This is a operate list for vpu
+ */
+typedef enum {
+    VPU_OPT_HALT,       /**< 1.vcpu recv this cmd, 2. not start new cmd, 3. wait current cmd end, 4. close watch dog, 5.enter low power state(pc halt, can resume by interrupt) */
+    VPU_OPT_RESUME,     /**< resume from halt */
+    VPU_OPT_HANG,       /**< for debug: vpu recv this cmd,  close interrupt then enter halt status. can't resume but do reset or reboot*/
+} VpuOperates;
+
+/**
+ * @brief  Indicate the current status of VPU
+ */
+typedef enum {
+    VPU_STATUS_NORMAL,
+    VPU_STATUS_BLOCKED,
+    VPU_STATUS_NO_RESPONSE,
+    VPU_STATUS_GET_LOCK_FAILED,
+} VpuStatus;
 
 /**
  * @brief  This is an enumeration type for representing product IDs.
@@ -1918,10 +1963,8 @@ struct CodecInst;
 //------------------------------------------------------------------------------
 // decode struct and definition
 //------------------------------------------------------------------------------
-#define VPU_HANDLE_INSTANCE_NO(_handle)         (_handle->instIndex)
 #define VPU_HANDLE_CORE_INDEX(_handle)          (((CodecInst*)_handle)->coreIdx)
 #define VPU_HANDLE_PRODUCT_ID(_handle)          (((CodecInst*)_handle)->productId)
-#define VPU_CONVERT_WTL_INDEX(_handle, _index)  ((((CodecInst*)_handle)->CodecInfo->decInfo).numFbsForDecoding+_index)
 #define VPU_HANDLE_TO_DECINFO(_handle)          (&(((CodecInst*)_handle)->CodecInfo->decInfo))
 #define VPU_HANDLE_TO_ENCINFO(_handle)          (&(((CodecInst*)_handle)->CodecInfo->encInfo))
 /**
@@ -2701,6 +2744,10 @@ Constant colour detected value for uv-plane. (default value: 0x0)
     PhysicalAddress vaDecodeBufAddrCb; /**< It specifies the Cb buffer address of VA-API decoding. */
     PhysicalAddress vaDecodeBufAddrCr; /**< It specifies the Cr buffer address of VA-API decoding. */
     Uint32  fenceId;                   /**< the unique identifier for frame. */
+    Uint64         dstSemaWaitValue;
+    Uint64         dstSemaAddr1;
+    Uint64         dstSemaAddr2;
+    Uint32         rtStride;
 } DecParam;
 
 // Report Information
@@ -3426,6 +3473,8 @@ It specifies the enable flag of VA-API misc parameter.
     PhysicalAddress fbcVOffsetBufAddr;      /**< It specifies the FBC Cr Offset buffer address of VA-API encoding. */
     PhysicalAddress mvColBufAddr;           /**< It specifies the MV Col buffer address of VA-API encoding. */
     PhysicalAddress subSampledBufAddr;      /**< It specifies the Sub sampled buffer address of VA-API encoding. */
+    PhysicalAddress metadataBufAddr;        /**< It specifies the metadata buffer address of VA-API encoding. */
+    uint32_t metadataBufSize;
 } VaapiInfo;
 
 /**
@@ -5777,6 +5826,90 @@ Int32  VPU_IsInit(
     );
 
 /**
+ * @brief Determines whether the current instance is marked as failed, and returns TRUE
+ * @param A decoder/encoder handle obtained from VPU_DecOpen()/VPU_EncOpen()
+* @return
+@* TRUE
+@* FALSE
+ */
+Int32 VPU_CheckInstFailed(
+    VpuHandle handle
+    );
+
+/**
+ * @brief Determine whether the reset is successful
+ * @param coreIdx [Input] An index of VPU core
+* @return
+@* TRUE
+@* FALSE
+ */
+Int32 VPU_IsResetSuccess(
+    Uint32 coreIdx
+    );
+/**
+ * @brief Mark all instances of the current core as failed
+ * @param coreIdx [Input] An index of VPU core
+ */
+RetCode VPU_MarkInstFailedNoLock(
+    Uint32 coreIdx
+    );
+/**
+ * @brief Direct software reset, no lock acquisition operation.
+ * @param coreIdx [Input] An index of VPU core
+ * @param resetMode [Input]
+ */
+void VPU_SWResetNoLock(
+    Uint32 coreIdx,
+    SWResetMode resetMode
+    );
+
+/**
+ * @brief vpu do some operate in VpuOperates.
+ * @param coreIdx [Input] An index of VPU core
+ * @param opt [Input] support opt see enum VpuOperates
+ * @return      RetCode
+ */
+RetCode VPU_Operate(
+    Uint32 coreIdx,
+    VpuOperates opt
+    );
+RetCode VPU_OperateNoLock(
+    Uint32 coreIdx,
+    VpuOperates opt
+    );
+
+/**
+ * @brief vpu get status.
+ * @param coreIdx [Input] An index of VPU core
+ * @return      VpuStatus
+ */
+VpuStatus VPU_GetStatus(
+    Uint32 coreIdx
+    );
+
+/**
+ * @brief Mark  core need reload.
+ * @param coreIdx [Input] An index of VPU core
+ * @param resetMode [Input]
+ */
+void VPU_MarkReloadCore(
+    Uint32 coreIdx
+    );
+/**
+ * @brief Ensure that the current process is the last one to request the lock
+ * @param coreIdx [Input] An index of VPU core
+ */
+void VPU_Sync(
+    Uint32 coreIdx
+    );
+/**
+ * @brief Mark all instances of the current core as failed
+ * @param coreIdx [Input] An index of VPU core
+ */
+RetCode CodecInstancesMarkFailed(
+    Uint32 coreIdx
+    );
+/**
 * @brief    This function frees all the resources allocated by VPUAPI and releases the device driver.
 VPU_Init() and VPU_DeInit() always work in pairs.
 * @return none
@@ -5825,7 +5958,7 @@ Timeout may not work according to implementation of VDI layer.
 * Non -1 value : The value of InterruptBit
 @endverbatim
 */
-Int32 VPU_WaitInterruptEx(
+RetCode VPU_WaitInterruptEx(
     VpuHandle handle,
     int timeout
     );
@@ -5941,6 +6074,8 @@ RetCode VPU_SleepWake(
 */
     int     iSleepWake
     );
+
+RetCode VPU_SleepWakeNoLock(Uint32 coreIdx, int iSleepWake);
 
 /**
  *  @brief  This function returns the product ID of VPU which is currently running.
@@ -6096,7 +6231,8 @@ function.
  */
  RetCode VPU_DecOpen(
     DecHandle *pHandle,     /**< [Output] A pointer to DecHandle type variable which specifies each instance for HOST application. */
-    DecOpenParam *pop       /**< [Input] A pointer to <<vpuapi_h_DecOpenParam>> which describes required parameters for creating a new decoder instance. */
+    DecOpenParam *pop,       /**< [Input] A pointer to <<vpuapi_h_DecOpenParam>> which describes required parameters for creating a new decoder instance. */
+    Uint32 version
     );
 
 /**
@@ -6880,7 +7016,8 @@ initialize VPU by calling VPU_Init() before calling this function.
 
 RetCode VPU_EncOpen(
     EncHandle*      handle,     /**< [Output] A pointer to EncHandle type variable which specifies each instance for HOST application. If no instance is available, null handle is returned. */
-    EncOpenParam*   encOpParam  /**< [Input] A pointer to <<vpuapi_h_EncOpenParam>> structure which describes required parameters for creating a new encoder instance. */
+    EncOpenParam*   encOpParam,  /**< [Input] A pointer to <<vpuapi_h_EncOpenParam>> structure which describes required parameters for creating a new encoder instance. */
+    Uint32          version
     );
 
 /**
@@ -7528,6 +7665,12 @@ RetCode VPU_GetFwStatus(
 * @return result
 */
 RetCode VPU_FreeCodecInstance(DecHandle handle);
+
+/**
+* @brief  Dump logs and all buffers in vpu decoder/encoder failed.
+* @return non
+*/
+void VPU_DumpCoreBuffer(void* handle, void *param);
 #ifdef __cplusplus
 }
 #endif

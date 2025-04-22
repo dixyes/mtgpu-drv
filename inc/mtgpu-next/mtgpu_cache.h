@@ -9,6 +9,8 @@
 struct drm_device;
 struct drm_file;
 
-int mtgpu_cache_op_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
+int mtgpu_llc_persistence_get_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
+int mtgpu_llc_persistence_set_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
+int mtgpu_llc_persistence_reset_ioctl(struct drm_device *drm, void *data, struct drm_file *file_priv);
 
 #endif /* _MTGPU_CACHE_H_ */

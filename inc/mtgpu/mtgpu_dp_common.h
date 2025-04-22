@@ -29,6 +29,21 @@ typedef struct wait_queue_head wait_queue_head_t;
 
 struct hdmi_codec_params;
 
+struct drm_display_mode;
+
+struct mt_display_mode {
+	int clock;
+	int hdisplay;
+	int hsync_start;
+	int hsync_end;
+	int htotal;
+	int vdisplay;
+	int vsync_start;
+	int vsync_end;
+	int vtotal;
+	unsigned int flags;
+};
+
 /* the monitors which need patch like skip TPS4
  * as sudi do not support it when use DP1.4;
  * we can expand these array for other patchs.
@@ -37,16 +52,31 @@ enum monitor_patch_type {
 	PATCH_TYPE_INVALID = 0x00,
 	PATCH_SKIP_TPS4_FOR_TRAINING,
 	PATCH_FORCE_TRAINING,
+	PATCH_FORCE_OVERWRITE_TIMING,
+};
+
+enum mtgpu_soc_gen {
+	PLAT_INVALID = 0,
+	PLAT_GEN1    = BIT(0),
+	PLAT_GEN2    = BIT(1),
+	PLAT_GEN3    = BIT(2),
+	PLAT_GEN4    = BIT(3),
 };
 
 struct monitor_patch {
-	u8 vendor_id[4];
+	enum mtgpu_soc_gen gen;
+
+	u8  vendor[4];
 	u32 product_id;
 	u32 patch_type;
+
+	struct mt_display_mode original_mode;
+	struct mt_display_mode patched_mode;
 };
 
 struct mtgpu_dp_debugfs {
-	struct dentry *dentry;
+	struct dentry *card;
+	struct dentry *lock;
 	u32 link_rate;
 	u8  lane_cnt;
 };
@@ -128,7 +158,6 @@ struct mtgpu_dp_ops {
 struct mtgpu_dp_glb_ops {
 	void (*init)(struct mtgpu_dp_ctx *ctx);
 	void (*reset)(struct mtgpu_dp_ctx *ctx);
-	u32 (*get_monitor_patch)(struct monitor_patch **patches);
 };
 
 struct mtgpu_dp_chip {
@@ -167,6 +196,8 @@ struct mtgpu_dp {
 	struct drm_property *prop_fixed_edid;
 	bool fixed_edid;
 	u8 fixed_inited;
+
+	u8 soc_gen;
 
 	/* dp debugfs */
 	struct mtgpu_dp_debugfs debugfs;
@@ -248,6 +279,7 @@ static inline u32 dptx_cust_reg_read(struct mtgpu_dp_ctx *ctx, int offset)
 extern struct mtgpu_dp_chip mtgpu_dp_chip_sudi;
 extern struct mtgpu_dp_chip mtgpu_dp_chip_qy1;
 extern struct mtgpu_dp_chip mtgpu_dp_chip_qy2;
+extern struct mtgpu_dp_chip mtgpu_dp_chip_ph1;
 extern struct mtgpu_dp_ops  mtgpu_dp_fec;
 
 static inline
@@ -297,5 +329,12 @@ void mtgpu_dp_kernel_struct_destroy(struct mtgpu_dp *dp);
 void mtgpu_dp_dsc_discover(struct mtgpu_dp *dp);
 void mtgpu_dp_dsp_pps_pack(struct mtgpu_dp *dp, u32 *pps_data);
 int mtgpu_dp_update_fixed_edid_flag(struct mtgpu_dp *dp, bool enable);
+bool mtgpu_display_mode_compare(const struct drm_display_mode *mode,
+				struct mt_display_mode *mt_mode);
+struct monitor_patch *
+mtgpu_dp_monitor_select_patch(struct mtgpu_dp *dp,
+			      const struct drm_display_mode *mode,
+			      u32 patch_type);
+
 
 #endif /* _MTGPU_DP_COMMON_H_ */

@@ -31,6 +31,8 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_blend.h>
+#include <drm/drm_file.h>
+#include <drm/drm_debugfs.h>
 #if defined(OS_DRM_DRM_PROBE_HELPER_H_EXIST)
 #include <drm/drm_probe_helper.h>
 #endif
@@ -55,7 +57,7 @@
 #define DRIVER_DESC	"Moorethreads DRM/KMS Driver"
 #define DRIVER_DATE	"20210320"
 #define DRIVER_MAJOR	1
-#define DRIVER_MINOR	0
+#define DRIVER_MINOR	1
 
 enum mtgpu_of_component_type {
 	MTGPU_COMP_TYPE_DC,
@@ -176,6 +178,8 @@ static int mtgpu_drm_open(struct drm_device *ddev, struct drm_file *dfile)
 {
 	int err;
 
+	mtgpu_set_drm_event(dfile);
+
 	if (!dfile->driver_priv) {
 		dfile->driver_priv = kzalloc(sizeof(struct mtgpu_drm_file), GFP_KERNEL);
 		if (!dfile->driver_priv) {
@@ -226,6 +230,50 @@ const struct file_operations mtgpu_drm_driver_fops = {
 	.mmap		= mtgpu_mmap,
 };
 
+static int mtgpu_gem_show(struct seq_file *m, void *arg)
+{
+	int id;
+	struct drm_gem_object *obj;
+	struct drm_file *file_priv;
+	struct drm_info_node *node = (struct drm_info_node *)m->private;
+	struct drm_device *drm_dev = node->minor->dev;
+
+	mutex_lock(&drm_dev->filelist_mutex);
+	list_for_each_entry(file_priv, &drm_dev->filelist, lhead) {
+		spin_lock(&file_priv->table_lock);
+		idr_for_each_entry(&file_priv->object_idr, obj, id) {
+			seq_printf(m, "gem:0x%llx: size:0x%lx refcount:%d\n",
+				   (u64)obj,
+				   obj->size,
+				   kref_read(&obj->refcount));
+		}
+		spin_unlock(&file_priv->table_lock);
+	}
+	mutex_unlock(&drm_dev->filelist_mutex);
+
+	return 0;
+}
+
+static struct drm_info_list mtgpu_debugfs_list[] = {
+	{"gem_info", mtgpu_gem_show, 0},
+};
+
+#if defined(OS_DRM_DRIVER_USE_INT_DEBUGFS_INIT)
+static int mtgpu_debugfs_init(struct drm_minor *minor)
+{
+	return drm_debugfs_create_files(mtgpu_debugfs_list,
+					ARRAY_SIZE(mtgpu_debugfs_list),
+					minor->debugfs_root, minor);
+}
+#else
+static void mtgpu_debugfs_init(struct drm_minor *minor)
+{
+	drm_debugfs_create_files(mtgpu_debugfs_list,
+				 ARRAY_SIZE(mtgpu_debugfs_list),
+				 minor->debugfs_root, minor);
+}
+#endif
+
 static struct drm_driver mtgpu_drm_driver = {
 #if defined(OS_ENUM_DRIVER_PRIME_EXIST)
 	.driver_features		= DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC |
@@ -244,6 +292,8 @@ static struct drm_driver mtgpu_drm_driver = {
 	.fops				= &mtgpu_drm_driver_fops,
 	.dumb_create			= mtgpu_gem_dumb_create,
 
+	.debugfs_init			= mtgpu_debugfs_init,
+
 #ifdef OS_FUNC_DRM_GEM_PRIME_HANDLE_TO_FD_EXIST
 	.prime_handle_to_fd		= drm_gem_prime_handle_to_fd,
 #endif
@@ -259,6 +309,9 @@ static struct drm_driver mtgpu_drm_driver = {
 	.gem_prime_vmap			= mtgpu_gem_prime_vmap,
 	.gem_prime_vunmap		= mtgpu_gem_prime_vunmap,
 	.gem_prime_get_sg_table		= mtgpu_gem_prime_get_sg_table,
+#endif
+#if defined(OS_STRUCT_DRM_DRIVER_HAS_GEM_PRIME_MMAP)
+	.gem_prime_mmap			= mtgpu_gem_prime_mmap,
 #endif
 
 	.name				= DRIVER_NAME,
@@ -287,6 +340,10 @@ static int mtgpu_component_bind(struct device *dev)
 	drm->pdev = to_pci_dev(dev->parent);
 #endif
 
+	if (!disable_fbdev)
+		mtgpu_kick_out_firmware_fb(pdata->fb_data.fb_base,
+					   pdata->fb_data.fb_size);
+
 	private = kzalloc(sizeof(*private), GFP_KERNEL);
 	if (!private) {
 		ret = -ENOMEM;
@@ -295,6 +352,9 @@ static int mtgpu_component_bind(struct device *dev)
 	drm->dev_private = private;
 
 	mtgpu_mode_config_init(drm);
+
+	mtgpu_cnt++;
+	DRM_INFO("loading mtgpu card: %d\n", mtgpu_cnt);
 
 	ret = component_bind_all(dev, drm);
 	if (ret) {
@@ -320,11 +380,8 @@ static int mtgpu_component_bind(struct device *dev)
 	if (ret)
 		goto err_kms_helper_poll_fini;
 
-	if (!disable_fbdev) {
-		mtgpu_kick_out_firmware_fb(pdata->fb_base, pdata->fb_size);
-
+	if (!disable_fbdev)
 		drm_fbdev_generic_setup(drm, 32);
-	}
 
 	DRM_INFO("MooreThreads GPU drm driver loaded successfully\n");
 
@@ -414,7 +471,7 @@ static void mtgpu_match_add_drivers(struct device *drm_dev,
 static const struct of_device_id component_dev_of_ids[] = {
 	{ .compatible = "apollo,dptx", .data = (void *)MTGPU_COMP_TYPE_DP },
 	{ .compatible = "verisilicon,dc9x00", .data = (void *)MTGPU_COMP_TYPE_DC },
-	{ .compatible = "mthreads,apollo-vpu", .data = (void *)MTGPU_COMP_TYPE_VIDEO },
+	{ .compatible = "mthreads,vpu", .data = (void *)MTGPU_COMP_TYPE_VIDEO },
 	{ }
 };
 
@@ -551,9 +608,10 @@ static int mtgpu_drm_probe(struct platform_device *pdev)
 {
 	struct component_match *match = NULL;
 	struct device *dev = &pdev->dev;
+	struct mtgpu_drm_platform_data *pdata = dev_get_platdata(dev);
 
 	/* This is just for MPC when unbind and rebind drm devices. */
-	if (!platform_get_drvdata(pdev))
+	if (!pdata->is_device_ready)
 		return -EPROBE_DEFER;
 
 	/* This is just for IGPU to add components. */
@@ -562,6 +620,12 @@ static int mtgpu_drm_probe(struct platform_device *pdev)
 			mtgpu_match_add_device_nodes(dev, &match);
 		else
 			mtgpu_match_add_acpi_devices(dev, &match);
+	}
+
+	if (!mtgpu_fec_enable && fec_display_enable) {
+		DRM_WARN("found fec_display_enable=1, but mtgpu_fec_enable=0, "
+			 "force override fec_display_enable=0\n");
+		fec_display_enable = 0;
 	}
 
 	mtgpu_match_add_drivers(dev, &match, component_drivers,

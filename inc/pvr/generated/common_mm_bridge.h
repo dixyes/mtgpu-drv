@@ -107,7 +107,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PVRSRV_BRIDGE_MM_DEVMEMINTMAPPMR2			PVRSRV_BRIDGE_MM_CMD_FIRST+46
 #define PVRSRV_BRIDGE_MM_DEVMEMINTMAPPMRWITHRATIO2		PVRSRV_BRIDGE_MM_CMD_FIRST+47
 
-#define PVRSRV_BRIDGE_MM_CMD_LAST				(PVRSRV_BRIDGE_MM_CMD_FIRST+47)
+#define PVRSRV_BRIDGE_MM_PMRSETMETADATA				PVRSRV_BRIDGE_MM_CMD_FIRST+48
+#define PVRSRV_BRIDGE_MM_GEMSETMETADATA				PVRSRV_BRIDGE_MM_CMD_FIRST+49
+
+#define PVRSRV_BRIDGE_MM_PMRADDMETADATA				PVRSRV_BRIDGE_MM_CMD_FIRST+50
+#define PVRSRV_BRIDGE_MM_GEMADDMETADATA				PVRSRV_BRIDGE_MM_CMD_FIRST+51
+
+#define PVRSRV_BRIDGE_MM_CMD_LAST				(PVRSRV_BRIDGE_MM_CMD_FIRST+51)
 
 /*******************************************
             PMRExportPMR
@@ -930,5 +936,81 @@ typedef struct PVRSRV_BRIDGE_OUT_GETHEAPPHYSMEMUSAGEPKD_TAG
 	PHYS_HEAP_MEM_STATS_PKD *psapPhysHeapMemStats;
 	PVRSRV_ERROR eError;
 } __packed PVRSRV_BRIDGE_OUT_GETHEAPPHYSMEMUSAGEPKD;
+
+/*******************************************
+		  PMRAddMetaData
+ *******************************************/
+
+/* Bridge in structure for PMRAddMetaData */
+typedef struct PVRSRV_BRIDGE_IN_PMRADDMETADATA_TAG
+{
+	IMG_HANDLE hPMR;
+	IMG_UINT64 ui64MetaDataId;
+	IMG_BYTE *pui8MetaData;
+	IMG_UINT32 ui32DataSize;
+} __packed PVRSRV_BRIDGE_IN_PMRADDMETADATA;
+
+/* Bridge out structure for PMRAddMetaData */
+typedef struct PVRSRV_BRIDGE_OUT_PMRADDMETADATA_TAG
+{
+	PVRSRV_ERROR eError;
+} __packed PVRSRV_BRIDGE_OUT_PMRADDMETADATA;
+
+/*******************************************
+		  PMRSetMetaData
+ *******************************************/
+
+/* Bridge in structure for PMRSetMetaData */
+typedef struct PVRSRV_BRIDGE_IN_PMRSETMETADATA_TAG
+{
+	IMG_HANDLE hPMR;
+	IMG_BYTE *pui8MetaData;
+	IMG_UINT32 ui32DataSize;
+} __packed PVRSRV_BRIDGE_IN_PMRSETMETADATA;
+
+/* Bridge out structure for PMRSetMetaData */
+typedef struct PVRSRV_BRIDGE_OUT_PMRSETMETADATA_TAG
+{
+	PVRSRV_ERROR eError;
+} __packed PVRSRV_BRIDGE_OUT_PMRSETMETADATA;
+
+/*******************************************
+		  GEMAddMetaData
+ *******************************************/
+
+/* Bridge in structure for GEMAddMetaData */
+typedef struct PVRSRV_BRIDGE_IN_GEMADDMETADATA_TAG
+{
+	IMG_UINT32 ui32CardFd;
+	IMG_UINT32 ui32GemHandle;
+	IMG_UINT64 ui64MetaDataId;
+	IMG_BYTE *pui8MetaData;
+	IMG_UINT32 ui32DataSize;
+} __packed PVRSRV_BRIDGE_IN_GEMADDMETADATA;
+
+/* Bridge out structure for GEMAddMetaData */
+typedef struct PVRSRV_BRIDGE_OUT_GEMADDMETADATA_TAG
+{
+	PVRSRV_ERROR eError;
+} __packed PVRSRV_BRIDGE_OUT_GEMADDMETADATA;
+
+/*******************************************
+		  GEMSetMetaData
+ *******************************************/
+
+/* Bridge in structure for GEMSetMetaData */
+typedef struct PVRSRV_BRIDGE_IN_GEMSETMETADATA_TAG
+{
+	IMG_UINT32 ui32CardFd;
+	IMG_UINT32 ui32GemHandle;
+	IMG_BYTE *pui8MetaData;
+	IMG_UINT32 ui32DataSize;
+} __packed PVRSRV_BRIDGE_IN_GEMSETMETADATA;
+
+/* Bridge out structure for GEMSetMetaData */
+typedef struct PVRSRV_BRIDGE_OUT_GEMSETMETADATA_TAG
+{
+	PVRSRV_ERROR eError;
+} __packed PVRSRV_BRIDGE_OUT_GEMSETMETADATA;
 
 #endif /* COMMON_MM_BRIDGE_H */

@@ -57,6 +57,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "rgx_bvnc_defs_km.h"
 #include "lock.h"
 #include "power.h"
+#include "mtgpu_device.h"
 
 #if defined(SUPPORT_GPUVIRT_VALIDATION)
 #include "virt_validation_defs.h"
@@ -200,6 +201,7 @@ typedef struct _PVRSRV_DEVICE_DEBUG_INFO_
 	DI_ENTRY *psAPMEnableEntry;
 	DI_ENTRY *psDumpDebugEntry;
 	DI_ENTRY *psPowerModeEntry;
+	DI_ENTRY *psDVFSModeEntry;
 	DI_ENTRY *psDisableHWREntry;
 	DI_ENTRY *psHardwareResetEntry;
 #ifdef SUPPORT_RGX
@@ -227,6 +229,8 @@ typedef struct _PVRSRV_DEVICE_DEBUG_INFO_
 	DI_ENTRY *psGpuMemUseEntry;
 	DI_ENTRY *psGpuStatusEntry;
 	DI_ENTRY *psGpuIovaAllocatedSizeEntry;
+	DI_ENTRY *psNOPCmdEntry;
+	DI_ENTRY *psDmaTestEntry;
 	DI_ENTRY *psGpuConnectionResEntry;
 
 #if defined(PVRSRV_ENABLE_PVR_ION_STATS)
@@ -236,6 +240,10 @@ typedef struct _PVRSRV_DEVICE_DEBUG_INFO_
 #if (RGX_NUM_OS_SUPPORTED > 1)
 	DI_ENTRY *psVgpuSchedulerEntry;
 	DI_ENTRY *psVgpuCswTimeEntry;
+#endif
+
+#ifdef DEBUG
+	DI_ENTRY *psGpuRasCtrlInBandInject;
 #endif
 } PVRSRV_DEVICE_DEBUG_INFO;
 
@@ -279,12 +287,15 @@ typedef struct _LISR_EXECUTION_INFO_
 
 typedef struct _PVRSRV_DEVICE_NODE_
 {
+	 /* WARNING: the sMTDeviceNode must be the first member */
+	struct mtgpu_device_node 	sMTDeviceNode;
 	PVRSRV_DEVICE_IDENTIFIER	sDevId;
 	PVRSRV_DEVICE_STATE		eDevState;
 	IMG_BOOL			bForceLegacyHeap; /* Force to use Legacy heap layout */
 	PVRSRV_DEVICE_FABRIC_TYPE	eDevFabricType;
 
 	ATOMIC_T					eHealthStatus; /* Holds values from PVRSRV_DEVICE_HEALTH_STATUS */
+	ATOMIC_T					ePreHealthStatus; /* Holds values from PVRSRV_DEVICE_HEALTH_STATUS */
 	ATOMIC_T					eHealthReason; /* Holds values from PVRSRV_DEVICE_HEALTH_REASON */
 	ATOMIC_T					eDebugDumpRequested; /* Holds values from PVRSRV_DEVICE_DEBUG_DUMP_STATUS */
 
@@ -309,6 +320,8 @@ typedef struct _PVRSRV_DEVICE_NODE_
     /* multicore configuration information */
     IMG_UINT32              ui32MultiCoreNumCores;      /* total cores primary + secondaries. 0 for non-multi core */
     IMG_UINT32              ui32MultiCorePrimaryId;     /* primary core id for this device */
+    IMG_UINT32              ui32PrimaryCoreIds;
+    IMG_UINT32              ui32TotalCores;
     IMG_UINT64             *pui64MultiCoreCapabilities; /* capabilities for each core */
 
 	/*
@@ -339,6 +352,11 @@ typedef struct _PVRSRV_DEVICE_NODE_
 
 	IMG_UINT32 (*pfnMMUCacheGetInvalidateCounter)(struct _PVRSRV_DEVICE_NODE_ *psDevNode);
 
+	void (*pfnMMUCheckFaultAddress)(MMU_CONTEXT *psMMUContext,
+					IMG_DEV_VIRTADDR *psDevVAddr,
+					MMU_FAULT_DATA *psOutFaultData);
+
+	IMG_BOOL (*pfnCheckDevVAddrForMusa)(IMG_DEV_VIRTADDR sDevVAddr);
 
 	void (*pfnDumpDebugInfo)(struct _PVRSRV_DEVICE_NODE_ *psDevNode);
 
@@ -393,7 +411,15 @@ typedef struct _PVRSRV_DEVICE_NODE_
 
 	void (*pfnInitBIF)(const void *hPrivate);
 
-	IMG_UINT64 (*pfnGetPCBase)(void *pvRegsBaseKM, IMG_UINT32 ui32ContextID);
+	void (*pfnGetPCBase)(void *pvRegsBaseKM, IMG_UINT32 ui32ContextID,
+			     IMG_DEV_PHYADDR *psPCDevPAddr,
+			     IMG_BOOL *pbIsValid, IMG_UINT32 *pui32Enable);
+
+	/* store gpu register before soft reset */
+	void (*pfnGpuRegisterStore)(void __iomem *base, IMG_UINT32 ui32CoreCnt);
+
+	/* load gpu register after soft reset */
+	void (*pfnGpuRegisterLoad)(void __iomem *base, IMG_UINT32 ui32CoreCnt);
 
 	/* information about the device's address space and heaps */
 	DEVICE_MEMORY_INFO		sDevMemoryInfo;
@@ -447,7 +473,6 @@ typedef struct _PVRSRV_DEVICE_NODE_
 	/* Functions for notification about memory contexts */
 	PVRSRV_ERROR			(*pfnRegisterMemoryContext)(struct _PVRSRV_DEVICE_NODE_		*psDeviceNode,
 								    MMU_CONTEXT				*psMMUContext,
-								    IMG_BOOL				bVideoMemoryCtx,
 								    IMG_HANDLE				*hPrivData);
 	void					(*pfnUnregisterMemoryContext)(IMG_HANDLE hPrivData);
 
@@ -569,10 +594,41 @@ typedef struct _PVRSRV_DEVICE_NODE_
 	ATOMIC64_T iDmaUnmapTimes;
 
 	/* Only used for linux guest hwr */
+	POS_LOCK   hHwrLock;
+	IMG_UINT64 ui64LastHwrTime;
 	IMG_UINT32 ui32GuestInHwr;
+	IMG_UINT32 ui32GuestNeedSLR;
 
-	/* Only for mtgpu-next */
+	/* DDK 2.0 */
 	PMR *psYuvCscTable;
+	PMR *psDmKillPMR;
+	PMR *psPH1CdmPatchPMR;
+	POS_LOCK hVmContextListLock;
+	DLLIST_NODE sVmContextList;
+	ATOMIC_T i32IoctlBlockCount;
+
+	/* device states ddk2.0 */
+	IMG_UINT32 ui32DeviceState;
+	struct mutex *psDeviceStateLock;
+	struct wait_queue_head *FwStateMachineWQ;
+	struct task_struct *FwStateMachineThread;
+	struct mtgpu_fw_reboot_ctx *psFWRebootCtx;
+
+	/* HWPerf fw events polling on ddk2.0 */
+	struct task_struct *psFwPollingThread;
+	struct mutex *psFwPollingThreadLock;
+	IMG_BOOL bFwPollingThreadStop;
+
+	/* Only for legacy UMD with ddk 2.0 */
+	POS_LOCK hDEVMEMCtxLock;
+	DLLIST_NODE sDEVMEMCtxList;
+
+	/* for resource manager */
+	IMG_UINT64 ui64RmDevice;
+
+	/* for get last error*/
+	ATOMIC64_T i64DeviceLastError;
+	ATOMIC64_T i64DeviceCurrentError;
 } PVRSRV_DEVICE_NODE;
 
 /*

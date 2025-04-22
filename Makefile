@@ -64,8 +64,9 @@ mtgpu-objs += src/common/os-interface.o \
 	src/pvr/pvr_sync_ioctl_common.o \
 	src/pvr/pvr_sync_ioctl_drm.o \
 	src/pvr/trace_events.o \
-	src/pvr/pvr_dvfs_device.o \
 	objs/$(ARCH)/mtgpu_core.o
+
+mtgpu-objs += src/pvr/pvr_dvfs_device.o
 
 # build for audio
 mtgpu-objs += \

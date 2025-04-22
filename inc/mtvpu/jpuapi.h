@@ -14,10 +14,19 @@
 
 #include "jpuconfig.h"
 #include "vputypes.h"
+#include "vpuapi.h"
 
 /* _n: number, _s: significance */
 #define JPU_CEIL(_s, _n)        (((_n)+(_s-1))&~(_s-1))
 #define JPU_FLOOR(_s, _n)       (_n&~(_s-1))
+
+#define JPU_HW_TYPE_QY2         (0x43B6C)
+#define JPU_HW_TYPE_PH1         (0x34A32)
+
+/* Check if JPU hardware is QY2 or PH1 */
+#define JPU_IS_IN_QY2(coreIdx)  (JPU_GetHwId(coreIdx) == JPU_HW_TYPE_QY2)
+#define JPU_IS_IN_PH1(coreIdx)  (JPU_GetHwId(coreIdx) == JPU_HW_TYPE_PH1)
+
 //------------------------------------------------------------------------------
 // common struct and definition
 //------------------------------------------------------------------------------
@@ -343,6 +352,13 @@ Frame buffer endianess
     Uint32          rotation;              /**< It rotates decoded images in 0, 90, 180, or 270 degree */
     JpgMirrorDirection  mirror;            /**< <<jpuapi_h_JpgMirrorDirection>> */
     FrameFormat     outputFormat;          /**< <<jpuapi_h_FrameFormat>> */
+
+    union
+    {
+        void*        mmu_ctx;
+        Uint64       dummy;
+    } mmuCtx;
+    RootPageTableInfo rptInfo;
 } JpgDecOpenParam;
 
 /**
@@ -525,6 +541,13 @@ Frame buffer endianess
     BOOL            sliceInstMode;
     Uint32          rotation;            /**< It rotates source images in 0, 90, 180, or 270 degree before encoding. */
     Uint32          mirror;              /**< <<jpuapi_h_JpgMirrorDirection>> */
+
+    union
+    {
+        void*        mmu_ctx;
+        Uint64       dummy;
+    } mmuCtx;
+    RootPageTableInfo rptInfo;
 } JpgEncOpenParam;
 
 /**
@@ -607,6 +630,15 @@ extern "C" {
 */
 Uint32 JPU_IsInit(Int32 coreIdx);
 
+/**
+* @brief This function returns the HW type of JPU.
+* @return
+@verbatim
+@* 0: No revision value.
+@* Non-zero value: It is an revision value of hardware type.
+@endverbatim
+*/
+Uint32 JPU_GetHwId(Uint32 coreIdx);
 /**
 * @brief This function waits until an interrupt arises and returns the interrupt reason if it occurs.
 * @param handle [Input] An instance handle obtained from JPU_EncOpen() or JPU_DecOpen()

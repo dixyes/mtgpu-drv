@@ -99,6 +99,29 @@ typedef struct {
     int size;
 } jpu_getbit_context_t;
 
+/* MMU */
+typedef union {
+    Uint64 data;
+    struct {
+        Uint64 pcAddress:36;
+        Uint64 reserved1:12;
+        Uint64 pageSize:8;
+        Uint64 reserved2:7;
+        Uint64 invalid:1;
+    }u;
+} MMUPcBase;
+
+typedef union {
+    Uint64 data;
+    struct {
+        Uint64 contextID:7;
+        Uint64 reserved1:1;
+        Uint64 addrRange:1;
+        Uint64 allContexts:1;
+        Uint64 reserved2:54;
+    }u;
+} MMUCtrlInvalidate;
+
 #define init_get_bits(CTX, BUFFER, SIZE) JpuGbuInit(CTX, BUFFER, SIZE)
 #define show_bits(CTX, NUM) JpuGguShowBit(CTX, NUM)
 #define get_bits(CTX, NUM) JpuGbuGetBit(CTX, NUM)
@@ -198,6 +221,11 @@ typedef struct {
     JpgMirrorDirection mirrorIndex;                 /*!<< 0: none, 1: vertical mirror, 2: horizontal mirror, 3: both */
     Int32           thtc[THTC_LIST_CNT];            /*!<< Huffman table definition length and table class list : -1 indicates not exist. */
     Uint32          numHuffmanTable;
+
+    BOOL            mmuEnable;
+    Uint32          mmuCtxId;
+    PhysicalAddress rootPageTableStartAddr;
+    Uint32          rootPageTablePageMask;
 } JpgDecInfo;
 
 typedef struct {
@@ -258,6 +286,11 @@ typedef struct {
     Uint32  tiledModeEnable;
     Uint32  rotationIndex;          /*!<< 0: 0, 1: 90 CCW, 2: 180 CCW, 3: 270 CCW CCW(Counter Clockwise)*/
     Uint32  mirrorIndex;            /*!<< 0: none, 1: vertical mirror, 2: horizontal mirror, 3: both */
+
+    BOOL            mmuEnable;
+    Uint32          mmuCtxId;
+    PhysicalAddress rootPageTableStartAddr;
+    Uint32          rootPageTablePageMask;
 } JpgEncInfo;
 
 typedef struct JpgInst {
@@ -267,6 +300,7 @@ typedef struct JpgInst {
     Int32 loggingEnable;
     BOOL  sliceInstMode;
     BOOL  isDecoder;
+    Int32 support48Bit;
     union {
         JpgEncInfo encInfo;
         JpgDecInfo decInfo;
@@ -281,6 +315,9 @@ void FreeJpgInstance(JpgInst * pJpgInst);
 JpgRet CheckJpgInstValidity(JpgInst * pJpgInst);
 JpgRet CheckJpgDecOpenParam(JpgDecOpenParam * pop);
 
+JpgRet JpuMMUInit(JpgInst *pJpgInst, int instRegIndex);
+JpgRet JpuUpatePageTable(JpgInst *pJpgInst, int instRegIndex);
+
 int JpuGbuInit(jpu_getbit_context_t *ctx, BYTE *buffer, int size);
 int JpuGbuGetUsedBitCount(jpu_getbit_context_t *ctx);
 int JpuGbuGetLeftBitCount(jpu_getbit_context_t *ctx);
@@ -292,7 +329,6 @@ int JpgDecQMatTabSetUp(int coreIdx, JpgDecInfo *jpg, int instRegIndex);
 int JpgDecHuffTabSetUp(int coreIdx, JpgDecInfo *jpg, int instRegIndex);
 int JpgDecHuffTabSetUp_12b(int coreIdx, JpgDecInfo *jpg, int instRegIndex);
 void JpgDecGramSetup(int coreIdx, JpgDecInfo * jpg, int instRegIndex);
-
 
 JpgRet CheckJpgEncOpenParam(JpgEncOpenParam * pop, JPUCap* cap);
 JpgRet CheckJpgEncParam(JpgEncHandle handle, JpgEncParam * param);

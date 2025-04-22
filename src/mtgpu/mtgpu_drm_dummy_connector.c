@@ -238,7 +238,7 @@ static int dummy_connector_component_bind(struct device *dev,
 		DRM_ERROR("failed to init encoder\n");
 		goto err_encoder_init;
 	}
-	encoder->possible_crtcs = 0x1;
+	encoder->possible_crtcs = BIT(pdata->id);
 
 	connector = os_create_drm_connector();
 	if (!connector) {

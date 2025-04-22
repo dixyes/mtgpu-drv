@@ -105,6 +105,7 @@ typedef struct _PMR_DMA_BUF_DATA_ {
 
 PVRSRV_ERROR
 PhysmemCreateNewDmaBufBackedPMR(PHYS_HEAP *psHeap,
+                                PHYS_HEAP *psPMRPhysHeap,
                                 struct dma_buf_attachment *psAttachment,
                                 PFN_DESTROY_DMABUF_PMR pfnDestroy,
                                 PVRSRV_MEMALLOCFLAGS_T uiFlags,
@@ -112,8 +113,8 @@ PhysmemCreateNewDmaBufBackedPMR(PHYS_HEAP *psHeap,
                                 IMG_UINT32 ui32NumPhysChunks,
                                 IMG_UINT32 ui32NumVirtChunks,
                                 IMG_UINT32 *pui32MappingTable,
-		                        IMG_UINT32 ui32NameSize,
-		                        const IMG_CHAR pszName[DEVMEM_ANNOTATION_MAX_LEN],
+		                IMG_UINT32 ui32NameSize,
+		                const IMG_CHAR pszName[DEVMEM_ANNOTATION_MAX_LEN],
                                 PMR **ppsPMRPtr);
 
 struct dma_buf *

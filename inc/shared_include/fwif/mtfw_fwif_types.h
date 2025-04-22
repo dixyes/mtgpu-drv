@@ -59,19 +59,14 @@ typedef uint64_t fw_va;
  */
 typedef uint64_t gpu_pa;
 
-#define MTFW_FWIF_HEAD_MAGIC_VALUE 0x4d545448
-
-typedef struct
+typedef union
 {
-    union
+    struct
     {
-        struct
-        {
-            uint32_t version : 8;
-        } field;
-        uint32_t value;
-    } flags;
-    uint32_t magicValue; /* This value is MTFW_FWIF_HEAD_MAGIC_VALUE */
+        uint32_t version  : 12;
+        uint32_t crc      : 16;
+    } field;
+    uint32_t value;
 } MTFW_FWIF_HEAD;
 
 typedef struct

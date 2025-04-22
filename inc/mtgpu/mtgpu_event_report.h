@@ -3,41 +3,24 @@
 
 #include "os-interface.h"
 #include "mtgpu_module_param.h"
+#include "mtgpu_drv.h"
 
-#define EVENT_MSG_COUNT				50
-#define EVENT_MSG_BUFFER_SIZE			120
+#define EVENT_MSG_COUNT				(50)
+/*
+ * EVNET REPORT1.0 buffer size 120
+ * EVNET REPORT2.0 buffer size 248
+ */
+#define EVENT_MSG_BUFFER_SIZE			(248)
+#define EVENT_REPORT_GEN1			(0)
+#define EVENT_REPORT_GEN2			(1)
+#define XID_ADDTIONAL_BUFFER_SIZE		(128)
+#define UUID_STR_LENGTH				(64)
 
-#define ERROR_REPORT_EVENT_TYPE			1
+#define EVENT_REPORT_TYPE_XID			(0)
+#define EVENT_REPORT_TYPE_MAX			(1)
 
-#define ERROR_REPORT_BUFFER_SIZE		128
-#define ERROR_REPORT_BUFFER_SHFIT		7
-#define ERROR_REPORT_EXTERN_BUFFER_SIZE		64
-
-#define HW_ERROR_REPORT_BASE			1
-#define SW_ERROR_REPORT_BASE			20001
-
-#define HW_ERROR_REPORT_PCIE_BASE		HW_ERROR_REPORT_BASE
-#define HW_ERROR_REPORT_MTLINK_BASE		(HW_ERROR_REPORT_BASE + 1000)
-#define HW_ERROR_REPORT_META_BASE		(HW_ERROR_REPORT_BASE + 2000)
-#define HW_ERROR_REPORT_DM_BASE			(HW_ERROR_REPORT_BASE + 3000)
-#define HW_ERROR_REPORT_DDR_BASE		(HW_ERROR_REPORT_BASE + 4000)
-#define HW_ERROR_REPORT_DMA_BASE		(HW_ERROR_REPORT_BASE + 5000)
-#define HW_ERROR_REPORT_CE_BASE			(HW_ERROR_REPORT_BASE + 6000)
-#define HW_ERROR_REPORT_SMC_BASE		(HW_ERROR_REPORT_BASE + 7000)
-#define HW_ERROR_REPORT_FEC_BASE		(HW_ERROR_REPORT_BASE + 8000)
-#define HW_ERROR_REPORT_GPU_BASE		(HW_ERROR_REPORT_BASE + 9000)
-#define HW_ERROR_REPORT_VPU_BASE		(HW_ERROR_REPORT_BASE + 10000)
-#define HW_ERROR_REPORT_DISPLAY_BASE		(HW_ERROR_REPORT_BASE + 11000)
-#define HW_ERROR_REPORT_RESERVED_BASE		(HW_ERROR_REPORT_BASE + 12000)
-
-#define SW_ERROR_REPORT_MMU_BASE		SW_ERROR_REPORT_BASE
-#define SW_ERROR_REPORT_RESOURCE_BASE		(SW_ERROR_REPORT_BASE + 1000)
-#define SW_ERROR_REPORT_HANDLE_BASE		(SW_ERROR_REPORT_BASE + 2000)
-#define SW_ERROR_REPORT_MEM_BASE		(SW_ERROR_REPORT_BASE + 3000)
-#define SW_ERROR_REPORT_BUILD_OPTION_BASE	(SW_ERROR_REPORT_BASE + 4000)
-#define SW_ERROR_REPORT_GP_CMD_BASE		(SW_ERROR_REPORT_BASE + 5000)
-#define SW_ERROR_REPORT_KCCB_BASE		(SW_ERROR_REPORT_BASE + 6000)
-#define SW_ERROR_REPORT_CLEANUP_THREAD_BASE	(SW_ERROR_REPORT_BASE + 7000)
+#define ERROR_REPORT_INFO_GEN1			(0)
+#define XID_INFO_GEN2				(1)
 
 struct wait_queue_head;
 struct mtgpu_device;
@@ -45,93 +28,119 @@ struct mutex;
 struct mtgpu_event_report;
 struct file;
 struct list_head;
+struct _PVRSRV_DEVICE_NODE_;
+struct mempool_s;
 
-enum error_report_index {
-	ERROR_REPORT_NO_ERROR,
-	ERROR_REPORT_BAR0_ACCESS_FAILED,
-	ERROR_REPORT_BAR2_ACCESS_FAILED,
-	ERROR_REPORT_BAR2_UNSTABLE,
-	ERROR_REPORT_MTLINK_UP,
-	ERROR_REPORT_MTLINK_DOWN,
-	ERROR_REPORT_MTLINK_RECOVERY_FAILED,
-	ERROR_REPORT_NO_ACTIVE_CONNECTION,
-	ERROR_REPORT_DEVICE_STATUS_NOT_OK,
-	ERROR_REPORT_DEVICE_ERROR,
-	ERROR_REPORT_BOOT_FW_ERROR,
-	ERROR_REPORT_GUILTY_LOCKUP,
-	ERROR_REPORT_GUILTY_OVERRUN,
-	ERROR_REPORT_DDR_MEMFAULT,
-	ERROR_REPORT_MMU_FAULT,
-	ERROR_REPORT_FREE_ERROR,
-	ERROR_REPORT_LOOK_UP_HANDLE_ERROR,
-	ERROR_REPORT_RA_REQUEST_ALLOC_FAIL,
-	ERROR_REPORT_KMD_UMD_MISMATCH,
-	ERROR_REPORT_GP_CMD_TIMEOUT,
-	ERROR_REPORT_KCCB_TIMEOUT,
-	ERROR_REPORT_CLEANUP_ITEMS_DROPPED,
+typedef enum {
+	XID_MODULE_DRIVER = 0x0,
+	XID_MODULE_GPU,
+	XID_MODULE_MSS,
+	XID_MODULE_VPU,
+	XID_MODULE_DISP,
+	XID_MODULE_MTBIOS,
+	XID_MODULE_PCIE,
+	XID_MODULE_MTLINK,
+	XID_MODULE_NOC,
+	XID_MODULE_AUDIO,
+	XID_MODULE_DMA,
+	XID_MODULE_MAX,
+} mtgpu_xid_module;
+
+typedef enum {
+	DRIVER_XID_NO_ERROR			= 0x0,
+	DRIVER_XID_GPU_INIT_FAILED,
+	DRIVER_XID_MAX,
+} driver_xid_tag;
+
+typedef enum {
+	GPU_XID_NO_ERROR			= 0x0,
+	GPU_XID_OVERRUN,
+	GPU_XID_LOCKUP,
+	GPU_XID_PAGE_FAULT,
+	GPU_XID_FW_IPC_TIMEOUT,
+	GPU_XID_MP_EXCEPTION,
+	GPU_XID_HW_FAILED,
+	GPU_XID_MAX,
+} gpu_xid_tag;
+
+typedef enum {
+	MSS_XID_NO_ERROR			= 0x0,
+	MSS_XID_SBE_ECC_ERROR,
+	MSS_XID_UNCONTAINED_ECC_ERROR,
+	MSS_XID_CONTAINED_ECC_ERROR,
+	MSS_XID_ECC_COUNTER_OVERFLOW,
+	MSS_XID_NEW_PAGE_RETIRED,
+	MSS_XID_PAGE_RETIRED_FAILED,
+	MSS_XID_MAX,
+} mss_xid_tag;
+
+typedef enum {
+	MTBIOS_XID_NO_ERROR			= 0x0,
+	MTBIOS_XID_GPU_FAN_ABNORMAL,
+	MTBIOS_XID_GPU_BIOS_TRAP,
+	MTBIOS_XID_GPU_TEMP_TOO_HIGH,
+	MTBIOS_XID_GPU_SHUTDOWN,
+	MTBIOS_XID_MAX,
+} mtbios_xid_tag;
+
+typedef enum {
+	PCIE_XID_NO_ERROR			= 0x0,
+	PCIE_XID_GPU_FALLEN_OF_BUS,
+	PCIE_XID_MAX,
+} pcie_xid_tag;
+
+typedef enum {
+	MTLINK_XID_NO_ERROR			= 0x0,
+	MTLINK_XID_LINK_DOWN,
+	MTLINK_XID_LINK_UP,
+	MTLINK_XID_RECOVERY_FAILED,
+	MTLINK_XID_MAX,
+} mtlink_xid_tag;
+
+typedef enum {
+	DMA_XID_NO_ERROR			= 0x0,
+	DMA_XID_DMA_ERROR,
+	DMA_XID_MAX,
+} dma_xid_tag;
+
+#define IMPACT_SEVERITY_INVAL			(~0x0)
+typedef enum {
+	IMPACT_SEVERITY_NOTI			= 0x0,
+	IMPACT_SEVERITY_WARN			= 0x1,
+	IMPACT_SEVERITY_FATAL			= 0x2,
+	IMPACT_SEVERITY_MAX,
+} mtgpu_xid_impact_severity;
+
+#define IMPACT_SCOPE_INVAL			(~0x0)
+typedef enum {
+	IMPACT_SCOPE_PROCESS			= 0x0,
+	IMPACT_SCOPE_GPU			= 0x1,
+	IMPACT_SCOPE_HOST			= 0x2,
+	IMPACT_SCOPE_SYSTEM			= 0x3,
+	IMPACT_SCOPE_MAX,
+} mtgpu_xid_impact_scope;
+
+struct impact_severity_info {
+	mtgpu_xid_impact_severity impact_sev;
+	char *name;
 };
 
-enum error_report_tag {
-	MTGPU_ERROR_REPORT_NO_ERROR,
-
-	MTGPU_ERROR_REPORT_BAR0_ACCESS_FAILED = HW_ERROR_REPORT_PCIE_BASE,
-	MTGPU_ERROR_REPORT_BAR2_ACCESS_FAILED,
-	MTGPU_ERROR_REPORT_BAR2_UNSTABLE,
-
-	MTGPU_ERROR_REPORT_MTLINK_UP = HW_ERROR_REPORT_MTLINK_BASE,
-	MTGPU_ERROR_REPORT_MTLINK_DOWN,
-	MTGPU_ERROR_REPORT_MTLINK_RECOVERY_FAILED,
-
-	MTGPU_ERROR_REPORT_NO_ACTIVE_CONNECTION = HW_ERROR_REPORT_META_BASE,
-	MTGPU_ERROR_REPORT_DEVICE_STATUS_NOT_OK,
-	MTGPU_ERROR_REPORT_DEVICE_ERROR,
-	MTGPU_ERROR_REPORT_BOOT_FW_ERROR,
-
-	MTGPU_ERROR_REPORT_GUILTY_LOCKUP = HW_ERROR_REPORT_DM_BASE,
-	MTGPU_ERROR_REPORT_GUILTY_OVERRUN,
-
-	MTGPU_ERROR_REPORT_DDR_MEMFAULT = HW_ERROR_REPORT_DDR_BASE,
-
-	MTGPU_ERROR_REPORT_MMU_FAULT = SW_ERROR_REPORT_MMU_BASE,
-
-	MTGPU_ERROR_REPORT_FREE_ERROR = SW_ERROR_REPORT_RESOURCE_BASE,
-
-	MTGPU_ERROR_REPORT_LOOK_UP_HANDLE_ERROR = SW_ERROR_REPORT_HANDLE_BASE,
-
-	MTGPU_ERROR_REPORT_RA_REQUEST_ALLOC_FAIL = SW_ERROR_REPORT_MEM_BASE,
-
-	MTGPU_ERROR_REPORT_KMD_UMD_MISMATCH = SW_ERROR_REPORT_BUILD_OPTION_BASE,
-
-	MTGPU_ERROR_REPORT_GP_CMD_TIMEOUT = SW_ERROR_REPORT_GP_CMD_BASE,
-
-	MTGPU_ERROR_REPORT_KCCB_TIMEOUT = SW_ERROR_REPORT_KCCB_BASE,
-
-	MTGPU_ERROR_REPORT_CLEANUP_ITEMS_DROPPED = SW_ERROR_REPORT_CLEANUP_THREAD_BASE,
+struct impact_scope_info {
+	mtgpu_xid_impact_scope impact_sev;
+	char *name;
 };
 
-enum mtgpu_module_id {
-	MTGPU_MODULE_NULL,
-	MTGPU_MODULE_PCIE,
-	MTGPU_MODULE_MTLINK,
-	MTGPU_MODULE_META,
-	MTGPU_MODULE_DM,
-	MTGPU_MODULE_DDR,
-	MTGPU_MODULE_DMA,
-	MTGPU_MODULE_CE,
-	MTGPU_MODULE_SMC,
-	MTGPU_MODULE_FEC,
-	MTGPU_MODULE_GPU,
-	MTGPU_MODULE_VPU,
-	MTGPU_MODULE_DISPLAY,
+struct mtgpu_xid_list {
+	u32 xid_id;
+	char *xid_name;
+	mtgpu_xid_impact_severity impact_sev;
+	mtgpu_xid_impact_scope impact_scp;
+};
 
-	MTGPU_MODULE_MMU,
-	MTGPU_MODULE_RESOURCE,
-	MTGPU_MODULE_HANDLE,
-	MTGPU_MODULE_MEM,
-	MTGPU_MODULE_BUILD_OPTION,
-	MTGPU_MODULE_GP_CMD,
-	MTGPU_MODULE_KCCB,
-	MTGPU_MODULE_CLEANUP_THREAD,
+struct mtgpu_xid_module_list {
+	mtgpu_xid_module xid_module;
+	struct mtgpu_xid_list *xid_list;
+	u32 xid_list_size;
 };
 
 struct mtgpu_file_node {
@@ -139,54 +148,93 @@ struct mtgpu_file_node {
 	struct list_head node;
 };
 
-/* Records the relationship between the specified module_id, error_report_tag,
- * and the specified module name
- */
-struct mtgpu_event_module {
-	u32 error_report_tag;
-	char *module_type;
-	u32 module_id;
+struct mtgpu_xid_file_header {
+	char tag[4];            /* tag[0] = 'X', tag[1] = 'I', tag[2] = 'D' */
+	u8 rsvd : 7;            /* Must be 0 */
+	u8 order : 1;           /* Byte order(endianness): 0 - little endian, 1 - big endianness */
+	u16 file_vserion;       /* The version of this header */
+	u16 xid_version;        /* The version of xid record stored in this file, must be equal to the version in each record */
+	u32 rsvd2;              /* Must be 0 */
+	u8 uuid[DEV_UUID_LEN];            /* uuid */
 };
 
-/* TLV - Type Length Value */
+/*
+ * TLV - Type Length Value
+ * XID1.0 mtgpu_event size 128
+ * XID2.0 mtgpu_event size 256
+ */
 struct mtgpu_event {
-	u32 type;
+	u32 type;	/*
+			 * type[24:32]:event version(uint8_t)
+			 * type[0:23]: event type(bit_map)
+			 *  type[0]:TypeNone
+			 *  type[1]:TypeXID
+			 */
 	u32 length;
 	char msg[EVENT_MSG_BUFFER_SIZE];
 };
 
-struct mtgpu_error_report_info {
-	/* Version of the error report structure */
-	u32 vserion;
-	/* Unique identifier representing the error (error_report_tag) */
-	u32 error_id;
-	/* Domain, Bus, Device, Function (SBDF) information */
-	u64 sbdf;
-	/* Timestamp when the error occurred */
-	u64 timestamp;
-	/* Identifier for the module associated with the error */
-	u32 module_id;
-	/* Reserved space for future use */
-	u64 resv[2];
+struct mtgpu_xid_info {
+	u16 version;	/* Version of the error report structure */
+	u16 rsvd;
+	u32 xid_id;	/*
+			 * xid_id [24:32]: xid_module
+			 * xid_id [0:23]: Unique ID within the module scope
+			 */
+	u32 scope : 3;	 /*
+			  * Impact scope
+			  *  0:Process
+			  *  1:GPU
+			  *  2:Host
+			  *  3:System
+			  */
+	u32 severity : 3;/*
+			  * Impact severity
+			  *  0:Notify
+			  *  1:Warning
+			  *  2:Fatal
+			  */
+	u32 rsvd2 : 26;
+	u64 timestamp;	/* Timestamp when the error occurred */
+	u64 sbdf;	/* Domain, Bus, Device, Function (SBDF) information */
+	u64 pid;	/* Process ID */
 	/* External buffer for additional error report information */
-	char external[ERROR_REPORT_EXTERN_BUFFER_SIZE];
+	char addtional[XID_ADDTIONAL_BUFFER_SIZE];
+};
+
+struct mtgpu_xid_record {
+	u8 uuid[DEV_UUID_LEN];    /* uuid */
+	struct mtgpu_xid_info xid_info;
 };
 
 typedef void (*event_notify)(struct mtgpu_event_report *event_report, int type);
 
+struct mtgpu_event_info {
+	struct mtgpu_event_report *event_report;
+	struct work_struct *work;
+	int msg_size;
+	int event_type;
+	union mtgpu_event_record {
+		struct mtgpu_xid_record xid_record;
+	} event_record;
+};
+
 struct mtgpu_event_report {
-	struct mtgpu_device *mtdev;
-	/* the wait_queue_head for the vps_poll */
-	struct wait_queue_head *event_msg_wait_head;
-	/* all types of the event msg */
-	struct mtgpu_event *event_msgs;
-	/* the index represents the next index of mtgpu_event to be written */
-	atomic_t index;
-	struct mtgpu_event_report *next;
-	event_notify event_notify;
-	/* Chain link to access all files for this device event_report */
-	struct list_head file_list;
-	struct mutex *file_lock;
+	struct mtgpu_device	*mtdev;
+	struct wait_queue_head	*event_msg_wait_head;	/* the wait_queue_head for the vps_poll */
+	struct workqueue_struct *event_msg_workqueue;	/*  */
+	struct mtgpu_event	*event_msgs;		/* all types of the event msg */
+	atomic_t		index;			/* the index represents
+							 * the next index of mtgpu_event to be written
+							 */
+	struct mtgpu_event_report *next;		/* Chain link to access all files for this device event_report */
+	event_notify		event_notify;
+	struct list_head	file_list;		/* Link all file that read the event_report */
+	struct mutex		*file_lock;
+	struct mempool_s	*event_info_pool;;
+	char			*uuid_str;
+	char			uuid[DEV_UUID_LEN];
+	struct file		*record_file[EVENT_REPORT_TYPE_MAX];
 };
 
 /**************************************************************************/ /*!
@@ -198,39 +246,61 @@ struct mtgpu_event_report {
 struct mtgpu_event_report *find_event_report(struct device *dev);
 
 /**************************************************************************/ /*!
-@Function       mtgpu_error_record
+@Function       mtgpu_event_report_xid_record
 @Description    Logs the specified error message to the buffer of the associated device
 @Input          dev     pci device
-@Input          error_report_index   related error_report_index
+@Input          module_id   xid module id
+@Input          xid_id   internal xid_id
 @Input		msg	The message format string
 @Input		size	The message buffer size
 @Return         Error status
  */ /**************************************************************************/
-int mtgpu_error_record(struct device *dev, const int error_report_index,
-		       const char *msg, int size);
+int mtgpu_event_report_xid_record(struct device *dev,
+				  const mtgpu_xid_module module_id,
+				  const u32 xid_id,
+				  const char *msg, int size);
 
 /**************************************************************************/ /*!
-@Function       mtgpu_report_msg
+@Function       mtgpu_event_report_msg
 @Description    fill the event messages with a report of the sepcified type
 		and wake up the process of sleep.
 @Input          event_report	mtgpu_event_report of specified PCI device
 @Input          msg	report buffer with the specified type
 @Input          size	buffer size
+@Input          version	event type version
 @Input          type	the specified type
 @Return         None
  */ /**************************************************************************/
-void mtgpu_report_msg(struct mtgpu_event_report *event_report, void *buffer, u32 size, u32 type);
+void mtgpu_event_report_msg(struct mtgpu_event_report *event_report,
+			    void *buffer, u32 size,
+			    u32 version, u32 type);
 
 /**************************************************************************/ /*!
-@Function       mtgpu_all_dev_report_msg
+@Function       mtgpu_event_report_msg_all_dev
 @Description    fill the event messages with a report of the sepcified type
 		and wake up the process of sleep.
 @Input          msg	report buffer with the specified type
 @Input          size	buffer size
+@Input          version	event type version
 @Input          type	the specified type
 @Return         None
  */ /**************************************************************************/
-void mtgpu_all_dev_report_msg(void *msg, u32 size, u32 type);
+void mtgpu_event_report_msg_all_dev(void *msg, u32 size, u32 version, u32 type);
+
+/**************************************************************************/ /*!
+@Function       mtgpu_event_report_persist_init
+@Description    init fd about persist.
+@Input          dev_node
+@Return         Error status
+ */ /**************************************************************************/
+int mtgpu_event_report_persist_init(struct _PVRSRV_DEVICE_NODE_ *dev_node);
+
+/**************************************************************************/ /*!
+@Function       mtgpu_event_report_persist_deinit
+@Description    deinit fd about persist.
+@Input          dev_node
+ */ /**************************************************************************/
+void mtgpu_event_report_persist_deinit(struct _PVRSRV_DEVICE_NODE_ *dev_node);
 
 /**************************************************************************/ /*!
 @Function       mtgpu_event_report_init
@@ -263,17 +333,24 @@ int mtgpu_event_report_global_init(void);
 void mtgpu_event_report_global_deinit(void);
 
 #ifdef NO_HARDWARE
-#define MTGPU_ERROR_REPORT(dev, error_report_index, fmt, ...)
+#define MTGPU_XID_IMPL(dev, module_id, xid_id, fmt, ...)
 #else
-#define MTGPU_ERROR_REPORT(dev, error_report_index, fmt, ...)					\
-do {												\
-	char buffer[ERROR_REPORT_EXTERN_BUFFER_SIZE];						\
-	int size;										\
-	if (enable_event_report) {								\
-		size = os_snprintf(buffer, ERROR_REPORT_EXTERN_BUFFER_SIZE, fmt, ##__VA_ARGS__);\
-		mtgpu_error_record(dev, error_report_index, buffer, size);			\
-	}											\
+#define MTGPU_XID_IMPL(dev, module_id, xid_id, fmt, ...)						\
+do {													\
+	char buffer[XID_ADDTIONAL_BUFFER_SIZE];								\
+	int size;											\
+	if (enable_event_report) {									\
+		if (fmt) {										\
+			size = os_snprintf(buffer, XID_ADDTIONAL_BUFFER_SIZE, fmt, ##__VA_ARGS__);	\
+		} else {										\
+			size = os_snprintf(buffer, XID_ADDTIONAL_BUFFER_SIZE, "\n");			\
+		}											\
+		mtgpu_event_report_xid_record(dev, module_id, xid_id, buffer, size);			\
+	}												\
 } while (0)
 #endif
+
+#define MTGPU_XID_REPORT(dev, module_id, xid_id, ...)						\
+	MTGPU_XID_IMPL(dev, module_id, xid_id, __VA_ARGS__)
 
 #endif

@@ -13,7 +13,8 @@
 struct device_info {
 	u32 ipc_version;
 	u16 vendor_id, device_id;
-	u64 reserved;
+	u16 subvendor_id, subsystem_id;
+	u32 reserved;
 };
 
 struct ipc_msg_interface {
@@ -84,7 +85,7 @@ struct memory_address {
 	_IOR('M', (MISC_HANDLE_MTLINK | MISC_HANDLE_MTLINK_CAPABILITY), \
 	     struct mtlink_capability_query)
 #define MTGPU_MISC_MTLINK_STATE_GET \
-	_IOR('M', (MISC_HANDLE_MTLINK | MISC_HANDLE_MTLINK_STATE), struct mtlink_enable_state)
+	_IOR('M', (MISC_HANDLE_MTLINK | MISC_HANDLE_MTLINK_STATE), struct mtlink_link_state)
 #define MTGPU_MISC_MTLINK_COUNT_GET \
 	_IOR('M', (MISC_HANDLE_MTLINK | MISC_HANDLE_MTLINK_COUNT), struct mtlink_counter)
 #define MTGPU_MISC_MTLINK_COUNT_RESET \
@@ -122,11 +123,16 @@ int mtgpu_register_misc_parent_device(struct mtgpu_device *mtdev);
 int mtgpu_register_misc_instance_devices(struct mtgpu_device *mtdev);
 void mtgpu_unregister_misc_instance_devices(struct mtgpu_device *mtdev);
 void mtgpu_unregister_misc_parent_device(struct mtgpu_device *mtdev);
+int mtgpu_get_misc_user_cnt(struct mtgpu_device *mtdev);
 int mtgpu_misc_init(void);
 void mtgpu_misc_deinit(void);
 
 int mtgpu_reset_event_msgs(struct mtgpu_misc_info *misc_info);
-int mtgpu_reset_gpu(struct mtgpu_misc_info *misc_info, PROCESS_DRIVER_STATS_OS_TYPE_INFO_TOTAL *msg);
+int mtgpu_reset_gpu(struct mtgpu_misc_info *misc_info,
+		    PROCESS_DRIVER_STATS_OS_TYPE_INFO_TOTAL *msg);
 int mtgpu_clear_musa_status(struct mtgpu_misc_info *misc_info, u64 bitmask);
+int mtgpu_clear_connection_res(PVRSRV_DEVICE_NODE *psDeviceNode);
+int mtgpu_get_misc_instance_id(struct mtgpu_misc_info *misc_info);
+int mtgpu_kill_process(u32 pid);
 
 #endif /* __MTGPU_MISC_H__ */

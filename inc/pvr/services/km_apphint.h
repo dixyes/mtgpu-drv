@@ -83,26 +83,30 @@ static const struct apphint_lookup htb_loggroup_tbl[] = {
 };
 
 static const struct apphint_lookup mtfw_loggroup_tbl[] = {
-	{ "null", 1 << MTFW_GROUP_NULL },
-	{ "err",  1 << MTFW_GROUP_ERR },
-	{ "dbg",  1 << MTFW_GROUP_DBG },
-	{ "func", 1 << MTFW_GROUP_FUNC },
-	{ "reg",  1 << MTFW_GROUP_REG },
-	{ "mmu",  1 << MTFW_GROUP_MMU },
-	{ "int",  1 << MTFW_GROUP_INT },
-	{ "core", 1 << MTFW_GROUP_CORE },
-	{ "drv",  1 << MTFW_GROUP_DRV },
-	{ "sch",  1 << MTFW_GROUP_SCH },
-	{ "node", 1 << MTFW_GROUP_NODE },
-	{ "work", 1 << MTFW_GROUP_WORK },
-	{ "gpu",  1 << MTFW_GROUP_GPU },
-	{ "perf", 1 << MTFW_GROUP_PERF },
-	{ "pfm",  1 << MTFW_GROUP_PFM },
-	{ "pow",  1 << MTFW_GROUP_POW },
-	{ "csw",  1 << MTFW_GROUP_CSW },
-	{ "ccb",  1 << MTFW_GROUP_CCB },
-	{ "ctx",  1 << MTFW_GROUP_CTX },
-	{ "subm", 1 << MTFW_GROUP_SUBM }
+	{ "null",  1 << MTFW_GROUP_NULL },
+	{ "err",   1 << MTFW_GROUP_ERR },
+	{ "dbg",   1 << MTFW_GROUP_DBG },
+	{ "func",  1 << MTFW_GROUP_FUNC },
+	{ "reg",   1 << MTFW_GROUP_REG },
+	{ "mmu",   1 << MTFW_GROUP_MMU },
+	{ "int",   1 << MTFW_GROUP_INT },
+	{ "core",  1 << MTFW_GROUP_CORE },
+	{ "drv",   1 << MTFW_GROUP_DRV },
+	{ "sch",   1 << MTFW_GROUP_SCH },
+	{ "node",  1 << MTFW_GROUP_NODE },
+	{ "work",  1 << MTFW_GROUP_WORK },
+	{ "gpu",   1 << MTFW_GROUP_GPU },
+	{ "perf",  1 << MTFW_GROUP_PERF },
+	{ "pfm",   1 << MTFW_GROUP_PFM },
+	{ "pow",   1 << MTFW_GROUP_POW },
+	{ "csw",   1 << MTFW_GROUP_CSW },
+	{ "ccb",   1 << MTFW_GROUP_CCB },
+	{ "ctx",   1 << MTFW_GROUP_CTX },
+	{ "subm",  1 << MTFW_GROUP_SUBM },
+	{ "fsch",  1 << MTFW_GROUP_FSCH },
+	{ "main",  1 << MTFW_GROUP_MAIN },
+	{ "vgpu",  1 << MTFW_GROUP_VGPU },
+	{ "qsemp", 1 << MTFW_GROUP_QSEMP }
 };
 
 static const struct apphint_lookup htb_opmode_tbl[] = {
@@ -300,6 +304,8 @@ struct apphint_state
 	struct apphint_action val[APPHINT_ID_MAX + ((APPHINT_DEVICES_MAX-1)*APPHINT_DEBUGINFO_DEVICE_ID_MAX)];
 };
 
+struct kernel_param;
+
 int pvr_apphint_init(void);
 void pvr_apphint_deinit(void);
 int apphint_kparam_set(const char *val, const struct kernel_param *kp);
@@ -307,6 +313,9 @@ int apphint_kparam_get(char *buffer, const struct kernel_param *kp);
 int pvr_apphint_device_register(PVRSRV_DEVICE_NODE *device);
 void pvr_apphint_device_unregister(PVRSRV_DEVICE_NODE *device);
 void pvr_apphint_dump_state(PVRSRV_DEVICE_NODE *device);
+void mtgpu_apphint_dump_state(PVRSRV_DEVICE_NODE *device,
+			      DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+			      void *pvDumpDebugFile);
 
 void pvr_apphint_get_bool_from_fwif_config(PVRSRV_DEVICE_NODE *device, IMG_UINT32 ui32Flag, IMG_BOOL *pVal);
 int pvr_apphint_get_uint64(PVRSRV_DEVICE_NODE *device, APPHINT_ID ue, IMG_UINT64 *pVal);

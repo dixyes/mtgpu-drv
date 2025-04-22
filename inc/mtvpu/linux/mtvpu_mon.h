@@ -10,6 +10,7 @@ struct timer_list;
 extern struct mt_chip *chip;
 
 struct mt_inst_info {
+	u32 api;
 	u32 pid;           /* Process Id, 0 represents an idle session */
 	u32 hori_res;      /* Horizontal Resolution (pixel) */
 	u32 vert_res;      /* Vertical Resolution (pixel) */
@@ -19,6 +20,8 @@ struct mt_inst_info {
 	CodStd stream_type;/* Type of stream, e.g. H.265/AV1/etc. */
 	u64 vcore_mem_base;/* Each instance has a 4G group base for some instance memory */
 	u64 used_vcpu_size;/* total vcpu size that this instance used, exact for VDI */
+	u32 guest_rate;    /* mtvpu utilization rate */
+	u64 host_handle;   /* guest dec/enc instance index */
 };
 
 struct mt_inst_extra {
@@ -30,8 +33,11 @@ struct mt_inst_extra {
 	u32 mem_alloc;
 	u32 mem_free;
 	u64 last_frame_cycle;
+	u32 vm_id;		/* means the vm that this instance belongs to */
+	u32 is_vsync_related;
 };
 
-void vpu_monitor(struct timer_list *timer_list);
+void vpu_util_monitor(struct timer_list *timer_list);
+void vpu_stat_monitor(struct timer_list *timer_list);
 u32 vpu_query_core_utilize(struct mt_chip *chip, u32 core_idx);
 #endif

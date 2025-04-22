@@ -376,14 +376,18 @@ void mtsnd_handle_pcm(struct mtsnd_pcm *pcm)
 	struct mtsnd_chip *chip;
 	u32 handle;
 
-	if (!pcm)
+	if (!pcm) {
 		pr_err("mtsnd irq pcm NULL");
+		return;
+	}
 
 	pcm_idx = pcm->index;
 	chip = (struct mtsnd_chip *)pcm->private_data;
 
-	if (!chip)
+	if (!chip) {
 		pr_err("mtsnd irq chip NULL, pcm:%llx", (u64)pcm);
+		return;
+	}
 
 	handle = mtsnd_snd_irq_handle(chip, pcm_idx);
 	if (!chip->pcm[pcm_idx].pcm_running)

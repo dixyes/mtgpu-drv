@@ -221,7 +221,7 @@ PVRSRV_ERROR PVRSRVGetMultiCoreInfoKM(CONNECTION_DATA *psConnection,
 PVRSRV_ERROR PVRSRVFindProcessMemStatsKM(IMG_PID pid,
 					 IMG_UINT32 ui32ArrSize,
 					 IMG_BOOL bAllProcessStats,
-					 IMG_UINT32 *ui32MemoryStats,
+					 IMG_UINT64 *ui64MemoryStats,
 					 PVRSRV_DEVICE_NODE *psDeviceNode);
 
 static INLINE

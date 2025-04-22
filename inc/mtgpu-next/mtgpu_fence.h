@@ -30,7 +30,7 @@ struct _HASH_TABLE_;
 #define MTGPU_FENCE_TRACE(f, fmt, args...) \
 	do {								\
 		struct dma_fence *__ff = (f);				\
-		os_pr_err("f %llu#%llu: " fmt,				\
+		os_pr_err("f %llu_%llu: " fmt,				\
 			  os_get_dma_fence_context(__ff),		\
 			  os_get_dma_fence_seqno(__ff),			\
 			  ##args);					\

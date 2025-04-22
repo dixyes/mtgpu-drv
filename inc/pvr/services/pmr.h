@@ -103,6 +103,44 @@ typedef struct _PMR_PAGELIST_ PMR_PAGELIST;
 
 struct _PVRSRV_DEVICE_NODE_;
 
+typedef struct _PVRSRV_DEVICE_NODE_ PVRSRV_DEVICE_NODE;
+
+/**
+ * struct PMR_PA_INFO the struct for obtaining the physical address of the gpu
+ * @psDevNode:			a node representing the gpu card.
+ * @ui32Log2PageSize:		the gpu page size expressed in base 2.
+ * @ui32NumOfPages:		requested number of gpu physical pages.
+ * @uiLogicalOffset:		the logical offset of the requested data.
+ * @psDevPAddr:			store the physical address of the device in the form of an array.
+ * @psDmaAddr:			save the temporary data in the process of obtaining the physical address,
+ *				which may store the iova address or the cpu physical address.
+ * @pbValid:			save whether the element value corresponding to the
+ *				index of the device address (psDevPAddr) is valid.
+ * @uiMappingFlags:		mapping flag is used to control how it's mapped.
+ * @ui32MapPageStart:		the starting index of mapping pages.
+ * @ui32MapPageCount:		total number of pages to be mapped for this time.
+ * @ui32InterleaveStep:		An interleaved period represents the number of mapping pages.
+ * @psInterleaveRatio:		a struct represents the interleave ratio.
+ * This structure holds the information required to export device physical address. Used
+ * with PMR_CreatePAInfo() only.
+ */
+struct PMR_PA_INFO
+{
+	PVRSRV_DEVICE_NODE *psDevNode;
+	IMG_UINT32 ui32Log2PageSize;
+	IMG_UINT32 ui32NumOfPages;
+	IMG_DEVMEM_OFFSET_T uiLogicalOffset;
+	IMG_DEV_PHYADDR *psDevPAddr;
+	IMG_CPU_PHYADDR *psDmaAddr;
+	IMG_BOOL *pbValid;
+	IMG_UINT32 *pui32ConPageNumArray;
+	IMG_UINT64 uiMappingFlags;
+	IMG_UINT32 ui32MapPageStart;
+	IMG_UINT32 ui32MapPageCount;
+	IMG_UINT32 ui32InterleaveStep;
+	DEVMEM_INTERLEAVE_RATIO *psInterleaveRatio;
+};
+
 typedef struct PMR_PA_INFO PMR_PA_INFO;
 
 /*
@@ -279,6 +317,20 @@ PVRSRV_ERROR PMRUnpinPMR(PMR *psPMR, IMG_BOOL bDevMapped);
                                 A different error otherwise.
 */ /**************************************************************************/
 PVRSRV_ERROR PMRPinPMR(PMR *psPMR);
+
+#if !defined(NO_HARDWARE)
+PVRSRV_ERROR PMRAddMetaData(struct _CONNECTION_DATA_ *psConnection,
+			    IMG_HANDLE hPMR,
+			    IMG_UINT64 ui64MetaDataId,
+			    IMG_BYTE *pui8MetaData,
+			    IMG_UINT32 ui32DataSize);
+PVRSRV_ERROR
+GEMAddMetaData(IMG_UINT32 ui32CardFd,
+	       IMG_UINT32 ui32GemHandle,
+	       IMG_UINT64 ui64MetaDataId,
+	       IMG_BYTE *pui8MetaData,
+	       IMG_UINT32 ui32DataSize);
+#endif
 
 /*
  * PhysmemPMRExport()
@@ -681,6 +733,9 @@ PMRGetAlignShift(PMR *psPMR,
 PVRSRV_ERROR
 PMRGetKey(PMR *psPMR,
           IMG_UINT64 *uiKey);
+
+PVRSRV_ERROR
+PMRGetAnnotation(PMR *psPMR, IMG_CHAR *szAnnotation);
 
 /*
  * PMR_ChangeSparseMem()
@@ -1107,5 +1162,17 @@ IMG_BOOL PMR_NeedUnmapForPAInfo(PMR_PA_INFO *psPMRPAInfo);
 
 void *PMRGetDmaBuf(PMR *psPMR);
 void PMRSetDmaBuf(PMR *psPMR, void *pvDmabuf);
+
+void *PMRGetMetaDataList(PMR *psPMR);
+void PMRSetMetaDataList(PMR *psPMR, void *psMetadataList);
+
+#if (RGX_NUM_OS_SUPPORTED > 1)
+PVRSRV_ERROR mtgpu_vgpu_host_alloc(struct device *dev, IMG_UINT32 group_id,
+				   size_t size, dma_addr_t *dev_addr, void **ppsPMR);
+PVRSRV_ERROR mtgpu_vgpu_host_free(PMR *psPMR);
+#endif
+
+void PMR_SetRmMemory(PMR *psPMR, uint64_t ui64RmMemory);
+uint64_t PMR_GetRmMemory(const PMR *psPMR);
 
 #endif /* #ifdef SRVSRV_PMR_H */

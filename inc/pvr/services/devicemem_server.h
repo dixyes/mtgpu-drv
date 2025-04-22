@@ -53,6 +53,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pmr.h"
 
 typedef struct _DEVMEMINT_CTX_ DEVMEMINT_CTX;
+typedef struct _MEM_CTX_ MEM_CTX;
 typedef struct _DEVMEMINT_CTX_EXPORT_ DEVMEMINT_CTX_EXPORT;
 typedef struct _DEVMEMINT_HEAP_ DEVMEMINT_HEAP;
 typedef struct _DEVMEMINT_HEAP2_ DEVMEMINT_HEAP2;
@@ -190,7 +191,6 @@ void DevmemIntFreeDefBackingPage(PVRSRV_DEVICE_NODE *psDevNode,
                                    PVRSRV_DEF_PAGE *psDefPage,
                                    IMG_CHAR *pcDefPageName);
 
-
 /*
  * DevmemIntCtxCreate()
  *
@@ -216,13 +216,13 @@ void DevmemIntFreeDefBackingPage(PVRSRV_DEVICE_NODE *psDevNode,
  */
 PVRSRV_ERROR
 DevmemIntCtxCreate(CONNECTION_DATA *psConnection,
-                   PVRSRV_DEVICE_NODE *psDeviceNode,
+		   PVRSRV_DEVICE_NODE *psDeviceNode,
                    /* devnode / perproc etc */
-                   IMG_BOOL bKernelMemoryCtx,
-                   IMG_BOOL bVideoMemoryCtx,
-                   DEVMEMINT_CTX **ppsDevmemCtxPtr,
-                   IMG_HANDLE *hPrivData,
-                   IMG_UINT32 *pui32CPUCacheLineSize);
+		   IMG_BOOL bKernelMemoryCtx,
+		   IMG_BOOL bLegacyMemoryCtx,
+		   DEVMEMINT_CTX **ppsDevmemCtxPtr,
+		   IMG_HANDLE *hPrivData,
+		   IMG_UINT32 *pui32CPUCacheLineSize);
 /*
  * DevmemIntCtxDestroy()
  *
@@ -230,6 +230,12 @@ DevmemIntCtxCreate(CONNECTION_DATA *psConnection,
  */
 PVRSRV_ERROR
 DevmemIntCtxDestroy(DEVMEMINT_CTX *psDevmemCtx);
+
+/*
+ * DevmemIntCtxRelease()
+ */
+PVRSRV_ERROR
+DevmemIntCtxRelease(DEVMEMINT_CTX *psDevmemCtx);
 
 /*
  * DevmemIntHeapCreate2()

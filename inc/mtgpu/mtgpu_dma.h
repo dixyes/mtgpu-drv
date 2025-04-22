@@ -14,6 +14,8 @@
 #define DMA_WRITE 0
 #define DMA_READ 1
 
+#define MTGPU_DMA_DEFAULT_INSTANCE  0x1
+
 #define MTGPU_DMA_DIR_MASK	0x1
 #define MTGPU_DMA_DIR_WR	0
 #define MTGPU_DMA_DIR_RD	0x1
@@ -62,7 +64,7 @@ struct dma_capability {
 	bool is_support_scatter;
 	u32 size_alignment;
 	u32 offset_alignment;
-	u32 bus_width;
+	bool is_ob_through_noc;
 	u32 addr_alignment;
 	bool is_force_addr_aligned;
 	bool is_force_size_aligned;
@@ -85,7 +87,8 @@ struct mtgpu_dma_ops {
 	int (*transmit)(void *dma_info, struct mtgpu_dma_xfer_desc *descs,
 			int desc_cnt, int xfer_type, int type, int chan);
 	int (*acquire_channel)(struct mtgpu_device *mtdev, int dir, u32 instance_id);
-	int (*release_channel)(struct mtgpu_device *mtdev, int dir, int chan);
+	int (*release_channel)(struct mtgpu_device *mtdev, int dir,
+			       int chan, u32 instance_id_input);
 	void (*resume)(struct mtgpu_device *mtdev);
 	int (*get_capabilities)(u32 type, struct dma_capability *dma_cap);
 	void (*exit)(struct mtgpu_device *mtdev);
@@ -111,8 +114,15 @@ int mtgpu_dma_transfer_sparse_user(struct device *drm_dev,
 
 void mtgpu_dma_chan_free(struct device *dev, void *chandata);
 
+int mtgpu_dma_s2s_test(struct mtgpu_device *mtdev, unsigned long size);
+int mtgpu_dma_host_and_device_test(struct mtgpu_device *mtdev,
+				   unsigned long size,
+				   bool host_to_dev);
+
 struct dma_chan *mtgpu_dma_chan(struct device *dev, char *name);
 int mtgpu_dma_init(struct mtgpu_device *mtdev);
 void mtgpu_dma_exit(struct mtgpu_device *mtdev);
+
+void mtgpu_vdma_irq_handler(struct mtgpu_device *mtdev);
 
 #endif

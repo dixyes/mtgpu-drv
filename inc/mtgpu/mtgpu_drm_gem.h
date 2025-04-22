@@ -40,4 +40,9 @@ dma_addr_t mtgpu_fb_get_dma_addr(struct drm_framebuffer *fb,
 				 struct drm_plane_state *state,
 				 u32 plane);
 
+#if defined(OS_STRUCT_DRM_DRIVER_HAS_GEM_PRIME_MMAP)
+int mtgpu_gem_prime_mmap(struct drm_gem_object *obj,
+			 struct vm_area_struct *vma);
+#endif
+
 #endif /* __MTGPU_DRM_GEM_H__ */

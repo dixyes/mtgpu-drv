@@ -242,7 +242,9 @@ RA_Create_With_Span(IMG_CHAR *name,
 RA_ARENA *
 RA_Create_With_SegmentInfo(IMG_CHAR *name,
 			   SEGMENT_INFO *segmentInfo,
-			   RA_LOG2QUANTUM_T uLog2Quantum);
+			   RA_LOG2QUANTUM_T uLog2Quantum,
+			   IMG_UINT64 *RetiredPagesAddr,
+			   IMG_UINT8 RetiredPagesCnt);
 
 SEGMENT_INFO *
 RA_GetArenaSegmentInfo(RA_ARENA *ra);
@@ -277,11 +279,10 @@ RA_Delete(RA_ARENA *pArena);
  */
 IMG_BOOL
 RA_Add(RA_ARENA *pArena,
-       RA_BASE_T base,
-       RA_LENGTH_T uSize,
+       RA_BASE_T Spanbase,
+       RA_LENGTH_T uSpanSize,
        RA_FLAGS_T uFlags,
        RA_PERISPAN_HANDLE hPriv);
-
 /**
  *  @Function   RA_Alloc
  *

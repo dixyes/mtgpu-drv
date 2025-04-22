@@ -273,6 +273,11 @@ typedef struct {
     Uint32          renderTargetNum;
     BOOL            closeCmdQueue;
     Uint32          taskBufSize;
+    Uint32          taskBufParamSize;
+    Uint32          taskBufVcoreSize;
+    Uint32          taskBufVlcSize;
+    Uint32          rtStride;
+    void*           vaOsalMemBlk;
 } DecInfo;
 
 #define CODA9_AVC_Q_MATRIX_OFFSET       (0x3500)
@@ -1795,6 +1800,46 @@ typedef struct _VASliceParameterBufferAVS
     Uint32 va_reserved[VA_PADDING_LOW];
 } VASliceParameterBufferAVS;
 
+
+typedef enum {
+    VAEncMiscParameterTypeFrameRate = 0,
+    VAEncMiscParameterTypeRateControl = 1,
+    VAEncMiscParameterTypeMaxSliceSize = 2,
+    VAEncMiscParameterTypeAIR = 3,
+    /** \brief Buffer type used to express a maximum frame size (in bits). */
+    VAEncMiscParameterTypeMaxFrameSize = 4,
+    /** \brief Buffer type used for HRD parameters. */
+    VAEncMiscParameterTypeHRD = 5,
+    VAEncMiscParameterTypeQualityLevel = 6,
+    /** \brief Buffer type used for Rolling intra refresh */
+    VAEncMiscParameterTypeRIR = 7,
+    /** \brief Buffer type used for quantization parameters, it's per-sequence parameter*/
+    VAEncMiscParameterTypeQuantization = 8,
+    /** \brief Buffer type used for sending skip frame parameters to the encoder's
+         * rate control, when the user has externally skipped frames. */
+        VAEncMiscParameterTypeSkipFrame = 9,
+        /** \brief Buffer type used for region-of-interest (ROI) parameters. */
+        VAEncMiscParameterTypeROI = 10,
+        /** \brief Buffer type used to express a maximum frame size (in bytes) settings for multiple pass. */
+        VAEncMiscParameterTypeMultiPassFrameSize = 11,
+        /** \brief Buffer type used for temporal layer structure */
+        VAEncMiscParameterTypeTemporalLayerStructure = 12,
+        /** \brief Buffer type used for dirty region-of-interest (ROI) parameters. */
+        VAEncMiscParameterTypeDirtyRect = 13,
+        /** \brief Buffer type used for parallel BRC parameters. */
+        VAEncMiscParameterTypeParallelBRC = 14,
+        /** \brief Set MB partion mode mask and Half-pel/Quant-pel motion search */
+        VAEncMiscParameterTypeSubMbPartPel = 15,
+        /** \brief set encode quality tuning */
+        VAEncMiscParameterTypeEncQuality = 16,
+        /** \brief Buffer type used for encoder rounding offset parameters. */
+        VAEncMiscParameterTypeCustomRoundingControl = 17,
+        /** \brief Buffer type used for FEI input frame level parameters */
+        VAEncMiscParameterTypeFEIFrameControl = 18,
+        /** \brief encode extension buffer, ect. MPEG2 Sequence extenstion data */
+        VAEncMiscParameterTypeExtensionData = 19
+} VAEncMiscParameterType;
+
 typedef struct {
     EncOpenParam        openParam;
     EncInitialInfo      initialInfo;
@@ -1893,7 +1938,8 @@ typedef struct CodecInst {
     Int32   productId;
     Int32   support48Bit;
     Int32   loggingEnable;
-    Uint32  isDecoder;
+    Uint8   isDecoder;
+    Uint8   failed;
     union {
         EncInfo encInfo;
         DecInfo decInfo;
@@ -2435,6 +2481,7 @@ extern "C" {
 RetCode InitCodecInstancePool(Uint32 coreIdx);
 RetCode GetCodecInstance(Uint32 coreIdx, CodecInst ** ppInst);
 void    FreeCodecInstance(CodecInst * pCodecInst);
+RetCode MarkOneInstanceFailed(CodecInst * pCodecInst);
 
 int     DecBitstreamBufEmpty(DecInfo * pDecInfo);
 RetCode SetParaSet(DecHandle handle, int paraSetType, DecParamSet * para);
@@ -2465,11 +2512,14 @@ int   GetXY2AXIAddr(TiledMapConfig *pMapCfg, int ycbcr, int posY, int posX, int 
 int   GetLowDelayOutput(CodecInst *pCodecInst, DecOutputInfo *lowDelayOutput);
 Int32 CalcLumaSize(CodecInst* inst, Int32 productId, Int32 stride, Int32 height, FrameBufferFormat format, BOOL cbcrIntl, TiledMapType mapType, DRAMConfig* pDramCfg, Int32 *pHdrSize);
 Int32 CalcChromaSize(CodecInst* inst, Int32 productId, Int32 stride, Int32 height, FrameBufferFormat format, BOOL cbcrIntl, TiledMapType mapType, DRAMConfig* pDramCfg, Int32 *pHdrSize);
+Int32 CalcFBCStride(Int32 productId, Uint32 width, Uint32 height, FrameBufferFormat format, BOOL cbcrInterleave, TiledMapType mapType, BOOL isVP9);
+FrameBufferFormat SrcFormat2OutputFormat(FrameBufferFormat srcFmt);
 
 //for GDI 1.0
 void            SetTiledFrameBase(Uint32 coreIdx, PhysicalAddress baseAddr);
 PhysicalAddress GetTiledFrameBase(Uint32 coreIdx, FrameBuffer *frame, int num);
 
+RetCode CheckDecInstanceValidity(DecHandle handle);
 RetCode CheckEncInstanceValidity(EncHandle handle);
 RetCode EncParaSet(EncHandle handle, int paraSetType);
 RetCode SetSliceMode(EncHandle handle, EncSliceMode *pSliceMode);
@@ -2480,7 +2530,8 @@ int     LevelCalculation(int MbNumX, int MbNumY, int frameRateInfo, int interlac
 Uint64  GetTimestamp(EncHandle handle);
 RetCode SetEncCropInfo(Int32 codecMode, VpuRect* param, int rotMode, int srcWidth, int srcHeight);
 
-void LoadVaApiParameter(Uint32 coreIdx, Int32 codec, vpu_buffer_t *vbParam, vpu_buffer_t *vbWork);
+Uint32 CalcVaApiParameterOsalMemSize(Int32 codec, Uint32 shift[6]);
+void LoadVaApiParameter(Uint32 coreIdx, Int32 codec, vpu_buffer_t *vbParam, vpu_buffer_t *vbWork, void* vaOsalMemBlk);
 Uint32 CalcMinFrameBufferCount(Uint32 coreIdx, Int32 codec, vpu_buffer_t *vb);
 #if defined(SUPPORT_SW_UART) || defined(SUPPORT_SW_UART_V2)
 /* void SwUartHandler(void *context); */

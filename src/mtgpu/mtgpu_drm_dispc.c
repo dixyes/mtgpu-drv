@@ -152,6 +152,79 @@ static inline bool mtgpu_is_crtc_active(struct drm_crtc *crtc)
 #endif
 }
 
+static int mtgpu_plane_position_check(struct drm_plane_state *state)
+{
+	s16 dst_x, dst_y;
+	u16 dst_w, dst_h;
+	u32 hactive, vactive;
+
+	hactive = state->crtc->mode.hdisplay;
+	vactive = state->crtc->mode.vdisplay;
+
+	/*
+	 * When executing modetest, hactive = vactive = 0 will appear.
+	 * In order not to affect the position check, 0 is returned.
+	 */
+	if (hactive == 0 || vactive == 0)
+		return 0;
+
+	dst_x = state->crtc_x;
+	dst_y = state->crtc_y;
+	dst_w = state->crtc_w;
+	dst_h = state->crtc_h;
+
+	/*
+	 * If the intersection of the plane and the display area is less than 2,
+	 * it is out of range and an error code is returned.
+	 */
+	if (((int)(hactive - dst_x) < 2 || (int)(vactive - dst_y) < 2) ||
+	    ((int)(dst_x + dst_w) < 2   || (int)(dst_y + dst_h) < 2)) {
+		DRM_DEBUG("%s() layer is out of range: dst_x:%d, dst_y:%d, dst_w:%d, dst_h:%d\n",
+			  __func__, dst_x, dst_y, dst_w, dst_h);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+#if defined(OS_DRM_PLANE_HELPER_FUNCS_USE_DRM_ATOMIC_STATE)
+static int mtgpu_plane_atomic_check(struct drm_plane *plane,
+				    struct drm_atomic_state *atomic_state)
+{
+	struct drm_plane_state *state = drm_atomic_get_plane_state(atomic_state, plane);
+#else
+static int mtgpu_plane_atomic_check(struct drm_plane *plane,
+				    struct drm_plane_state *state)
+{
+#endif
+	int ret;
+
+	/*
+	 * When the cursor plane slides to the bottom edge of the display,
+	 * the intersection of the cursor plane and the display is 1 line.
+	 * This plane will be discarded as "less than 2 lines" if its
+	 * position is checked, which will cause the screen to flicker.
+	 * Therefore, the position of the cursor plane is not checked and
+	 * 0 is returned.
+	 */
+	if (plane->type == DRM_PLANE_TYPE_CURSOR)
+		return 0;
+
+	if (!state || !state->fb || !state->crtc)
+		return 0;
+
+	/*
+	 * If the plane type is primary or overlay, you need to check
+	 * whether the intersection of these planes and the display
+	 * area is less than 2.
+	 */
+	ret = mtgpu_plane_position_check(state);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+
 static void mtgpu_get_layer_config(struct drm_plane_state *state,
 				   struct mtgpu_layer_config *config)
 {
@@ -321,6 +394,7 @@ static void mtgpu_plane_atomic_async_update(struct drm_plane *plane,
 }
 
 static const struct drm_plane_helper_funcs mtgpu_primary_helper_funcs = {
+	.atomic_check		= mtgpu_plane_atomic_check,
 	.atomic_update		= mtgpu_plane_atomic_update,
 	.atomic_disable		= mtgpu_plane_atomic_disable,
 	.atomic_async_check     = mtgpu_plane_atomic_async_check,
@@ -369,16 +443,15 @@ static bool mtgpu_crtc_mode_fixup(struct drm_crtc *crtc,
 {
 	struct mtgpu_dispc *dispc = to_mtgpu_dispc(crtc);
 
-	DRM_DEV_DEBUG(dispc->dev, DRM_MODE_FMT "\n", DRM_MODE_ARG(mode));
-
 	if (dispc->core->mode_fixup) {
-		drm_display_mode_to_videomode(mode, dispc->ctx.vm);
+		drm_display_mode_to_videomode(adjusted_mode, dispc->ctx.vm);
 
 		dispc->core->mode_fixup(&dispc->ctx);
 
 		drm_display_mode_from_videomode(dispc->ctx.vm, adjusted_mode);
-		DRM_DEV_DEBUG(dispc->dev, DRM_MODE_FMT "\n", DRM_MODE_ARG(adjusted_mode));
 	}
+
+	DRM_DEV_DEBUG(dispc->dev, DRM_MODE_FMT "\n", DRM_MODE_ARG(adjusted_mode));
 
 	return true;
 }
@@ -471,6 +544,34 @@ static void mtgpu_crtc_atomic_begin(struct drm_crtc *crtc,
 		dispc->core->config_begin(&dispc->ctx);
 }
 
+static void mtgpu_crtc_update_gamma(struct drm_crtc *crtc)
+{
+	struct mtgpu_dispc *dispc = to_mtgpu_dispc(crtc);
+	struct drm_crtc_state *state = crtc->state;
+	struct drm_color_lut *lut = (struct drm_color_lut *)state->gamma_lut->data;
+	u16 *red = crtc->gamma_store;
+	u16 *green = red + crtc->gamma_size;
+	u16 *blue = green + crtc->gamma_size;
+	u16 *tmp_red = red;
+	u16 *tmp_green = green;
+	u16 *tmp_blue = blue;
+	u32 i;
+
+	for (i = 0; i < crtc->gamma_size; i++) {
+		*tmp_red   = (u16)drm_color_lut_extract(lut->red, 16);
+		*tmp_green = (u16)drm_color_lut_extract(lut->green, 16);
+		*tmp_blue  = (u16)drm_color_lut_extract(lut->blue, 16);
+
+		lut++;
+		tmp_red++;
+		tmp_green++;
+		tmp_blue++;
+	}
+
+	if (dispc->core->gamma_set)
+		dispc->core->gamma_set(&dispc->ctx, red, green, blue, crtc->gamma_size);
+}
+
 static void mtgpu_crtc_atomic_flush(struct drm_crtc *crtc,
 #if defined(OS_DRM_CRTC_HELPER_FUNCS_USE_DRM_ATOMIC_STATE)
 				    struct drm_atomic_state *old_state)
@@ -482,6 +583,9 @@ static void mtgpu_crtc_atomic_flush(struct drm_crtc *crtc,
 	unsigned long flags;
 
 	DRM_DEV_DEBUG(dispc->dev, "%s()\n", __func__);
+
+	if (crtc->state->color_mgmt_changed && crtc->state->gamma_lut)
+		mtgpu_crtc_update_gamma(crtc);
 
 	if (dispc->core->config_end)
 		dispc->core->config_end(&dispc->ctx);
@@ -577,8 +681,7 @@ static void mtgpu_plane_create_properties(struct drm_plane *plane,
 
 	drm_plane_create_rotation_property(plane,
 					   DRM_MODE_ROTATE_0,
-					   DRM_MODE_ROTATE_MASK |
-					   DRM_MODE_REFLECT_MASK);
+					   DRM_MODE_ROTATE_0);
 
 	drm_plane_create_alpha_property(plane);
 
@@ -616,7 +719,6 @@ static int mtgpu_dispc_component_bind(struct device *dev,
 	struct drm_device *drm = data;
 	struct drm_plane *primary = NULL, *cursor = NULL;
 	struct mtgpu_dispc *dispc;
-	struct mtgpu_dispc_capability dispc_cap = {};
 	const struct mtgpu_layer_capability *layer_caps;
 	struct platform_device *pdev = to_platform_device(dev);
 	struct resource *res;
@@ -627,6 +729,13 @@ static int mtgpu_dispc_component_bind(struct device *dev,
 	dispc = kzalloc(sizeof(*dispc), GFP_KERNEL);
 	if (!dispc)
 		return -ENOMEM;
+
+	dispc->caps = kzalloc(sizeof(*dispc->caps), GFP_KERNEL);
+	if (!dispc->caps) {
+		DRM_DEV_ERROR(dev, "failed to create dispc caps\n");
+		ret = -ENOMEM;
+		goto err_free_dispc;
+	}
 
 	dispc->ctx.vm = kzalloc(sizeof(*dispc->ctx.vm), GFP_KERNEL);
 	if (!dispc->ctx.vm) {
@@ -726,7 +835,7 @@ static int mtgpu_dispc_component_bind(struct device *dev,
 		break;
 	case GPU_SOC_GEN2:
 		chip = &mtgpu_dispc_qy1;
-		if (mtgpu_fec_enable)
+		if (fec_display_enable)
 			chip->core = &mtgpu_dispc_fec;
 		break;
 	case GPU_SOC_GEN3:
@@ -784,16 +893,16 @@ static int mtgpu_dispc_component_bind(struct device *dev,
 		goto err_ctx_deinit;
 	}
 
-	dispc->core->capability(&dispc->ctx, &dispc_cap);
-	if (!dispc_cap.layer_count) {
+	dispc->core->capability(&dispc->ctx, dispc->caps);
+	if (!dispc->caps->layer_count) {
 		DRM_DEV_ERROR(dev, "dispc layer count is 0\n");
 		ret = -EINVAL;
 		goto err_ctx_deinit;
 	}
 
-	layer_caps = dispc_cap.layer_caps;
+	layer_caps = dispc->caps->layer_caps;
 
-	for (i = 0; i < dispc_cap.layer_count; i++) {
+	for (i = 0; i < dispc->caps->layer_count; i++) {
 		struct drm_plane *plane;
 
 		plane = kzalloc(sizeof(*plane), GFP_KERNEL);
@@ -802,7 +911,7 @@ static int mtgpu_dispc_component_bind(struct device *dev,
 			goto err_ctx_deinit;
 		}
 
-		ret = drm_universal_plane_init(drm, plane, 0xff,
+		ret = drm_universal_plane_init(drm, plane, (1 << dispc->ctx.id),
 					       &mtgpu_plane_funcs,
 					       layer_caps[i].fmts_ptr,
 					       layer_caps[i].fmts_cnt,
@@ -836,9 +945,11 @@ static int mtgpu_dispc_component_bind(struct device *dev,
 		goto err_crtc_free;
 	}
 
-	drm_mode_crtc_set_gamma_size(dispc->crtc, dispc_cap.gamma_size);
+	drm_mode_crtc_set_gamma_size(dispc->crtc, dispc->caps->gamma_size);
 	dispc->ctx.gamma_store = dispc->crtc->gamma_store;
 	dispc->ctx.gamma_size  = dispc->crtc->gamma_size;
+
+	drm_crtc_enable_color_mgmt(dispc->crtc, 0, false, dispc->ctx.gamma_size);
 
 	drm_crtc_helper_add(dispc->crtc, &mtgpu_crtc_helper_funcs);
 
@@ -857,6 +968,7 @@ err_ctx_deinit:
 err_free_dispc:
 	kfree(dispc->ctx.waitq);
 	kfree(dispc->ctx.vm);
+	kfree(dispc->caps);
 	kfree(dispc);
 
 	return ret;
@@ -885,6 +997,7 @@ static void mtgpu_dispc_component_unbind(struct device *dev,
 
 	kfree(dispc->ctx.waitq);
 	kfree(dispc->ctx.vm);
+	kfree(dispc->caps);
 	kfree(dispc);
 
 	DRM_DEV_INFO(dev, "unload mtgpu display controller driver\n");

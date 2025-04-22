@@ -92,7 +92,8 @@ typedef enum _GFX_GEN_ {
 	SUDI,
 	QUYUAN1 = 10,
 	QUYUAN2 = 20,
-	PINGHU1 = 40
+	PINGHU1 = 40,
+	PINGHU1S = 80,
 } GFX_GEN;
 
 /* Bridge out structure for Connect */
@@ -328,7 +329,7 @@ typedef struct PVRSRV_BRIDGE_OUT_EVENTOBJECTWAITTIMEOUT_TAG
 /* Bridge in structure for FindProcessMemStats */
 typedef struct PVRSRV_BRIDGE_IN_FINDPROCESSMEMSTATS_TAG
 {
-	IMG_UINT32 *pui32MemStatsArray;
+	IMG_UINT64 *pui64MemStatsArray;
 	IMG_BOOL bbAllProcessStats;
 	IMG_UINT32 ui32ArrSize;
 	IMG_UINT32 ui32PID;
@@ -337,7 +338,7 @@ typedef struct PVRSRV_BRIDGE_IN_FINDPROCESSMEMSTATS_TAG
 /* Bridge out structure for FindProcessMemStats */
 typedef struct PVRSRV_BRIDGE_OUT_FINDPROCESSMEMSTATS_TAG
 {
-	IMG_UINT32 *pui32MemStatsArray;
+	IMG_UINT64 *pui64MemStatsArray;
 	PVRSRV_ERROR eError;
 } __packed PVRSRV_BRIDGE_OUT_FINDPROCESSMEMSTATS;
 

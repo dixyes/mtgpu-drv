@@ -2167,6 +2167,8 @@ typedef struct
 
 	RGXFWIF_COMPCHECKS      sRGXCompChecks; /*!< Compatibility checks to be populated by the Firmware */
 
+	PRGXFWIF_GPU_UTIL_FWCB  sGpuUtilFWCbCtl; /*!< GPU utilization buffer */
+
 } UNCACHED_ALIGN RGXFWIF_OSINIT;
 
 /*! @Brief Firmware System Initialization data \ref RGXFWIF_SYSINIT
@@ -2208,7 +2210,6 @@ typedef struct
 	PRGXFWIF_TBIBUF         sTBIBuf; /*!< Tbi log buffer */
 #endif
 
-	PRGXFWIF_GPU_UTIL_FWCB  sGpuUtilFWCbCtl; /*!< GPU utilization buffer */
 	PRGXFWIF_REG_CFG        sRegCfg; /*!< Firmware register user configuration */
 	PRGXFWIF_HWPERF_CTL     sHWPerfCtl; /*!< HWPerf counter block configuration.*/
 

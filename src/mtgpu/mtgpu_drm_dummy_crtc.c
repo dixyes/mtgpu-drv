@@ -19,6 +19,12 @@
 #include <drm/drm_probe_helper.h>
 #endif
 #include <drm/drm_vblank.h>
+#include "mtgpu_irq.h"
+#include "mtgpu_mdev.h"
+#include "mtgpu_vgpu_ipc.h"
+#include "vgpu_virtual_display.h"
+
+#include "mtgpu_drv.h"
 
 #define drm_crtc_to_dummy_crtc(target) \
 	container_of(target, struct dummy_crtc, crtc)
@@ -28,6 +34,7 @@ struct dummy_crtc {
 	u32 vblank_periods;
 	struct hrtimer vblank_hrtimer;
 	spinlock_t dummy_lock;
+	struct device *dev;
 };
 
 #define ONE_SECOND_NS		1000000000
@@ -162,12 +169,17 @@ static int dummy_enable_vblank(struct drm_crtc *crtc)
 
 	DRM_DEBUG("Enable software vsync timer\n");
 
-	hrtimer_init(&dummy->vblank_hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-	dummy->vblank_hrtimer.function = &dummy_vblank_simulate;
-	dummy->vblank_periods = dummy_vblank_periods_calculate(crtc);
+	if (mtgpu_get_driver_mode() == MTGPU_DRIVER_MODE_GUEST) {
+		mtgpu_vgpu_ipc_vsync_status_on(dummy->dev->parent->parent);
+	} else {
+		hrtimer_init(&dummy->vblank_hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+		dummy->vblank_hrtimer.function = &dummy_vblank_simulate;
+		dummy->vblank_periods = dummy_vblank_periods_calculate(crtc);
 
-	if (dummy->vblank_periods)
-		hrtimer_start(&dummy->vblank_hrtimer, dummy->vblank_periods, HRTIMER_MODE_REL);
+		if (dummy->vblank_periods)
+			hrtimer_start(&dummy->vblank_hrtimer,
+				      dummy->vblank_periods, HRTIMER_MODE_REL);
+	}
 
 	return 0;
 }
@@ -179,12 +191,27 @@ static void dummy_disable_vblank(struct drm_crtc *crtc)
 
 	DRM_DEBUG("Disable software vsync timer\n");
 
-	if (!spin_trylock_irqsave(&dummy->dummy_lock, flags))
-		return;
+	if (mtgpu_get_driver_mode() == MTGPU_DRIVER_MODE_GUEST) {
+		mtgpu_vgpu_ipc_vsync_status_off(dummy->dev->parent->parent);
+	} else {
+		if (!spin_trylock_irqsave(&dummy->dummy_lock, flags))
+			return;
 
-	hrtimer_cancel(&dummy->vblank_hrtimer);
+		hrtimer_cancel(&dummy->vblank_hrtimer);
 
-	spin_unlock_irqrestore(&dummy->dummy_lock, flags);
+		spin_unlock_irqrestore(&dummy->dummy_lock, flags);
+	}
+}
+
+static void mtgpu_dummy_crtc_isr(void *data)
+{
+	struct dummy_crtc *dummy = data;
+	struct device *dev = dummy->dev->parent->parent;
+
+	if (mtgpu_vgpu_ipc_vsync_status_is_irq(dev)) {
+		mtgpu_vgpu_ipc_vsync_status_clear_irq(dev);
+		drm_crtc_handle_vblank(&dummy->crtc);
+	}
 }
 
 static void dummy_crtc_destroy(struct drm_crtc *crtc)
@@ -285,24 +312,46 @@ static int dummy_crtc_component_bind(struct device *dev, struct device *master, 
 	struct dummy_crtc *dummy;
 	struct drm_crtc *crtc;
 	struct drm_plane *primary, *cursor;
+	struct mtgpu_dummy_platform_data *pdata = dev_get_platdata(dev);
 	int ret;
 
 	dummy = kzalloc(sizeof(*dummy), GFP_KERNEL);
 	if (!dummy)
 		return -ENOMEM;
+
 	crtc = &dummy->crtc;
+	dummy->dev = dev;
+
+	if (mtgpu_get_driver_mode() == MTGPU_DRIVER_MODE_GUEST) {
+		ret = mtgpu_register_interrupt(dev->parent->parent, MTGPU_INTERRUPT_DISPC0,
+					       mtgpu_dummy_crtc_isr, dummy, "dummy-crtc");
+		if (ret) {
+			DRM_ERROR("failed to register dummy crtc irq handler\n");
+			ret = -EINVAL;
+			goto err_register_irq;
+		}	
+
+		ret = mtgpu_enable_interrupt(dev->parent->parent, MTGPU_INTERRUPT_DISPC0);
+		if (ret) {
+			DRM_ERROR("failed to enable irq\n");
+			ret = -EINVAL;
+			goto err_enable_irq;
+		}
+
+		vgpu_vdisplay_vsync_register(dev->parent->parent, 0, 60);
+	}
 
 #if defined(OS_STRUCT_DRM_MODE_CONFIG_HAS_ALLOW_FB_MODIFIERS)
 	drm->mode_config.allow_fb_modifiers = false;
 #endif
 
-	primary = dummy_plane_init(drm, DRM_PLANE_TYPE_PRIMARY, 0);
+	primary = dummy_plane_init(drm, DRM_PLANE_TYPE_PRIMARY, pdata->id);
 	if (IS_ERR(primary)) {
 		ret = PTR_ERR(primary);
 		goto err_plane;
 	}
 
-	cursor = dummy_plane_init(drm, DRM_PLANE_TYPE_CURSOR, 0);
+	cursor = dummy_plane_init(drm, DRM_PLANE_TYPE_CURSOR, pdata->id);
 	if (IS_ERR(cursor)) {
 		ret = PTR_ERR(cursor);
 		goto err_cursor;
@@ -328,6 +377,14 @@ err_crtc:
 err_cursor:
 	drm_plane_cleanup(primary);
 err_plane:
+	if (mtgpu_get_driver_mode() == MTGPU_DRIVER_MODE_GUEST) {
+		vgpu_vdisplay_vsync_unregister(dev->parent->parent, 0);
+		mtgpu_disable_interrupt(dev->parent->parent, MTGPU_INTERRUPT_DISPC0);
+	}
+err_enable_irq:
+	if (mtgpu_get_driver_mode() == MTGPU_DRIVER_MODE_GUEST)
+		mtgpu_unregister_interrupt(dev->parent->parent, MTGPU_INTERRUPT_DISPC0);
+err_register_irq:
 	kfree(dummy);
 
 	return ret;
@@ -336,6 +393,12 @@ err_plane:
 static void dummy_crtc_component_unbind(struct device *dev,
 					struct device *master, void *data)
 {
+	if (mtgpu_get_driver_mode() == MTGPU_DRIVER_MODE_GUEST) {
+		vgpu_vdisplay_vsync_unregister(dev->parent->parent, 0);
+		mtgpu_disable_interrupt(dev->parent->parent, MTGPU_INTERRUPT_DISPC0);
+		mtgpu_unregister_interrupt(dev->parent->parent, MTGPU_INTERRUPT_DISPC0);
+	}
+
 	DRM_INFO("unload dummy crtc driver\n");
 }
 

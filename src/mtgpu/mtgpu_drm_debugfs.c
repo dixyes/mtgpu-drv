@@ -307,7 +307,7 @@ void mtgpu_dp_debugfs_create_files(struct mtgpu_dp *dp)
 	sprintf(name, "card%d-%s", idx, dp->connector->name);
 
 	dentry = debugfs_create_dir(name, mtgpu_dentry);
-	dp->debugfs.dentry = dentry;
+	dp->debugfs.card = dentry;
 
 	/* link rate */
 	debugfs_create_file("link_rate", 0644, dentry, dp->connector,
@@ -326,7 +326,7 @@ void mtgpu_dp_debugfs_create_files(struct mtgpu_dp *dp)
 	sprintf(name, "edid-lock_card%d-%s", idx, dp->connector->name);
 
 	dentry = debugfs_create_dir(name, mtgpu_dentry);
-	dp->debugfs.dentry = dentry;
+	dp->debugfs.lock = dentry;
 
 	/* edid lock */
 	debugfs_create_file("edid_lock", 0644, dentry, dp->connector,
@@ -335,9 +335,11 @@ void mtgpu_dp_debugfs_create_files(struct mtgpu_dp *dp)
 
 void mtgpu_dp_debugfs_remove_files(struct mtgpu_dp *dp)
 {
-	struct dentry *dentry = dp->debugfs.dentry;
+	struct dentry *card = dp->debugfs.card;
+	struct dentry *lock = dp->debugfs.lock;
 
-	debugfs_remove_recursive(dentry);
+	debugfs_remove_recursive(card);
+	debugfs_remove_recursive(lock);
 }
 
 /* edid lock */

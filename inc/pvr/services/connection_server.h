@@ -52,6 +52,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "info_page_defs.h"
 #include "devicemem_typedefs.h"
 #include "pmr_impl.h"
+#include "mtgpu_drm.h"
 
 /* Variable used to hold in memory the timeout for the current time slice*/
 extern IMG_UINT64 gui64TimesliceLimit;
@@ -114,6 +115,9 @@ typedef struct _CONNECTION_DATA_
 	PVRSRV_CLEANUP_THREAD_WORK sCleanupThreadFn;
 
 	DLLIST_NODE         sConnectionListNode;
+
+	IMG_CHAR            szLibdrmVersion[MTGPU_COMMIT_STRING_LENGTH];
+	IMG_CHAR            szShardIncVersion[MTGPU_COMMIT_STRING_LENGTH];
 
 	/* List navigation for deferred freeing of connection data */
 	struct _CONNECTION_DATA_	**ppsThis;

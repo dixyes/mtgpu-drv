@@ -122,6 +122,9 @@ typedef struct _PHYS_HEAP_CONFIG_
 	PHYS_HEAP_USAGE_FLAGS ui32UsageFlags;       /*!< Supported uses flags, conveys the type of
 	                                                 buffers the physical heap can be used for */
 	SEGMENT_INFO *psSegmentInfo;
+
+	u8 RetiredPagesCnt;
+	u64 *RetiredPagesAddr;
 } PHYS_HEAP_CONFIG;
 
 #endif

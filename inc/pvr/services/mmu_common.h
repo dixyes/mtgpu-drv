@@ -122,6 +122,8 @@ typedef struct _MMU_LEVEL_DATA_
 	IMG_CHAR const	*psDebugStr;
 	IMG_UINT8	uiBytesPerEntry;
 	IMG_UINT64	ui64Address;
+	IMG_BOOL	bValid;
+	IMG_UINT64	ui64EntryPAddr;
 } MMU_LEVEL_DATA;
 
 typedef enum _MMU_FAULT_TYPE_
@@ -157,6 +159,12 @@ typedef struct _MMU_DEVVADDR_CONFIG_
 	IMG_UINT8	uiPDPtrIndexShift;
 	/*! Total number of PDP entries */
 	IMG_UINT32	uiNumEntriesPDPtr;
+	/*! 4Level Page directory mask */
+	IMG_UINT64	ui4LevelPDIndexMask;
+	/*! 4Level Page directory shift */
+	IMG_UINT8	ui4LevelPDIndexShift;
+	/*! Total number of 4Level PD entries */
+	IMG_UINT32	uiNumEntries4LevelPD;
 	/*! Page directory mask */
 	IMG_UINT64	uiPDIndexMask;
 	/*! Page directory shift */
@@ -426,6 +434,7 @@ typedef struct _MMU_DEVICEATTRIBS_
 	/* Callback for putting the MMU configuration obtained from pfnGetPageSizeConfiguration */
 	PVRSRV_ERROR (*pfnPutPageSizeConfiguration)(IMG_HANDLE hPriv);
 
+	PVRSRV_ERROR (*pfnGetBeyond2MFlagFromPCE8)(IMG_UINT64 ui64PCE, IMG_BOOL *pbBeyond2M);
 	/* Callback for getting the page size from the PDE for the page table entry with 4 byte entry */
 	PVRSRV_ERROR (*pfnGetPageSizeFromPDE4)(IMG_UINT32, IMG_UINT32 *);
 	/* Callback for getting the page size from the PDE for the page table entry with 8 byte entry */
@@ -492,6 +501,10 @@ struct _MMU_CONTEXT_
 	HASH_TABLE *psHashTab;
 
 	IMG_UINT64 ui64PageSizeFlag;
+
+	/* rm gpu vaspace handle */
+	uint64_t ui64RmGpuVaSpace;
+	uint64_t ui64RmPcBase;
 
 	/* Base level info structure. Must be last member in structure */
 	MMU_Levelx_INFO sBaseLevelInfo;

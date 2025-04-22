@@ -255,7 +255,11 @@ static_assert(RGX_HWPERF_HOST_LAST_TYPE < RGX_HWPERF_HOST_MAX_TYPE, "Too many HW
  */
 #define HWPERF_PACKET_V2C_SIG		0x48575043
 
-#define HWPERF_PACKET_ISVALID(_val) (((_val) == HWPERF_PACKET_V2_SIG) || ((_val) == HWPERF_PACKET_V2A_SIG) || ((_val) == HWPERF_PACKET_V2B_SIG) || ((_val) == HWPERF_PACKET_V2C_SIG))
+/*! Signature ASCII pattern 'HWPD' found in the first word of a HWPerfV2c packet
+ */
+#define HWPERF_PACKET_V2D_SIG		0x48575044
+
+#define HWPERF_PACKET_ISVALID(_val) (((_val) == HWPERF_PACKET_V2_SIG) || ((_val) == HWPERF_PACKET_V2A_SIG) || ((_val) == HWPERF_PACKET_V2B_SIG) || ((_val) == HWPERF_PACKET_V2C_SIG) || ((_val) == HWPERF_PACKET_V2D_SIG))
 /*!< Checks that the packet signature is one of the supported versions */
 
 /*! Type defines the HWPerf packet header common to all events. */
@@ -306,11 +310,14 @@ RGX_FW_STRUCT_SIZE_ASSERT(RGX_HWPERF_V2_PACKET_HDR);
 
 /*! Masks for use with the IMG_UINT32 eTypeId header field */
 #define RGX_HWPERF_TYPEID_MASK			0x0007FFFFU
-#define RGX_HWPERF_TYPEID_EVENT_MASK	0x00007FFFU
-#define RGX_HWPERF_TYPEID_THREAD_MASK	0x00008000U
-#define RGX_HWPERF_TYPEID_STREAM_MASK	0x00070000U
-#define RGX_HWPERF_TYPEID_META_DMA_MASK	0x00080000U
-#define RGX_HWPERF_TYPEID_M_CORE_MASK	0x00100000U
+#define RGX_HWPERF_TYPEID_EVENT_MASK	        0x00007FFFU
+#define RGX_HWPERF_TYPEID_EVENT_MASK_V2D        0x0007FFFFU
+#define RGX_HWPERF_TYPEID_THREAD_MASK		0x00008000U
+#define RGX_HWPERF_TYPEID_STREAM_MASK		0x00070000U
+#define RGX_HWPERF_TYPEID_STREAM_MASK_V2D       0x1c000000U
+#define RGX_HWPERF_TYPEID_META_DMA_MASK		0x00080000U
+#define RGX_HWPERF_TYPEID_VERSION_MASK          0x03F80000U
+#define RGX_HWPERF_TYPEID_M_CORE_MASK		0x00100000U
 #define RGX_HWPERF_TYPEID_OSID_MASK		0x07000000U
 
 /*! Meta thread macros for encoding the ID into the type field of a packet */
@@ -321,12 +328,14 @@ RGX_FW_STRUCT_SIZE_ASSERT(RGX_HWPERF_V2_PACKET_HDR);
 #define RGX_HWPERF_META_THREAD_MASK		0x1U
 /*! Stream ID macros for encoding the ID into the type field of a packet */
 #define RGX_HWPERF_STREAM_SHIFT			16U
+#define RGX_HWPERF_STREAM_SHIFT_V2D 		26U
 /*! Meta DMA macro for encoding how the packet was generated into the type field of a packet */
 #define RGX_HWPERF_META_DMA_SHIFT		19U
 /*! Bit-shift macro used for encoding multi-core data into the type field of a packet */
 #define RGX_HWPERF_M_CORE_SHIFT			20U
 /*! OSID bit-shift macro used for encoding OSID into type field of a packet */
 #define RGX_HWPERF_OSID_SHIFT			24U
+#define RGX_HWPERF_VERSION_SHIFT 		19U
 typedef enum {
 	RGX_HWPERF_STREAM_ID0_FW,     /*!< Events from the Firmware/GPU */
 	RGX_HWPERF_STREAM_ID1_HOST,   /*!< Events from the Server host driver component */
@@ -360,6 +369,11 @@ static_assert(((IMG_UINT32)RGX_HWPERF_STREAM_ID_LAST - 1U) < (RGX_HWPERF_TYPEID_
 		(RGX_HWPERF_TYPEID_META_DMA_MASK & ((IMG_UINT32)(_metadma) << RGX_HWPERF_META_DMA_SHIFT)) | \
 		(RGX_HWPERF_TYPEID_OSID_MASK & ((IMG_UINT32)(_osid) << RGX_HWPERF_OSID_SHIFT)) | \
 		(RGX_HWPERF_TYPEID_M_CORE_MASK & ((IMG_UINT32)(RGX_HWPERF_M_CORE_VALUE) << RGX_HWPERF_M_CORE_SHIFT))))
+
+#define RGX_HWPERF_MAKE_TYPEID_V2D(_stream, _version, _type)                                                          \
+    ((IMG_UINT32)((RGX_HWPERF_TYPEID_STREAM_MASK_V2D & ((IMG_UINT32)(_stream) << RGX_HWPERF_STREAM_SHIFT_V2D)) |      \
+                  (RGX_HWPERF_TYPEID_VERSION_MASK & ((IMG_UINT32)(_version) << RGX_HWPERF_VERSION_SHIFT)) |           \
+                  (RGX_HWPERF_TYPEID_EVENT_MASK_V2D & (IMG_UINT32)(_type))))
 
 /*! Obtains the event type that generated the packet */
 #define RGX_HWPERF_GET_TYPE(_packet_addr)            (((_packet_addr)->eTypeId) & RGX_HWPERF_TYPEID_EVENT_MASK)

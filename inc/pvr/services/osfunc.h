@@ -82,6 +82,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 	X(DRM_UT_CORE) \
 	X(VERIFYING_UNSPECIFIED_SIGNATURE) \
 	X(ENOSPC) \
+	X(ETIME) \
 	X(EINVAL) \
 	X(ENOSYS) \
 	X(ENXIO) \
@@ -398,6 +399,14 @@ PVRSRV_ERROR OSInstallMISR(IMG_HANDLE *hMISRData,
 @Return         PVRSRV_OK on success, a failure code otherwise.
 */ /**************************************************************************/
 PVRSRV_ERROR OSUninstallMISR(IMG_HANDLE hMISRData);
+
+/*************************************************************************/ /*!
+@Function       OSCancelMISR
+@Description    Cancel a Mid-level Interrupt Service Routine (MISR) workqueue.
+@Input          hMISRData     handle to the installed MISR
+@Return         PVRSRV_OK on success, a failure code otherwise.
+*/ /**************************************************************************/
+PVRSRV_ERROR OSCancelMISR(IMG_HANDLE hMISRData);
 
 /*************************************************************************/ /*!
 @Function       OSScheduleMISR
@@ -1651,6 +1660,19 @@ static INLINE void OSWRLockReleaseWrite(POSWR_LOCK psLock)
 #endif
 
 /*************************************************************************/ /*!
+@Function       OSDivideU64rU64
+@Description    Divide a 64-bit value by a 64-bit value. Return the 64-bit
+                quotient.
+                The remainder is also returned in 'pui64Remainder'.
+@Input          ui64Divident        The number to be divided.
+@Input          ui64Divisor         The 64-bit value 'ui64Divident' is to
+                                    be divided by.
+@Output         pui64Remainder      The remainder of the division.
+@Return         The 64-bit quotient (result of the division).
+*/ /**************************************************************************/
+IMG_UINT64 OSDivideU64rU64(IMG_UINT64 ui64Divident, IMG_UINT64 ui64Divisor, IMG_UINT64 *pui64Remainder);
+
+/*************************************************************************/ /*!
 @Function       OSDivide64r64
 @Description    Divide a 64-bit value by a 32-bit value. Return the 64-bit
                 quotient.
@@ -1889,6 +1911,8 @@ void OSDmaUnmapResource(struct device *psDev, IMG_UINT64 ui64DmaAddr,
 IMG_INT OSDmaMappingError(struct device *psDev, IMG_UINT64 ui64DmaAddr);
 void OSSetPageReserved(struct page *psPage);
 void OSClearPageReserved(struct page *psPage);
+struct page *OSAllocPage(void);
+void OSFreePage(struct page *psPage);
 struct page *OSAllocUserPages(IMG_UINT32 ui32Order);
 IMG_INT OSGetUserPages(IMG_INT64 ui64Start, IMG_INT iPageCount, struct page **ppsPages);
 void OSPutPage(struct page *psPage);
@@ -2150,6 +2174,7 @@ struct delayed_work *OSToDelayedWork(struct work_struct *work);
 void OSBitmapSet(unsigned long *map, IMG_UINT uiStart, IMG_UINT uiNbits);
 void OSBitmapClear(unsigned long *map, IMG_UINT start, IMG_UINT nbits);
 unsigned long OSFindFirstZeroBit(const unsigned long *addr, unsigned long size);
+unsigned long OSFindFirstBit(const unsigned long *addr, unsigned long size);
 
 struct dma_fence;
 struct dma_fence_ops;
@@ -2191,10 +2216,17 @@ void *OSCreateDmaFenceCB(void);
 void OSDestroyDmaFenceCB(struct dma_fence_cb *dma_fence_cb);
 int OSDmaFenceAddCallback(struct dma_fence *fence, struct dma_fence_cb *cb,
                           dma_fence_func_t func);
+void OSDmaFenceEnableSWSignaling(struct dma_fence *fence);
 struct sync_file *OSSyncFileCreate(struct dma_fence *fence);
 int OSGetUnusedFDFlags(unsigned flag);
 void OSFDInstallSyncFile(int fd, struct sync_file *sync_file);
 struct dma_fence *OSSyncFileGetFence(int fd);
+
+struct dma_fence_array;
+
+struct dma_fence *OSGetBaseFormDmaFenceArray(struct dma_fence_array *array);
+struct dma_fence_array *OSDmaFenceArrayCreate(int num_fences,
+                                              struct dma_fence **fences);
 
 void OSArchLinearMapAttrSetCached(phys_addr_t addr, size_t size);
 void OSArchLinearMapAttrSetUncached(phys_addr_t addr, size_t size);

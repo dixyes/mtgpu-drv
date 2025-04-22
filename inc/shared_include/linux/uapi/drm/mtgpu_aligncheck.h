@@ -13,389 +13,476 @@
  *  *                                                        *
  *  **********************************************************
  */
-#define MTGPU_DRM_ALIGN_CHECKS	\
-	sizeof(struct drm_mtgpu_device_init), \
-	offsetof(struct drm_mtgpu_device_init, ioctl_version), \
-	sizeof(struct drm_mtgpu_heap_info), \
-	offsetof(struct drm_mtgpu_heap_info, id), \
-	offsetof(struct drm_mtgpu_heap_info, name), \
-	offsetof(struct drm_mtgpu_heap_info, base), \
-	offsetof(struct drm_mtgpu_heap_info, length), \
-	offsetof(struct drm_mtgpu_heap_info, log2_page_size), \
-	sizeof(struct mtgpu_heap_detail_in), \
-	offsetof(struct mtgpu_heap_detail_in, index), \
-	sizeof(struct mtgpu_heap_detail_out), \
-	offsetof(struct mtgpu_heap_detail_out, info), \
-	sizeof(struct mtgpu_mem_info), \
-	offsetof(struct mtgpu_mem_info, system.total_size), \
-	offsetof(struct mtgpu_mem_info, system.free_size), \
-	offsetof(struct mtgpu_mem_info, vram.total_size), \
-	offsetof(struct mtgpu_mem_info, vram.free_size), \
-	sizeof(struct drm_mtgpu_device_info), \
-	offsetof(struct drm_mtgpu_device_info, device_id), \
-	sizeof(struct mtgpu_bo_info_in), \
-	offsetof(struct mtgpu_bo_info_in, bo_handle), \
-	sizeof(struct mtgpu_bo_info), \
-	offsetof(struct mtgpu_bo_info, size), \
-	offsetof(struct mtgpu_bo_info, align), \
-	offsetof(struct mtgpu_bo_info, flags), \
-	offsetof(struct mtgpu_bo_info, domain), \
-	offsetof(struct mtgpu_bo_info, segment_id), \
-	sizeof(struct mtgpu_bo_info_out), \
-	offsetof(struct mtgpu_bo_info_out, info), \
-	sizeof(struct mtgpu_dev_info), \
-	offsetof(struct mtgpu_dev_info, dev_id), \
-	offsetof(struct mtgpu_dev_info, dev_status), \
-	offsetof(struct mtgpu_dev_info, dev_clock_speed), \
-	offsetof(struct mtgpu_dev_info, mem_clock_speed), \
-	offsetof(struct mtgpu_dev_info, mem_max_clock_speed), \
-	offsetof(struct mtgpu_dev_info, num_cores), \
-	offsetof(struct mtgpu_dev_info, uuid), \
-	sizeof(struct mtgpu_pci_info), \
-	offsetof(struct mtgpu_pci_info, domain_number), \
-	offsetof(struct mtgpu_pci_info, bus_number), \
-	offsetof(struct mtgpu_pci_info, device_number), \
-	offsetof(struct mtgpu_pci_info, function_number), \
-	offsetof(struct mtgpu_pci_info, current_gen_speed), \
-	offsetof(struct mtgpu_pci_info, current_width), \
-	offsetof(struct mtgpu_pci_info, numa_node_id), \
-	offsetof(struct mtgpu_pci_info, total_pci_device_memory_accessible), \
-	offsetof(struct mtgpu_pci_info, total_system_memory_accessible), \
-	sizeof(struct mtgpu_platform_info), \
-	offsetof(struct mtgpu_platform_info, mtlink_enable), \
-	offsetof(struct mtgpu_platform_info, iommu_enable), \
-	sizeof(struct drm_mtgpu_query_info), \
-	offsetof(struct drm_mtgpu_query_info, in.type), \
-	offsetof(struct drm_mtgpu_query_info, in.data), \
-	offsetof(struct drm_mtgpu_query_info, out.data), \
-	sizeof(struct drm_mtgpu_bo_create), \
-	offsetof(struct drm_mtgpu_bo_create, in.size), \
-	offsetof(struct drm_mtgpu_bo_create, in.align), \
-	offsetof(struct drm_mtgpu_bo_create, in.flags), \
-	offsetof(struct drm_mtgpu_bo_create, in.domains), \
-	offsetof(struct drm_mtgpu_bo_create, in.group_id), \
-	offsetof(struct drm_mtgpu_bo_create, out.bo_handle), \
-	sizeof(struct drm_mtgpu_bo_from_userptr), \
-	offsetof(struct drm_mtgpu_bo_from_userptr, in.userptr), \
-	offsetof(struct drm_mtgpu_bo_from_userptr, in.size), \
-	offsetof(struct drm_mtgpu_bo_from_userptr, in.flags), \
-	offsetof(struct drm_mtgpu_bo_from_userptr, out.bo_handle), \
-	sizeof(struct drm_mtgpu_bo_get_mmap_offset), \
-	offsetof(struct drm_mtgpu_bo_get_mmap_offset, in.bo_handle), \
-	offsetof(struct drm_mtgpu_bo_get_mmap_offset, out.offset), \
-	sizeof(struct drm_mtgpu_bo_global_handle_export), \
-	offsetof(struct drm_mtgpu_bo_global_handle_export, in.bo_handle), \
-	offsetof(struct drm_mtgpu_bo_global_handle_export, out.global_handle), \
-	sizeof(struct drm_mtgpu_bo_global_handle_import), \
-	offsetof(struct drm_mtgpu_bo_global_handle_import, in.global_handle), \
-	offsetof(struct drm_mtgpu_bo_global_handle_import, out.size), \
-	offsetof(struct drm_mtgpu_bo_global_handle_import, out.bo_handle), \
-	sizeof(struct drm_mtgpu_vm_context_create), \
-	offsetof(struct drm_mtgpu_vm_context_create, vm_ctx_handle), \
-	sizeof(struct drm_mtgpu_vm_context_destroy), \
-	offsetof(struct drm_mtgpu_vm_context_destroy, vm_ctx_handle), \
-	sizeof(struct drm_mtgpu_vm_map), \
-	offsetof(struct drm_mtgpu_vm_map, vm_ctx_handle), \
-	offsetof(struct drm_mtgpu_vm_map, va), \
-	offsetof(struct drm_mtgpu_vm_map, mapping_flags), \
-	offsetof(struct drm_mtgpu_vm_map, bo_handle), \
-	offsetof(struct drm_mtgpu_vm_map, size), \
-	sizeof(struct drm_mtgpu_vm_unmap), \
-	offsetof(struct drm_mtgpu_vm_unmap, vm_ctx_handle), \
-	offsetof(struct drm_mtgpu_vm_unmap, va), \
-	sizeof(struct drm_mtgpu_timeline_create), \
-	offsetof(struct drm_mtgpu_timeline_create, out.timeline_handle), \
-	offsetof(struct drm_mtgpu_timeline_create, out.timeline_bo_handle), \
-	offsetof(struct drm_mtgpu_timeline_create, out.timeline_value_offset), \
-	sizeof(struct drm_mtgpu_timeline_destroy), \
-	offsetof(struct drm_mtgpu_timeline_destroy, in.timeline_handle), \
-	sizeof(struct drm_mtgpu_timeline_read), \
-	offsetof(struct drm_mtgpu_timeline_read, in.timeline_handle), \
-	offsetof(struct drm_mtgpu_timeline_read, out.timeline_value), \
-	sizeof(struct drm_mtgpu_fence), \
-	offsetof(struct drm_mtgpu_fence, timeline_handle), \
-	offsetof(struct drm_mtgpu_fence, seqno), \
-	sizeof(struct drm_mtgpu_fence_wait), \
-	offsetof(struct drm_mtgpu_fence_wait, in.fences), \
-	offsetof(struct drm_mtgpu_fence_wait, in.seqno_count), \
-	offsetof(struct drm_mtgpu_fence_wait, in.wait_all), \
-	offsetof(struct drm_mtgpu_fence_wait, in.timeout_ns), \
-	offsetof(struct drm_mtgpu_fence_wait, out.first_signaled), \
-	sizeof(struct drm_mtgpu_context_create), \
-	offsetof(struct drm_mtgpu_context_create, in.type), \
-	offsetof(struct drm_mtgpu_context_create, in.flags), \
-	offsetof(struct drm_mtgpu_context_create, in.ccbsize), \
-	offsetof(struct drm_mtgpu_context_create, in.priority), \
-	offsetof(struct drm_mtgpu_context_create, in.vm_ctx_handle), \
-	offsetof(struct drm_mtgpu_context_create, in.data), \
-	offsetof(struct drm_mtgpu_context_create, out.ctx_handle), \
-	sizeof(struct drm_mtgpu_context_destroy), \
-	offsetof(struct drm_mtgpu_context_destroy, type), \
-	offsetof(struct drm_mtgpu_context_destroy, ctx_handle), \
-	sizeof(struct drm_mtgpu_job_context_create), \
-	offsetof(struct drm_mtgpu_job_context_create, in.type), \
-	offsetof(struct drm_mtgpu_job_context_create, in.priority), \
-	offsetof(struct drm_mtgpu_job_context_create, in.vm_ctx_handle), \
-	offsetof(struct drm_mtgpu_job_context_create, out.ctx_handle), \
-	sizeof(struct drm_mtgpu_job_context_destroy), \
-	offsetof(struct drm_mtgpu_job_context_destroy, ctx_handle), \
-	sizeof(struct drm_mtgpu_tq_context_data), \
-	offsetof(struct drm_mtgpu_tq_context_data, robustness_addr), \
-	sizeof(struct drm_mtgpu_render_context_data), \
-	offsetof(struct drm_mtgpu_render_context_data, robustness_addr), \
-	offsetof(struct drm_mtgpu_render_context_data, max_3d_deadline_ms), \
-	offsetof(struct drm_mtgpu_render_context_data, max_ta_deadline_ms), \
-	sizeof(struct drm_mtgpu_compute_context_data), \
-	offsetof(struct drm_mtgpu_compute_context_data, robustness_addr), \
-	offsetof(struct drm_mtgpu_compute_context_data, max_deadline_ms), \
-	sizeof(struct drm_mtgpu_ce_context_data), \
-	offsetof(struct drm_mtgpu_ce_context_data, framework_cmd), \
-	offsetof(struct drm_mtgpu_ce_context_data, framework_cmd_size), \
-	offsetof(struct drm_mtgpu_ce_context_data, robustness_addr), \
-	sizeof(struct drm_mtgpu_dma_context_data), \
-	offsetof(struct drm_mtgpu_dma_context_data, robustness_addr), \
-	sizeof(struct drm_mtgpu_dma_cmd), \
-	offsetof(struct drm_mtgpu_dma_cmd, src_type), \
-	offsetof(struct drm_mtgpu_dma_cmd, dst_type), \
-	offsetof(struct drm_mtgpu_dma_cmd, src_addr), \
-	offsetof(struct drm_mtgpu_dma_cmd, dst_addr), \
-	offsetof(struct drm_mtgpu_dma_cmd, src_offset), \
-	offsetof(struct drm_mtgpu_dma_cmd, dst_offset), \
-	offsetof(struct drm_mtgpu_dma_cmd, xfer_size), \
-	sizeof(struct drm_mtgpu_codec_data), \
-	offsetof(struct drm_mtgpu_codec_data, type), \
-	offsetof(struct drm_mtgpu_codec_data, length), \
-	offsetof(struct drm_mtgpu_codec_data, pad0), \
-	offsetof(struct drm_mtgpu_codec_data, pad1), \
-	offsetof(struct drm_mtgpu_codec_data, data), \
-	sizeof(struct drm_mtgpu_compute_job_data), \
-	offsetof(struct drm_mtgpu_compute_job_data, num_of_workgroups), \
-	offsetof(struct drm_mtgpu_compute_job_data, num_of_workitems), \
-	sizeof(struct drm_mtgpu_tq_job_data), \
-	offsetof(struct drm_mtgpu_tq_job_data, characteristic1), \
-	offsetof(struct drm_mtgpu_tq_job_data, characteristic2), \
-	sizeof(struct drm_mtgpu_ce_job_data), \
-	offsetof(struct drm_mtgpu_ce_job_data, characteristic1), \
-	offsetof(struct drm_mtgpu_ce_job_data, characteristic2), \
-	sizeof(struct drm_mtgpu_render_job_data), \
-	offsetof(struct drm_mtgpu_render_job_data, frag_check_semaphores), \
-	offsetof(struct drm_mtgpu_render_job_data, frag_check_semaphore_count), \
-	offsetof(struct drm_mtgpu_render_job_data, frag_update_semaphores), \
-	offsetof(struct drm_mtgpu_render_job_data, frag_update_semaphore_count), \
-	offsetof(struct drm_mtgpu_render_job_data, frag_foreign_fence_fd), \
-	offsetof(struct drm_mtgpu_render_job_data, frag_cmd_array), \
-	offsetof(struct drm_mtgpu_render_job_data, frag_cmd_size), \
-	offsetof(struct drm_mtgpu_render_job_data, frag_cmd_count), \
-	offsetof(struct drm_mtgpu_render_job_data, frag_pr_cmd_array), \
-	offsetof(struct drm_mtgpu_render_job_data, frag_pr_cmd_size), \
-	offsetof(struct drm_mtgpu_render_job_data, hwrt_dataset_handle), \
-	offsetof(struct drm_mtgpu_render_job_data, msaa_scratch_buffer_handle), \
-	offsetof(struct drm_mtgpu_render_job_data, zs_buffer_handle), \
-	offsetof(struct drm_mtgpu_render_job_data, draw_calls_number), \
-	offsetof(struct drm_mtgpu_render_job_data, indices_number), \
-	offsetof(struct drm_mtgpu_render_job_data, mrts_number), \
-	offsetof(struct drm_mtgpu_render_job_data, render_target_size), \
-	offsetof(struct drm_mtgpu_render_job_data, kick_geom), \
-	offsetof(struct drm_mtgpu_render_job_data, kick_pr), \
-	offsetof(struct drm_mtgpu_render_job_data, kick_frag), \
-	offsetof(struct drm_mtgpu_render_job_data, abort), \
-	sizeof(struct drm_mtgpu_job_submit), \
-	offsetof(struct drm_mtgpu_job_submit, in.type), \
-	offsetof(struct drm_mtgpu_job_submit, in.ctx_handle), \
-	offsetof(struct drm_mtgpu_job_submit, in.check_semaphores), \
-	offsetof(struct drm_mtgpu_job_submit, in.check_semaphore_count), \
-	offsetof(struct drm_mtgpu_job_submit, in.update_semaphores), \
-	offsetof(struct drm_mtgpu_job_submit, in.update_semaphore_count), \
-	offsetof(struct drm_mtgpu_job_submit, in.check_fences), \
-	offsetof(struct drm_mtgpu_job_submit, in.check_fence_count), \
-	offsetof(struct drm_mtgpu_job_submit, in.foreign_fence_fd), \
-	offsetof(struct drm_mtgpu_job_submit, in.sync_buf_fds), \
-	offsetof(struct drm_mtgpu_job_submit, in.sync_buf_flags), \
-	offsetof(struct drm_mtgpu_job_submit, in.sync_buf_count), \
-	offsetof(struct drm_mtgpu_job_submit, in.update_fence), \
-	offsetof(struct drm_mtgpu_job_submit, in.update_fence_name), \
-	offsetof(struct drm_mtgpu_job_submit, in.dm_cmd_array), \
-	offsetof(struct drm_mtgpu_job_submit, in.dm_cmd_size), \
-	offsetof(struct drm_mtgpu_job_submit, in.dm_cmd_count), \
-	offsetof(struct drm_mtgpu_job_submit, in.deadline_us), \
-	offsetof(struct drm_mtgpu_job_submit, in.ext_job_ref), \
-	offsetof(struct drm_mtgpu_job_submit, in.pdump_flags), \
-	offsetof(struct drm_mtgpu_job_submit, in.data), \
-	sizeof(struct drm_mtgpu_job_submit_v3), \
-	offsetof(struct drm_mtgpu_job_submit_v3, in.job_ctx_handle), \
-	offsetof(struct drm_mtgpu_job_submit_v3, in.check_semaphores), \
-	offsetof(struct drm_mtgpu_job_submit_v3, in.check_semaphore_count), \
-	offsetof(struct drm_mtgpu_job_submit_v3, in.update_semaphores), \
-	offsetof(struct drm_mtgpu_job_submit_v3, in.update_semaphore_count), \
-	offsetof(struct drm_mtgpu_job_submit_v3, in.submission_va), \
-	offsetof(struct drm_mtgpu_job_submit_v3, in.submission_size), \
-	offsetof(struct drm_mtgpu_job_submit_v3, in.submission_flags), \
-	offsetof(struct drm_mtgpu_job_submit_v3, in.submission_id), \
-	offsetof(struct drm_mtgpu_job_submit_v3, out.data), \
-	sizeof(struct drm_mtgpu_job_append), \
-	offsetof(struct drm_mtgpu_job_append, job_ctx_handle), \
-	offsetof(struct drm_mtgpu_job_append, stream_uid), \
-	sizeof(struct drm_mtgpu_dma_transfer), \
-	offsetof(struct drm_mtgpu_dma_transfer, in.bo_handle), \
-	offsetof(struct drm_mtgpu_dma_transfer, in.transfer_flag), \
-	offsetof(struct drm_mtgpu_dma_transfer, in.ext_handle), \
-	offsetof(struct drm_mtgpu_dma_transfer, in.offset), \
-	offsetof(struct drm_mtgpu_dma_transfer, in.ext_offset), \
-	offsetof(struct drm_mtgpu_dma_transfer, in.size), \
-	offsetof(struct drm_mtgpu_dma_transfer, in.fence_handle), \
-	sizeof(struct drm_mtgpu_object_destroy), \
-	offsetof(struct drm_mtgpu_object_destroy, type), \
-	offsetof(struct drm_mtgpu_object_destroy, handle), \
-	sizeof(struct drm_mtgpu_hwrt_dataset_create_args), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, pm_data_va_array_mcg), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, tail_ptr_va_array_mcg), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, vheap_table_va), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, ppp_multi_sample_ctl), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, pm_data_va_array), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, pm_secure_data_va_array), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, tail_ptr_va_array), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, free_list_handles), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, free_lists_count), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, mcg_core_num), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, isp_merge_lower_x), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, isp_merge_lower_y), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, isp_merge_scale_x), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, isp_merge_scale_y), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, isp_merge_upper_x), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, isp_merge_upper_y), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, ppp_screen), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, rgn_stride), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, teaa), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, temtile1), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, temtile2), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, te_screen), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, tpc_size), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, tpc_stride), \
-	offsetof(struct drm_mtgpu_hwrt_dataset_create_args, max_rts), \
-	sizeof(struct drm_mtgpu_free_list_create_args), \
-	offsetof(struct drm_mtgpu_free_list_create_args, free_list_base_dev_vaddr), \
-	offsetof(struct drm_mtgpu_free_list_create_args, free_list_state_dev_vaddr), \
-	offsetof(struct drm_mtgpu_free_list_create_args, mem_ctx_handle), \
-	offsetof(struct drm_mtgpu_free_list_create_args, free_list_bo_handle), \
-	offsetof(struct drm_mtgpu_free_list_create_args, free_list_bo_offset), \
-	offsetof(struct drm_mtgpu_free_list_create_args, free_list_state_bo_handle), \
-	offsetof(struct drm_mtgpu_free_list_create_args, free_list_state_bo_offset), \
-	offsetof(struct drm_mtgpu_free_list_create_args, global_free_list_handle), \
-	offsetof(struct drm_mtgpu_free_list_create_args, enable_check_sum), \
-	offsetof(struct drm_mtgpu_free_list_create_args, grow_num_pages), \
-	offsetof(struct drm_mtgpu_free_list_create_args, grow_threshold), \
-	offsetof(struct drm_mtgpu_free_list_create_args, initial_num_pages), \
-	offsetof(struct drm_mtgpu_free_list_create_args, max_num_pages), \
-	sizeof(struct drm_mtgpu_render_resource_create_args), \
-	offsetof(struct drm_mtgpu_render_resource_create_args, mcg_core_num), \
-	offsetof(struct drm_mtgpu_render_resource_create_args, free_list_count), \
-	offsetof(struct drm_mtgpu_render_resource_create_args, free_list_create_args), \
-	sizeof(struct drm_mtgpu_object_create), \
-	offsetof(struct drm_mtgpu_object_create, in.type), \
-	offsetof(struct drm_mtgpu_object_create, in.data), \
-	offsetof(struct drm_mtgpu_object_create, out.handles), \
-	sizeof(struct drm_mtgpu_fence_to_fd), \
-	offsetof(struct drm_mtgpu_fence_to_fd, in.fence), \
-	offsetof(struct drm_mtgpu_fence_to_fd, out.fd), \
-	sizeof(struct drm_mtgpu_semaphore), \
-	offsetof(struct drm_mtgpu_semaphore, handle), \
-	offsetof(struct drm_mtgpu_semaphore, value), \
-	sizeof(struct drm_mtgpu_semaphore_create), \
-	offsetof(struct drm_mtgpu_semaphore_create, out.handle), \
-	offsetof(struct drm_mtgpu_semaphore_create, out.bo_handle), \
-	offsetof(struct drm_mtgpu_semaphore_create, out.value_offset), \
-	offsetof(struct drm_mtgpu_semaphore_create, out.gpu_address), \
-	sizeof(struct drm_mtgpu_semaphore_destroy), \
-	offsetof(struct drm_mtgpu_semaphore_destroy, handle), \
-	sizeof(struct drm_mtgpu_semaphore_submit), \
-	offsetof(struct drm_mtgpu_semaphore_submit, ctx_handle), \
-	offsetof(struct drm_mtgpu_semaphore_submit, job_type), \
-	offsetof(struct drm_mtgpu_semaphore_submit, sem_type), \
-	offsetof(struct drm_mtgpu_semaphore_submit, semaphore), \
-	sizeof(struct drm_mtgpu_semaphore_cpu_signal), \
-	offsetof(struct drm_mtgpu_semaphore_cpu_signal, vm_ctx_handle), \
-	offsetof(struct drm_mtgpu_semaphore_cpu_signal, semaphore), \
-	sizeof(struct drm_mtgpu_semaphore_export_fd), \
-	offsetof(struct drm_mtgpu_semaphore_export_fd, in.semaphore), \
-	offsetof(struct drm_mtgpu_semaphore_export_fd, out.fd), \
-	sizeof(struct drm_mtgpu_semaphore_import_fd), \
-	offsetof(struct drm_mtgpu_semaphore_import_fd, in.fd), \
-	offsetof(struct drm_mtgpu_semaphore_import_fd, in.vm_ctx_handle), \
-	offsetof(struct drm_mtgpu_semaphore_import_fd, out.semaphore), \
-	offsetof(struct drm_mtgpu_semaphore_import_fd, out.bo_handle), \
-	offsetof(struct drm_mtgpu_semaphore_import_fd, out.value_offset), \
-	sizeof(struct drm_mtgpu_semaphore_wait), \
-	offsetof(struct drm_mtgpu_semaphore_wait, in.semaphores), \
-	offsetof(struct drm_mtgpu_semaphore_wait, in.count), \
-	offsetof(struct drm_mtgpu_semaphore_wait, in.timeout_ns), \
-	sizeof(struct drm_mtgpu_llc_persistence_in), \
-	offsetof(struct drm_mtgpu_llc_persistence_in, replace_mode), \
-	offsetof(struct drm_mtgpu_llc_persistence_in, max_set_aside_size), \
-	sizeof(struct drm_mtgpu_llc_persistence_out), \
-	offsetof(struct drm_mtgpu_llc_persistence_out, llc_size), \
-	offsetof(struct drm_mtgpu_llc_persistence_out, max_llc_persisting_size), \
-	sizeof(struct drm_mtgpu_cache_op), \
-	offsetof(struct drm_mtgpu_cache_op, in.type), \
-	offsetof(struct drm_mtgpu_cache_op, in.data), \
-	offsetof(struct drm_mtgpu_cache_op, out.data), \
-	sizeof(struct drm_mtgpu_transport_layer), \
-	offsetof(struct drm_mtgpu_transport_layer, in.type), \
-	offsetof(struct drm_mtgpu_transport_layer, in.sd_handle), \
-	offsetof(struct drm_mtgpu_transport_layer, in.data), \
-	offsetof(struct drm_mtgpu_transport_layer, out.data), \
-	sizeof(struct drm_mtgpu_stream_open_data_in), \
-	offsetof(struct drm_mtgpu_stream_open_data_in, name), \
-	offsetof(struct drm_mtgpu_stream_open_data_in, mode), \
-	sizeof(struct drm_mtgpu_stream_open_data_out), \
-	offsetof(struct drm_mtgpu_stream_open_data_out, sd_handle), \
-	offsetof(struct drm_mtgpu_stream_open_data_out, bo_handle), \
-	offsetof(struct drm_mtgpu_stream_open_data_out, bo_size), \
-	offsetof(struct drm_mtgpu_stream_open_data_out, multi_readers_allowed), \
-	offsetof(struct drm_mtgpu_stream_open_data_out, read_offset), \
-	sizeof(struct drm_mtgpu_discover_stream_data_in), \
-	offsetof(struct drm_mtgpu_discover_stream_data_in, pattern_name), \
-	offsetof(struct drm_mtgpu_discover_stream_data_in, size), \
-	sizeof(struct drm_mtgpu_discover_stream_data_out), \
-	offsetof(struct drm_mtgpu_discover_stream_data_out, found_count), \
-	offsetof(struct drm_mtgpu_discover_stream_data_out, stream_name), \
-	sizeof(struct drm_mtgpu_acquire_data_in), \
-	offsetof(struct drm_mtgpu_acquire_data_in, read_offset), \
-	sizeof(struct drm_mtgpu_acquire_data_out), \
-	offsetof(struct drm_mtgpu_acquire_data_out, read_len), \
-	offsetof(struct drm_mtgpu_acquire_data_out, read_offset), \
-	sizeof(struct drm_mtgpu_release_data_in), \
-	offsetof(struct drm_mtgpu_release_data_in, read_len), \
-	offsetof(struct drm_mtgpu_release_data_in, read_offset), \
-	sizeof(struct drm_mtgpu_stream_close_data_in), \
-	offsetof(struct drm_mtgpu_stream_close_data_in, bo_handle), \
-	sizeof(struct drm_mtgpu_hwperf), \
-	offsetof(struct drm_mtgpu_hwperf, in.type), \
-	offsetof(struct drm_mtgpu_hwperf, in.toggle), \
-	offsetof(struct drm_mtgpu_hwperf, in.stream_id), \
-	offsetof(struct drm_mtgpu_hwperf, in.mask), \
-	offsetof(struct drm_mtgpu_hwperf, out.data), \
-	sizeof(struct mtgpu_hwperf_timestamps), \
-	offsetof(struct mtgpu_hwperf_timestamps, soc_timestamp), \
-	offsetof(struct mtgpu_hwperf_timestamps, os_timestamp), \
-	sizeof(struct drm_mtgpu_notify_queue_update), \
-	offsetof(struct drm_mtgpu_notify_queue_update, type), \
-	offsetof(struct drm_mtgpu_notify_queue_update, ctx_handle), \
-	sizeof(struct drm_mtgpu_codec_wait), \
-	offsetof(struct drm_mtgpu_codec_wait, bo_handle), \
-	offsetof(struct drm_mtgpu_codec_wait, offset), \
-	offsetof(struct drm_mtgpu_codec_wait, flag), \
-	offsetof(struct drm_mtgpu_codec_wait, timeout_ns), \
-	sizeof(struct drm_mtgpu_align_check), \
-	offsetof(struct drm_mtgpu_align_check, check_data), \
-	offsetof(struct drm_mtgpu_align_check, check_size), \
-	sizeof(struct drm_mtgpu_version_check), \
-	offsetof(struct drm_mtgpu_version_check, in.api_major_version), \
-	offsetof(struct drm_mtgpu_version_check, in.check_api_count), \
-	offsetof(struct drm_mtgpu_version_check, in.check_data), \
-	offsetof(struct drm_mtgpu_version_check, out.result_data), \
-	offsetof(struct drm_mtgpu_version_check, out.supported_api_count), \
-	sizeof(struct mtgpu_api_version), \
-	offsetof(struct mtgpu_api_version, name), \
-	offsetof(struct mtgpu_api_version, version_range)
+#define MTGPU_IOCTL_CHECKSUM \
+	sizeof(struct drm_mtgpu_ioctl_args) + \
+	(offsetof(struct drm_mtgpu_ioctl_args, cmd_type) << 1) + \
+	(offsetof(struct drm_mtgpu_ioctl_args, cmd) << 2) +\
+	(offsetof(struct drm_mtgpu_ioctl_args, checksum) << 3) + \
+	(offsetof(struct drm_mtgpu_ioctl_args, size) << 4) + \
+	(offsetof(struct drm_mtgpu_ioctl_args, data) << 5)
+
+#define MTGPU_ABI_DMA_CMD_CHECKSUM \
+	sizeof(struct drm_mtgpu_dma_cmd) + \
+	(offsetof(struct drm_mtgpu_dma_cmd, abi_version) << 1) + \
+	(offsetof(struct drm_mtgpu_dma_cmd, abi_checksum) << 2) + \
+	(offsetof(struct drm_mtgpu_dma_cmd, src_type) << 3) + \
+	(offsetof(struct drm_mtgpu_dma_cmd, dst_type) << 4) + \
+	(offsetof(struct drm_mtgpu_dma_cmd, src_addr) << 5) + \
+	(offsetof(struct drm_mtgpu_dma_cmd, dst_addr) << 6) + \
+	(offsetof(struct drm_mtgpu_dma_cmd, src_offset) << 7) + \
+	(offsetof(struct drm_mtgpu_dma_cmd, dst_offset) << 8) + \
+	(offsetof(struct drm_mtgpu_dma_cmd, xfer_size) << 9)
+
+#define MTGPU_CORE_CMD_DEVICE_INIT_CHECKSUM \
+	sizeof(struct drm_mtgpu_device_init) + \
+	(offsetof(struct drm_mtgpu_device_init, in.api_major_version) << 1) + \
+	(offsetof(struct drm_mtgpu_device_init, in.libdrm_version) << 2) + \
+	(offsetof(struct drm_mtgpu_device_init, in.shared_inc_version) << 3)
+
+#define MTGPU_CORE_CMD_GET_VERSION_LIST_CHECKSUM \
+	sizeof(struct drm_mtgpu_get_version_list) + \
+	(offsetof(struct drm_mtgpu_get_version_list, out.supported_api_count) << 1) + \
+	(offsetof(struct drm_mtgpu_get_version_list, out.supported_abi_count) << 2) + \
+	(offsetof(struct drm_mtgpu_get_version_list, out.supported_fwif_count) << 3) + \
+	(offsetof(struct drm_mtgpu_get_version_list, out.api_version_data) << 4) + \
+	(offsetof(struct drm_mtgpu_get_version_list, out.abi_version_data) << 5) + \
+	(offsetof(struct drm_mtgpu_get_version_list, out.fwif_version_data) << 6) + \
+	(sizeof(struct mtgpu_api_version_info) << 7) + \
+	(offsetof(struct mtgpu_api_version_info, api_id) << 8) + \
+	(offsetof(struct mtgpu_api_version_info, version_min) << 9) + \
+	(offsetof(struct mtgpu_api_version_info, version_max) << 10) + \
+	(sizeof(struct mtgpu_abi_version_info) << 11) + \
+	(offsetof(struct mtgpu_abi_version_info, abi_id) << 12) + \
+	(offsetof(struct mtgpu_abi_version_info, version_min) << 13) + \
+	(offsetof(struct mtgpu_abi_version_info, version_max) << 14)
+
+#define MTGPU_QUERY_CMD_HEAP_COUNT_CHECKSUM \
+	sizeof(struct drm_mtgpu_query_heap_count) + \
+	(offsetof(struct drm_mtgpu_query_heap_count, out.heap_count) << 1)
+
+#define MTGPU_QUERY_CMD_HEAP_INFO_CHECKSUM \
+	sizeof(struct drm_mtgpu_query_heap_info) + \
+	(offsetof(struct drm_mtgpu_query_heap_info, in.index) << 1) + \
+	(offsetof(struct drm_mtgpu_query_heap_info, out.id) << 2) + \
+	(offsetof(struct drm_mtgpu_query_heap_info, out.name) << 3) + \
+	(offsetof(struct drm_mtgpu_query_heap_info, out.base) << 4) + \
+	(offsetof(struct drm_mtgpu_query_heap_info, out.length) << 5) + \
+	(offsetof(struct drm_mtgpu_query_heap_info, out.log2_page_size) << 6) + \
+	(offsetof(struct drm_mtgpu_query_heap_info, out.enable_multi_page_size) << 7) + \
+	(offsetof(struct drm_mtgpu_query_heap_info, out.page_shift_bit_mask) << 8) + \
+	(offsetof(struct drm_mtgpu_query_heap_info, out.log2_import_alignment) << 9)
+
+#define MTGPU_QUERY_CMD_MEM_INFO_CHECKSUM \
+	sizeof(struct drm_mtgpu_query_mem_info) + \
+	(offsetof(struct drm_mtgpu_query_mem_info, out.vram_hw_size) << 1) + \
+	(offsetof(struct drm_mtgpu_query_mem_info, out.vram_total_size) << 2) + \
+	(offsetof(struct drm_mtgpu_query_mem_info, out.vram_free_size) << 3) + \
+	(offsetof(struct drm_mtgpu_query_mem_info, out.sysmem_total_size) << 4) + \
+	(offsetof(struct drm_mtgpu_query_mem_info, out.sysmem_free_size) << 5)
+
+#define MTGPU_QUERY_CMD_BO_INFO_CHECKSUM \
+	sizeof(struct drm_mtgpu_query_bo_info) + \
+	(offsetof(struct drm_mtgpu_query_bo_info, in.bo_handle) << 1) + \
+	(offsetof(struct drm_mtgpu_query_bo_info, in.metadata_id) << 2) + \
+	(offsetof(struct drm_mtgpu_query_bo_info, in.metadata_addr) << 3) + \
+	(offsetof(struct drm_mtgpu_query_bo_info, in.metadata_size) << 4) + \
+	(offsetof(struct drm_mtgpu_query_bo_info, out.size) << 5) + \
+	(offsetof(struct drm_mtgpu_query_bo_info, out.align) << 6) + \
+	(offsetof(struct drm_mtgpu_query_bo_info, out.flags) << 7) + \
+	(offsetof(struct drm_mtgpu_query_bo_info, out.domain) << 8) + \
+	(offsetof(struct drm_mtgpu_query_bo_info, out.segment_id) << 9) + \
+	(offsetof(struct drm_mtgpu_query_bo_info, out.has_metadata) << 10) + \
+	(offsetof(struct drm_mtgpu_query_bo_info, out.name) << 11)
+
+#define MTGPU_QUERY_CMD_DEV_INFO_CHECKSUM \
+	sizeof(struct drm_mtgpu_query_dev_info) + \
+	(offsetof(struct drm_mtgpu_query_dev_info, out.dev_id) << 1) + \
+	(offsetof(struct drm_mtgpu_query_dev_info, out.marketing_name) << 2) + \
+	(offsetof(struct drm_mtgpu_query_dev_info, out.dev_status) << 3) + \
+	(offsetof(struct drm_mtgpu_query_dev_info, out.dev_clock_speed) << 4) + \
+	(offsetof(struct drm_mtgpu_query_dev_info, out.mem_clock_speed) << 5) + \
+	(offsetof(struct drm_mtgpu_query_dev_info, out.mem_max_clock_speed) << 6) + \
+	(offsetof(struct drm_mtgpu_query_dev_info, out.soc_timer_clock_speed) << 7) + \
+	(offsetof(struct drm_mtgpu_query_dev_info, out.num_cores) << 8) + \
+	(offsetof(struct drm_mtgpu_query_dev_info, out.mpx_map) << 9) + \
+	(offsetof(struct drm_mtgpu_query_dev_info, out.uuid) << 10) + \
+	(offsetof(struct drm_mtgpu_query_dev_info, out.subvendor_id) << 11) + \
+	(offsetof(struct drm_mtgpu_query_dev_info, out.subsystem_id) << 12) + \
+	(offsetof(struct drm_mtgpu_query_dev_info, out.llc_persisting_hw_max_size) << 13) + \
+	(offsetof(struct drm_mtgpu_query_dev_info, out.llc_size) << 14) + \
+	(offsetof(struct drm_mtgpu_query_dev_info, out.is_igpu) << 15)
+
+#define MTGPU_QUERY_CMD_PCI_INFO_CHECKSUM \
+	sizeof(struct drm_mtgpu_query_pci_info) + \
+	(offsetof(struct drm_mtgpu_query_pci_info, out.domain_number) << 1) + \
+	(offsetof(struct drm_mtgpu_query_pci_info, out.bus_number) << 2) + \
+	(offsetof(struct drm_mtgpu_query_pci_info, out.device_number) << 3) + \
+	(offsetof(struct drm_mtgpu_query_pci_info, out.function_number) << 4) + \
+	(offsetof(struct drm_mtgpu_query_pci_info, out.current_gen_speed) << 5) + \
+	(offsetof(struct drm_mtgpu_query_pci_info, out.current_width) << 6) + \
+	(offsetof(struct drm_mtgpu_query_pci_info, out.numa_node_id) << 7) + \
+	(offsetof(struct drm_mtgpu_query_pci_info, out.total_pci_device_memory_accessible) << 8) + \
+	(offsetof(struct drm_mtgpu_query_pci_info, out.total_system_memory_accessible) << 9) + \
+	(offsetof(struct drm_mtgpu_query_pci_info, out.no_snoop) << 10) + \
+	(offsetof(struct drm_mtgpu_query_pci_info, out.subvendor_id) << 11) + \
+	(offsetof(struct drm_mtgpu_query_pci_info, out.subsystem_id) << 12)
+
+#define MTGPU_QUERY_CMD_PLATFORM_INFO_CHECKSUM \
+	sizeof(struct drm_mtgpu_query_platform_info) + \
+	(offsetof(struct drm_mtgpu_query_platform_info, out.mtlink_enable) << 1) + \
+	(offsetof(struct drm_mtgpu_query_platform_info, out.iommu_enable) << 2) + \
+	(offsetof(struct drm_mtgpu_query_platform_info, out.is_vps) << 3) + \
+	(offsetof(struct drm_mtgpu_query_platform_info, out.platform_type) << 4) + \
+	(offsetof(struct drm_mtgpu_query_platform_info, out.direct_cache_access_support) << 5)
+
+#define MTGPU_QUERY_CMD_HW_CAPABILITY_CHECKSUM \
+	sizeof(struct drm_mtgpu_query_hw_capability)
+
+#define MTGPU_QUERY_CMD_DRIVER_INFO_CHECKSUM \
+	sizeof(struct drm_mtgpu_query_driver_info) + \
+	(offsetof(struct drm_mtgpu_query_driver_info, out.sched_mode) << 1)
+
+#define MTGPU_QUERY_CMD_P2P_CAPABILITY_CHECKSUM \
+	sizeof(struct drm_mtgpu_query_p2p_capability) + \
+	(offsetof(struct drm_mtgpu_query_p2p_capability, in.peer_fd) << 1) + \
+	(offsetof(struct drm_mtgpu_query_p2p_capability, out.pci_capability) << 2) + \
+	(offsetof(struct drm_mtgpu_query_p2p_capability, out.mtlink_capability) << 3) + \
+	(offsetof(struct drm_mtgpu_query_p2p_capability, out.mtlink_version) << 4) + \
+	(offsetof(struct drm_mtgpu_query_p2p_capability, out.mtlink_bandwidth) << 5) + \
+	(offsetof(struct drm_mtgpu_query_p2p_capability, out.mtlink_link_num) << 6)
+
+#define MTGPU_QUERY_CMD_MTLINK_PATH_INFO_CHECKSUM \
+	sizeof(struct drm_mtgpu_mtlink_path_info) + \
+	(offsetof(struct drm_mtgpu_mtlink_path_info, in.peer_fd) << 1) + \
+	(offsetof(struct drm_mtgpu_mtlink_path_info, out.path_num) << 2) + \
+	(sizeof(struct mtgpu_mtlink_path) << 3) + \
+	(offsetof(struct mtgpu_mtlink_path, length) << 4) + \
+	(offsetof(struct mtgpu_mtlink_path, path_node) << 5)
+
+#define MTGPU_QUERY_CMD_MISC_INFO_CHECKSUM \
+	sizeof(struct drm_mtgpu_misc_info) + \
+	(offsetof(struct drm_mtgpu_misc_info, out.misc_count) << 1) + \
+	(offsetof(struct drm_mtgpu_misc_info, out.misc_id) << 2)
+
+#define MTGPU_BO_CMD_ALLOC_CHECKSUM \
+	sizeof(struct drm_mtgpu_bo_create) + \
+	(offsetof(struct drm_mtgpu_bo_create, in.size) << 1) + \
+	(offsetof(struct drm_mtgpu_bo_create, in.align) << 2) + \
+	(offsetof(struct drm_mtgpu_bo_create, in.flags) << 3) + \
+	(offsetof(struct drm_mtgpu_bo_create, in.domains) << 4) + \
+	(offsetof(struct drm_mtgpu_bo_create, in.group_id) << 5) + \
+	(offsetof(struct drm_mtgpu_bo_create, in.name) << 6) + \
+	(offsetof(struct drm_mtgpu_bo_create, out.bo_handle) << 7)
+
+#define MTGPU_BO_CMD_FROM_USERPTR_CHECKSUM \
+	sizeof(struct drm_mtgpu_bo_from_userptr) + \
+	(offsetof(struct drm_mtgpu_bo_from_userptr, in.userptr) << 1) + \
+	(offsetof(struct drm_mtgpu_bo_from_userptr, in.size) << 2) + \
+	(offsetof(struct drm_mtgpu_bo_from_userptr, in.flags) << 3) + \
+	(offsetof(struct drm_mtgpu_bo_from_userptr, out.bo_handle) << 4)
+
+#define MTGPU_BO_CMD_GET_MMAP_OFFSET_CHECKSUM \
+	sizeof(struct drm_mtgpu_bo_get_mmap_offset) + \
+	(offsetof(struct drm_mtgpu_bo_get_mmap_offset, in.bo_handle) << 1) + \
+	(offsetof(struct drm_mtgpu_bo_get_mmap_offset, out.offset) << 2)
+
+#define MTGPU_BO_CMD_EXPORT_GLOBAL_HANDLE_CHECKSUM \
+	sizeof(struct drm_mtgpu_bo_global_handle_export) + \
+	(offsetof(struct drm_mtgpu_bo_global_handle_export, in.bo_handle) << 1) + \
+	(offsetof(struct drm_mtgpu_bo_global_handle_export, out.global_handle) << 2)
+
+#define MTGPU_BO_CMD_IMPORT_GLOBAL_HANDLE_CHECKSUM \
+	sizeof(struct drm_mtgpu_bo_global_handle_import) + \
+	(offsetof(struct drm_mtgpu_bo_global_handle_import, in.global_handle) << 1) + \
+	(offsetof(struct drm_mtgpu_bo_global_handle_import, out.size) << 2) + \
+	(offsetof(struct drm_mtgpu_bo_global_handle_import, out.bo_handle) << 3)
+
+#define MTGPU_BO_CMD_SET_METADATA_CHECKSUM \
+	sizeof(struct drm_mtgpu_bo_set_metadata) + \
+	(offsetof(struct drm_mtgpu_bo_set_metadata, bo_handle) << 1) + \
+	(offsetof(struct drm_mtgpu_bo_set_metadata, metadata_addr) << 2) + \
+	(offsetof(struct drm_mtgpu_bo_set_metadata, metadata_size) << 3)
+
+#define MTGPU_BO_CMD_ADD_METADATA_CHECKSUM \
+	sizeof(struct drm_mtgpu_bo_add_metadata) + \
+	(offsetof(struct drm_mtgpu_bo_add_metadata, bo_handle) << 1) + \
+	(offsetof(struct drm_mtgpu_bo_add_metadata, metadata_addr) << 2) + \
+	(offsetof(struct drm_mtgpu_bo_add_metadata, metadata_size) << 3) + \
+	(offsetof(struct drm_mtgpu_bo_add_metadata, metadata_id) << 4)
+
+#define MTGPU_BO_CMD_GET_METADATA_CHECKSUM \
+	sizeof(struct drm_mtgpu_bo_get_metadata) + \
+	(offsetof(struct drm_mtgpu_bo_get_metadata, bo_handle) << 1) + \
+	(offsetof(struct drm_mtgpu_bo_get_metadata, metadata_addr) << 2) + \
+	(offsetof(struct drm_mtgpu_bo_get_metadata, metadata_size) << 3) + \
+	(offsetof(struct drm_mtgpu_bo_get_metadata, metadata_id) << 4)
+
+#define MTGPU_VM_CMD_CONTEXT_CREATE_CHECKSUM \
+	sizeof(struct drm_mtgpu_vm_context_create) + \
+	(offsetof(struct drm_mtgpu_vm_context_create, vm_ctx_handle) << 1)
+
+#define MTGPU_VM_CMD_CONTEXT_DESTROY_CHECKSUM \
+	sizeof(struct drm_mtgpu_vm_context_destroy) + \
+	(offsetof(struct drm_mtgpu_vm_context_destroy, vm_ctx_handle) << 1)
+
+#define MTGPU_VM_CMD_MAP_CHECKSUM \
+	sizeof(struct drm_mtgpu_vm_map) + \
+	(offsetof(struct drm_mtgpu_vm_map, vm_ctx_handle) << 1) + \
+	(offsetof(struct drm_mtgpu_vm_map, va) << 2) +\
+	(offsetof(struct drm_mtgpu_vm_map, mapping_flags) << 3) +\
+	(offsetof(struct drm_mtgpu_vm_map, bo_handle) << 4) +\
+	(offsetof(struct drm_mtgpu_vm_map, size) << 5) +\
+	(offsetof(struct drm_mtgpu_vm_map, log2_page_size) << 6)
+
+#define MTGPU_VM_CMD_MAP_ASYNC_CHECKSUM \
+	sizeof(struct drm_mtgpu_vm_map_async) + \
+	(offsetof(struct drm_mtgpu_vm_map_async, vm_ctx_handle) << 1) + \
+	(offsetof(struct drm_mtgpu_vm_map_async, va) << 2) + \
+	(offsetof(struct drm_mtgpu_vm_map_async, mapping_flags) << 3) + \
+	(offsetof(struct drm_mtgpu_vm_map_async, bo_handle) << 4) + \
+	(offsetof(struct drm_mtgpu_vm_map_async, size) << 5) + \
+	(offsetof(struct drm_mtgpu_vm_map_async, log2_page_size) << 6) + \
+	(offsetof(struct drm_mtgpu_vm_map_async, update_semaphore_count) << 7) + \
+	(offsetof(struct drm_mtgpu_vm_map_async, update_semaphore) << 8)
+
+#define MTGPU_VM_CMD_UNMAP_CHECKSUM \
+	sizeof(struct drm_mtgpu_vm_unmap) + \
+	(offsetof(struct drm_mtgpu_vm_unmap, vm_ctx_handle) << 1) + \
+	(offsetof(struct drm_mtgpu_vm_unmap, va) << 2)
+
+#define MTGPU_SYNC_CMD_SEMAPHORE_CREATE_CHECKSUM \
+	sizeof(struct drm_mtgpu_semaphore_create) + \
+	(offsetof(struct drm_mtgpu_semaphore_create, in.type) << 1) + \
+	(offsetof(struct drm_mtgpu_semaphore_create, in.flag) << 2) + \
+	(offsetof(struct drm_mtgpu_semaphore_create, out.handle) << 3) + \
+	(offsetof(struct drm_mtgpu_semaphore_create, out.bo_handle) << 4) + \
+	(offsetof(struct drm_mtgpu_semaphore_create, out.shadow_bo_handle) << 5) + \
+	(offsetof(struct drm_mtgpu_semaphore_create, out.value_offset) << 6) + \
+	(offsetof(struct drm_mtgpu_semaphore_create, out.gpu_address) << 7)
+
+#define MTGPU_SYNC_CMD_SEMAPHORE_DESTROY_CHECKSUM \
+	sizeof(struct drm_mtgpu_semaphore_destroy) + \
+	(offsetof(struct drm_mtgpu_semaphore_destroy, handle) << 1)
+
+#define MTGPU_SYNC_CMD_SEMAPHORE_CPU_SIGNAL_CHECKSUM \
+	sizeof(struct drm_mtgpu_semaphore_cpu_signal) + \
+	(offsetof(struct drm_mtgpu_semaphore_cpu_signal, vm_ctx_handle) << 1) + \
+	(offsetof(struct drm_mtgpu_semaphore_cpu_signal, semaphore) << 2) + \
+	(sizeof(struct drm_mtgpu_semaphore) << 3) + \
+	(offsetof(struct drm_mtgpu_semaphore, handle) << 4) + \
+	(offsetof(struct drm_mtgpu_semaphore, value) << 5)
+
+#define MTGPU_SYNC_CMD_SEMAPHORE_WAIT_CHECKSUM \
+	sizeof(struct drm_mtgpu_semaphore_wait) + \
+	(offsetof(struct drm_mtgpu_semaphore_wait, in.semaphores) << 1) + \
+	(offsetof(struct drm_mtgpu_semaphore_wait, in.count) << 2) + \
+	(offsetof(struct drm_mtgpu_semaphore_wait, in.timeout_ns) << 3)
+
+#define MTGPU_SYNC_CMD_SEMAPHORE_EXPORT_GLOBAL_HANDLE_CHECKSUM \
+	sizeof(struct drm_mtgpu_semaphore_export_global_handle) + \
+	(offsetof(struct drm_mtgpu_semaphore_export_global_handle, in.handle) << 1) + \
+	(offsetof(struct drm_mtgpu_semaphore_export_global_handle, out.global_handle) << 2)
+
+#define MTGPU_SYNC_CMD_SEMAPHORE_IMPORT_GLOBAL_HANDLE_CHECKSUM \
+	sizeof(struct drm_mtgpu_semaphore_import_global_handle) + \
+	(offsetof(struct drm_mtgpu_semaphore_import_global_handle, in.global_handle) << 1) + \
+	(offsetof(struct drm_mtgpu_semaphore_import_global_handle, in.flag) << 2) + \
+	(offsetof(struct drm_mtgpu_semaphore_import_global_handle, out.handle) << 3) + \
+	(offsetof(struct drm_mtgpu_semaphore_import_global_handle, out.bo_handle) << 4) + \
+	(offsetof(struct drm_mtgpu_semaphore_import_global_handle, out.shadow_bo_handle) << 5) + \
+	(offsetof(struct drm_mtgpu_semaphore_import_global_handle, out.value_offset) << 6)
+
+#define MTGPU_SYNC_CMD_SEMAPHORE_SUBMIT_CHECKSUM \
+	sizeof(struct drm_mtgpu_semaphore_submit) + \
+	(offsetof(struct drm_mtgpu_semaphore_submit, ctx_handle) << 1) +\
+	(offsetof(struct drm_mtgpu_semaphore_submit, job_type) << 2) + \
+	(offsetof(struct drm_mtgpu_semaphore_submit, submit_type) << 3) + \
+	(offsetof(struct drm_mtgpu_semaphore_submit, semaphore) << 4) + \
+	(sizeof(struct drm_mtgpu_semaphore) << 5) + \
+	(offsetof(struct drm_mtgpu_semaphore, handle) << 6) + \
+	(offsetof(struct drm_mtgpu_semaphore, value) << 7)
+
+#define MTGPU_SYNC_CMD_SEMAPHORE_EXPORT_FD_CHECKSUM \
+	sizeof(struct drm_mtgpu_semaphore_export_fd) + \
+	(offsetof(struct drm_mtgpu_semaphore_export_fd, in.semaphore) << 1) + \
+	(offsetof(struct drm_mtgpu_semaphore_export_fd, out.fd) << 2) + \
+	(sizeof(struct drm_mtgpu_semaphore) << 3) + \
+	(offsetof(struct drm_mtgpu_semaphore, handle) << 4) + \
+	(offsetof(struct drm_mtgpu_semaphore, value) << 5)
+
+#define MTGPU_SYNC_CMD_SEMAPHORE_IMPORT_FD_CHECKSUM \
+	sizeof(struct drm_mtgpu_semaphore_import_fd) + \
+	(offsetof(struct drm_mtgpu_semaphore_import_fd, in.fd) << 1) + \
+	(offsetof(struct drm_mtgpu_semaphore_import_fd, in.vm_ctx_handle) << 2) + \
+	(offsetof(struct drm_mtgpu_semaphore_import_fd, out.semaphore) << 3) + \
+	(offsetof(struct drm_mtgpu_semaphore_import_fd, out.bo_handle) << 4) + \
+	(offsetof(struct drm_mtgpu_semaphore_import_fd, out.shadow_bo_handle) << 5) + \
+	(offsetof(struct drm_mtgpu_semaphore_import_fd, out.value_offset) << 6) + \
+	(offsetof(struct drm_mtgpu_semaphore_import_fd, out.type) << 7) + \
+	(sizeof(struct drm_mtgpu_semaphore) << 8) + \
+	(offsetof(struct drm_mtgpu_semaphore, handle) << 9) + \
+	(offsetof(struct drm_mtgpu_semaphore, value) << 10)
+
+#define MTGPU_JOB_CMD_CONTEXT_CREATE_V3_CHECKSUM \
+	sizeof(struct drm_mtgpu_job_context_create) + \
+	(offsetof(struct drm_mtgpu_job_context_create, in.type) << 1) + \
+	(offsetof(struct drm_mtgpu_job_context_create, in.flags) << 2) + \
+	(offsetof(struct drm_mtgpu_job_context_create, in.priority) << 3) + \
+	(offsetof(struct drm_mtgpu_job_context_create, in.vm_ctx_handle) << 4) + \
+	(offsetof(struct drm_mtgpu_job_context_create, out.ctx_handle) << 5)
+
+#define MTGPU_JOB_CMD_CONTEXT_DESTROY_V3_CHECKSUM \
+	sizeof(struct drm_mtgpu_job_context_destroy) + \
+	(offsetof(struct drm_mtgpu_job_context_destroy, ctx_handle) << 1)
+
+#define MTGPU_JOB_CMD_SUBMIT_V3_CHECKSUM \
+	sizeof(struct drm_mtgpu_job_submit_v3) + \
+	(offsetof(struct drm_mtgpu_job_submit_v3, in.job_ctx_handle) << 1)  + \
+	(offsetof(struct drm_mtgpu_job_submit_v3, in.check_semaphores) << 2) +\
+	(offsetof(struct drm_mtgpu_job_submit_v3, in.check_semaphore_count) << 3) + \
+	(offsetof(struct drm_mtgpu_job_submit_v3, in.update_semaphores) << 4) + \
+	(offsetof(struct drm_mtgpu_job_submit_v3, in.update_semaphore_count) << 5) + \
+	(offsetof(struct drm_mtgpu_job_submit_v3, in.buf_sync_fds) << 6) + \
+	(offsetof(struct drm_mtgpu_job_submit_v3, in.buf_sync_flags) << 7) + \
+	(offsetof(struct drm_mtgpu_job_submit_v3, in.buf_sync_count) << 8) + \
+	(offsetof(struct drm_mtgpu_job_submit_v3, in.submission_va) << 9) + \
+	(offsetof(struct drm_mtgpu_job_submit_v3, in.submission_size) << 10) + \
+	(offsetof(struct drm_mtgpu_job_submit_v3, in.submission_flags) << 11) + \
+	(offsetof(struct drm_mtgpu_job_submit_v3, in.submission_id) << 12) + \
+	(offsetof(struct drm_mtgpu_job_submit_v3, out.data) << 13)
+
+#define MTGPU_JOB_CMD_APPEND_CHECKSUM \
+	sizeof(struct drm_mtgpu_job_append) + \
+	(offsetof(struct drm_mtgpu_job_append, job_ctx_handle) << 1) + \
+	(offsetof(struct drm_mtgpu_job_append, stream_uid) << 2)
+
+#define MTGPU_JOB_CMD_SUBMIT_WITH_DOORBELL_CHECKSUM \
+	sizeof(struct drm_mtgpu_job_submit_with_doorbell) + \
+	(offsetof(struct drm_mtgpu_job_submit_with_doorbell, in.job_ctx_handle) << 1)  + \
+	(offsetof(struct drm_mtgpu_job_submit_with_doorbell, in.check_semaphores) << 2) +\
+	(offsetof(struct drm_mtgpu_job_submit_with_doorbell, in.check_semaphore_count) << 3) + \
+	(offsetof(struct drm_mtgpu_job_submit_with_doorbell, in.update_semaphores) << 4) + \
+	(offsetof(struct drm_mtgpu_job_submit_with_doorbell, in.update_semaphore_count) << 5) + \
+	(offsetof(struct drm_mtgpu_job_submit_with_doorbell, in.submission_va) << 6) + \
+	(offsetof(struct drm_mtgpu_job_submit_with_doorbell, in.submission_size) << 7) + \
+	(offsetof(struct drm_mtgpu_job_submit_with_doorbell, in.submission_flags) << 8) + \
+	(offsetof(struct drm_mtgpu_job_submit_with_doorbell, in.submission_id) << 9) + \
+	(offsetof(struct drm_mtgpu_job_submit_with_doorbell, in.doorbell_handle) << 10)
+
+#define MTGPU_JOB_CMD_ACQUIRE_DOORBELL_CHECKSUM \
+	sizeof(struct drm_mtgpu_job_acquire_doorbell) + \
+	(offsetof(struct drm_mtgpu_job_acquire_doorbell, in.job_ctx_handle) << 1) + \
+	(offsetof(struct drm_mtgpu_job_acquire_doorbell, in.user_va) << 2) + \
+	(offsetof(struct drm_mtgpu_job_acquire_doorbell, out.doorbell_handle) << 3) + \
+	(offsetof(struct drm_mtgpu_job_acquire_doorbell, out.doorbell_addr_offset) << 4)
+
+#define MTGPU_JOB_CMD_RELEASE_DOORBELL_CHECKSUM \
+	sizeof(struct drm_mtgpu_job_release_doorbell) + \
+	(offsetof(struct drm_mtgpu_job_release_doorbell, in.job_ctx_handle) << 1) + \
+	(offsetof(struct drm_mtgpu_job_release_doorbell, in.doorbell_handle) << 2)
+
+#define MTGPU_JOB_CMD_CODEC_WAIT_CHECKSUM \
+	sizeof(struct drm_mtgpu_codec_wait) + \
+	(offsetof(struct drm_mtgpu_codec_wait, bo_handle) << 1) + \
+	(offsetof(struct drm_mtgpu_codec_wait, offset) << 2) + \
+	(offsetof(struct drm_mtgpu_codec_wait, flag) << 3) + \
+	(offsetof(struct drm_mtgpu_codec_wait, timeout_ns) << 4)
+
+#define MTGPU_PERF_CMD_HWPERF_CONTROL_CHECKSUM \
+	sizeof(struct drm_mtgpu_hwperf_control) + \
+	(offsetof(struct drm_mtgpu_hwperf_control, in.toggle) << 1) + \
+	(offsetof(struct drm_mtgpu_hwperf_control, in.stream_id) << 2) + \
+	(offsetof(struct drm_mtgpu_hwperf_control, in.mask) << 3) + \
+	(offsetof(struct drm_mtgpu_hwperf_control, out.data) << 4)
+
+#define MTGPU_PERF_CMD_HWPERF_GET_TIMESTAMPS_CHECKSUM \
+	sizeof(struct drm_mtgpu_hwperf_get_timestamps) + \
+	(offsetof(struct drm_mtgpu_hwperf_get_timestamps, out.soc_timestamp) << 1) + \
+	(offsetof(struct drm_mtgpu_hwperf_get_timestamps, out.os_timestamp) << 2)
+
+#define MTGPU_PERF_CMD_HWPERF_FLUSH_BUFFER_CHECKSUM \
+	sizeof(struct drm_mtgpu_hwperf_flush_buffer) + \
+	(offsetof(struct drm_mtgpu_hwperf_flush_buffer, out.num_flushed) << 1)
+
+#define MTGPU_PERF_CMD_TL_STREAM_OPEN_CHECKSUM \
+	sizeof(struct drm_mtgpu_transport_layer) + \
+	(offsetof(struct drm_mtgpu_transport_layer, in.type) << 1) + \
+	(offsetof(struct drm_mtgpu_transport_layer, in.sd_handle) << 2) + \
+	(offsetof(struct drm_mtgpu_transport_layer, in.data) << 3) + \
+	(offsetof(struct drm_mtgpu_transport_layer, out.data) << 4) + \
+	(sizeof(struct drm_mtgpu_stream_open_data_in) << 5) + \
+	(offsetof(struct drm_mtgpu_stream_open_data_in, name) << 6) + \
+	(offsetof(struct drm_mtgpu_stream_open_data_in, mode) << 7) + \
+	(sizeof(struct drm_mtgpu_stream_open_data_out) << 8) + \
+	(offsetof(struct drm_mtgpu_stream_open_data_out, sd_handle) << 9) + \
+	(offsetof(struct drm_mtgpu_stream_open_data_out, bo_handle) << 10) + \
+	(offsetof(struct drm_mtgpu_stream_open_data_out, bo_size) << 11) + \
+	(offsetof(struct drm_mtgpu_stream_open_data_out, multi_readers_allowed) << 12) + \
+	(offsetof(struct drm_mtgpu_stream_open_data_out, read_offset) << 13) + \
+	(offsetof(struct drm_mtgpu_stream_open_data_out, tl_stream_size) << 14)
+
+#define MTGPU_PERF_CMD_TL_STREAM_CLOSE_CHECKSUM \
+	sizeof(struct drm_mtgpu_transport_layer) + \
+	(offsetof(struct drm_mtgpu_transport_layer, in.type) << 1) + \
+	(offsetof(struct drm_mtgpu_transport_layer, in.sd_handle) << 2) + \
+	(offsetof(struct drm_mtgpu_transport_layer, in.data) << 3) + \
+	(offsetof(struct drm_mtgpu_transport_layer, out.data) << 4) + \
+	(sizeof(struct drm_mtgpu_stream_close_data_in) << 5) + \
+	(offsetof(struct drm_mtgpu_stream_close_data_in, bo_handle) << 6)
+
+#define MTGPU_PERF_CMD_TL_STREAM_DISCOVER_CHECKSUM \
+	sizeof(struct drm_mtgpu_transport_layer) + \
+	(offsetof(struct drm_mtgpu_transport_layer, in.type) << 1) + \
+	(offsetof(struct drm_mtgpu_transport_layer, in.sd_handle) << 2) + \
+	(offsetof(struct drm_mtgpu_transport_layer, in.data) << 3) + \
+	(offsetof(struct drm_mtgpu_transport_layer, out.data) << 4) + \
+	(sizeof(struct drm_mtgpu_discover_stream_data_in) << 5) + \
+	(offsetof(struct drm_mtgpu_discover_stream_data_in, pattern_name) << 6) + \
+	(offsetof(struct drm_mtgpu_discover_stream_data_in, size) << 7) + \
+	(sizeof(struct drm_mtgpu_discover_stream_data_out) << 8) + \
+	(offsetof(struct drm_mtgpu_discover_stream_data_out, found_count) << 9) + \
+	(offsetof(struct drm_mtgpu_discover_stream_data_out, stream_name) << 10)
+
+#define MTGPU_PERF_CMD_TL_STREAM_ACQUIRE_CHECKSUM \
+	sizeof(struct drm_mtgpu_transport_layer) + \
+	(offsetof(struct drm_mtgpu_transport_layer, in.type) << 1) + \
+	(offsetof(struct drm_mtgpu_transport_layer, in.sd_handle) << 2) + \
+	(offsetof(struct drm_mtgpu_transport_layer, in.data) << 3) + \
+	(offsetof(struct drm_mtgpu_transport_layer, out.data) << 4) + \
+	(sizeof(struct drm_mtgpu_acquire_data_in) << 5) + \
+	(offsetof(struct drm_mtgpu_acquire_data_in, read_offset) << 6) + \
+	(sizeof(struct drm_mtgpu_acquire_data_out) << 7) + \
+	(offsetof(struct drm_mtgpu_acquire_data_out, read_len) << 8) + \
+	(offsetof(struct drm_mtgpu_acquire_data_out, read_offset) << 9)
+
+#define MTGPU_PERF_CMD_TL_STREAM_RELEASE_CHECKSUM \
+	sizeof(struct drm_mtgpu_transport_layer) + \
+	(offsetof(struct drm_mtgpu_transport_layer, in.type) << 1) + \
+	(offsetof(struct drm_mtgpu_transport_layer, in.sd_handle) << 2) + \
+	(offsetof(struct drm_mtgpu_transport_layer, in.data) << 3) + \
+	(offsetof(struct drm_mtgpu_transport_layer, out.data) << 4) + \
+	(sizeof(struct drm_mtgpu_release_data_in) << 5) + \
+	(offsetof(struct drm_mtgpu_release_data_in, read_len) << 6) + \
+	(offsetof(struct drm_mtgpu_release_data_in, read_offset) << 7)
+
+#define MTGPU_PERF_CMD_MSS_PFM_CONFIG_CHECKSUM \
+	sizeof(struct drm_mtgpu_mss_pfm_config) + \
+	(offsetof(struct drm_mtgpu_mss_pfm_config, job_ctx_handle) << 1) + \
+	(offsetof(struct drm_mtgpu_mss_pfm_config, size) << 2) + \
+	(offsetof(struct drm_mtgpu_mss_pfm_config, data) << 3)
+
+#define MTGPU_PERF_CMD_GET_CONTAINER_PID_CHECKSUM \
+	sizeof(struct drm_mtgpu_get_container_pid) + \
+	(offsetof(struct drm_mtgpu_get_container_pid, in.host_pid) << 1) + \
+	(offsetof(struct drm_mtgpu_get_container_pid, out.container_pid) << 2)
+
+#define MTGPU_JOB_CMD_GET_SUBMISSION_LAST_ERROR_CHECKSUM \
+	sizeof(struct drm_mtgpu_get_submission_last_error) + \
+	(offsetof(struct drm_mtgpu_get_submission_last_error, in.job_ctx_handle) << 1) + \
+	(offsetof(struct drm_mtgpu_get_submission_last_error, out.submission_last_error) << 2)
+
+#define MTGPU_JOB_CMD_GET_DEVICE_LAST_ERROR_CHECKSUM \
+	sizeof(struct drm_mtgpu_get_device_last_error) + \
+	(offsetof(struct drm_mtgpu_get_device_last_error, out.device_last_error) << 1)
 
 #endif /* _MTGPU_ALIGNCHECK_H_ */

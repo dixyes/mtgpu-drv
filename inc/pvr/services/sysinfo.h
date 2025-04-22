@@ -12,7 +12,7 @@
 #define MAX_HW_TIME_US                           (240000000)
 #define DEVICES_WATCHDOG_POWER_ON_SLEEP_TIMEOUT  (120000)
 #else
-#define MAX_HW_TIME_US                           (20000000)
+#define MAX_HW_TIME_US                           (10000000)
 #define DEVICES_WATCHDOG_POWER_ON_SLEEP_TIMEOUT  (10000) // (1500)
 #endif
 #define DEVICES_WATCHDOG_POWER_OFF_SLEEP_TIMEOUT (3600000)

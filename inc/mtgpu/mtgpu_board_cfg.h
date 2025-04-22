@@ -35,6 +35,13 @@ struct ddr_cap_info {
 	u8 ddr_pcs_count;
 	u8 ddr_type;
 	u16 ddr_frequency;
+	u8 mem_type;
+	u8 mem_ctl_sel;		/* 0:rambus  1:mt */
+	u32 valid_channel_mask;
+	u8 ddr_interleaving_mode;
+	u8 ddr_ch_mode;
+	u8 ddr_size_per_ch;
+	u8 ecc_ctrl;
 	u8 rsv[8];
 };
 
@@ -60,6 +67,8 @@ struct pcie_cap_info {
 	u8 pcie_int_type_pf1;
 	u8 pcie_enable_pf0;
 	u8 pcie_enable_pf1;
+	u16 subvendor_id;
+	u16 subsystem_id;
 	u8 rsv[4];
 };
 
@@ -68,14 +77,20 @@ struct gpu_cap_info {
 	u8 mc_core_count;
 	u8 mc_valid_core;
 	u16 gpu_frequency;
+	u32 mpx_invalid_map;
+	u32 mpc_invalid_map;
 	u8 rsv[7];
 };
 
 struct disp_cap_info {
 	u8 dp0_type;
+	u8 dp0_ssc;
 	u8 dp1_type;
+	u8 dp1_ssc;
 	u8 dp2_type;
+	u8 dp2_ssc;
 	u8 dp3_type;
+	u8 dp3_ssc;
 	u8 hdmi_type;
 	u16 disp0_max_hres;
 	u16 disp0_max_vres;
@@ -109,7 +124,7 @@ struct mtgpu_board_configs {
 	struct board_cap_info board_cap;
 	struct board_info_rom_info board_info_rom;
 	bool secure_bit;
-	u32 wafer_chip_id;
+	u64 wafer_chip_id;
 	u32 wafer_lot_no;
 };
 

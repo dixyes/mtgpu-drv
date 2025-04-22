@@ -51,6 +51,9 @@
 #include "mtlink_procfs.h"
 #include "mtgpu_event_report.h"
 #include "mtgpu_igpu.h"
+#include "mtgpu_mdev.h"
+#include "mtgpu_ecc.h"
+#include "mtgpu_debug.h"
 
 MODULE_DESCRIPTION("MooreThreads mtgpu drm driver");
 MODULE_AUTHOR("MooreThreads Corporation");
@@ -156,6 +159,14 @@ const struct proc_ops mtlink_warm_rest_proc_ops = {
 	.proc_release = os_single_release,
 };
 
+const struct proc_ops mtlink_disable_hwr_proc_ops = {
+	.proc_open = mtlink_disable_hwr_proc_open,
+	.proc_read = os_seq_read,
+	.proc_write = mtlink_disable_hwr_proc_write,
+	.proc_lseek = os_seq_lseek,
+	.proc_release = os_single_release,
+};
+
 const struct proc_ops process_util_proc_ops = {
 	.proc_open = mtgpu_proc_util_open,
 	.proc_read = os_seq_read,
@@ -170,6 +181,14 @@ const struct proc_ops event_message_proc_ops = {
 	.proc_lseek = os_seq_lseek,
 	.proc_release = os_single_release,
 	.proc_poll = mtgpu_proc_event_msg_poll,
+};
+
+const struct proc_ops vgpu_monitor_proc_ops = {
+	.proc_open = mtgpu_proc_vgpu_monitor_open,
+	.proc_read = os_seq_read,
+	.proc_lseek = os_seq_lseek,
+	.proc_ioctl = mtgpu_proc_vgpu_monitor_ioctl,
+	.proc_release = os_single_release,
 };
 
 #else
@@ -269,6 +288,14 @@ const struct file_operations mtlink_warm_rest_proc_ops = {
 	.release = os_single_release,
 };
 
+const struct file_operations mtlink_disable_hwr_proc_ops = {
+	.open = mtlink_disable_hwr_proc_open,
+	.read = os_seq_read,
+	.write = mtlink_disable_hwr_proc_write,
+	.llseek = os_seq_lseek,
+	.release = os_single_release,
+};
+
 const struct file_operations process_util_proc_ops = {
 	.open = mtgpu_proc_util_open,
 	.read = os_seq_read,
@@ -284,6 +311,15 @@ const struct file_operations event_message_proc_ops = {
 	.release = mtgpu_proc_event_msg_release,
 	.poll = mtgpu_proc_event_msg_poll,
 };
+
+const struct file_operations vgpu_monitor_proc_ops = {
+	.open = mtgpu_proc_vgpu_monitor_open,
+	.read = os_seq_read,
+	.llseek = os_seq_lseek,
+	.unlocked_ioctl = mtgpu_proc_vgpu_monitor_ioctl,
+	.release = os_single_release,
+};
+
 #endif
 
 u64 mtgpu_get_vram_size(struct mtgpu_device *mtdev)
@@ -387,6 +423,8 @@ static struct pci_device_id mtgpu_pci_tbl[] = {
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&sudi_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S60, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&sudi_drvdata},
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_X100, PCI_ANY_ID, PCI_ANY_ID,
+	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&sudi_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S100, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&sudi_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S1000, PCI_ANY_ID, PCI_ANY_ID,
@@ -426,6 +464,12 @@ static struct pci_device_id mtgpu_pci_tbl[] = {
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S4000_7CORE, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S4000_6CORE, PCI_ANY_ID, PCI_ANY_ID,
+	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S4000_5CORE, PCI_ANY_ID, PCI_ANY_ID,
+	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S4000_4CORE, PCI_ANY_ID, PCI_ANY_ID,
+	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S10, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&sudi_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S30_2_Core, PCI_ANY_ID, PCI_ANY_ID,
@@ -435,6 +479,8 @@ static struct pci_device_id mtgpu_pci_tbl[] = {
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S50, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&sudi_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S60, PCI_ANY_ID, PCI_ANY_ID,
+	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&sudi_drvdata},
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_X100, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&sudi_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S80, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan1_drvdata},
@@ -462,6 +508,12 @@ static struct pci_device_id mtgpu_pci_tbl[] = {
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S4000_7CORE, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S4000_6CORE, PCI_ANY_ID, PCI_ANY_ID,
+	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S4000_5CORE, PCI_ANY_ID, PCI_ANY_ID,
+	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_MTT_S4000_4CORE, PCI_ANY_ID, PCI_ANY_ID,
+	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan2_drvdata},
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_QUYUAN1_VF, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_VGA << 8, ~0, .driver_data = (unsigned long)&quyuan1_drvdata},
 #if (RGX_NUM_OS_SUPPORTED > 1)
@@ -472,6 +524,12 @@ static struct pci_device_id mtgpu_pci_tbl[] = {
 #endif
 	{ PCI_VENDOR_ID_MT, DEVICE_ID_PINGHU1, PCI_ANY_ID, PCI_ANY_ID,
 	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&pinghu1_drvdata},
+
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_PINGHU1S, PCI_ANY_ID, PCI_ANY_ID,
+	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&pinghu1s_drvdata},
+
+	{ PCI_VENDOR_ID_MT, DEVICE_ID_HUASHAN, PCI_ANY_ID, PCI_ANY_ID,
+	  PCI_CLASS_DISPLAY_3D << 8, ~0, .driver_data = (unsigned long)&huashan_drvdata},
 	{ /* end: all entry */ }
 };
 
@@ -500,17 +558,18 @@ MODULE_DEVICE_TABLE(pci, mtgpu_pci_tbl);
 MODULE_INFO(build_version, MT_BUILD_TAG);
 
 static struct of_device_id mtgpu_of_tbl[] = {
-	{.compatible = "mthreads,i-gpu", .data = &apollo_drvdata},
+	{.compatible = "mthreads,i-gpu", .data = &m1000_drvdata},
 	{ }, /* end of all entries */
 };
 
 static const struct acpi_device_id mtgpu_acpi_table[] = {
-	{.id = "MGPU0001", .driver_data = (kernel_ulong_t)&apollo_drvdata},
+	{.id = "MGPU0001", .driver_data = (kernel_ulong_t)&m1000_drvdata},
 	{ }, /* end of all entries */
 };
 
 static const struct dev_pm_ops igpu_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend, pm_runtime_force_resume)
+	SET_RUNTIME_PM_OPS(mtgpu_igpu_pm_suspend, mtgpu_igpu_pm_resume, NULL)
 };
 
 static struct platform_driver mtgpu_platform_driver = {
@@ -563,9 +622,19 @@ static int __init mtgpu_driver_init(void)
 			goto mtlink_driver_init_err;
 	}
 
+	if (mtgpu_get_driver_mode() == MTGPU_DRIVER_MODE_HOST) {
+		ret = mtgpu_vz_driver_init();
+		if (unlikely(ret))
+			goto mtgpu_vz_driver_init_err;
+	}
+
 	ret = mtgpu_ob_res_init();
 	if (unlikely(ret))
 		goto ob_res_fail;
+
+	ret = mtgpu_ecc_global_data_init();
+	if (unlikely(ret))
+		pr_warn("mtgpu: failed to init ecc global data\n");
 
 	ret = pci_register_driver(&mtgpu_pci_driver);
 	if (unlikely(ret))
@@ -579,12 +648,18 @@ static int __init mtgpu_driver_init(void)
 	if (unlikely(ret))
 		goto mtgpu_drm_init_err;
 
+	ret = mtgpu_debug_dump_init();
+	if (unlikely(ret))
+		goto mtgpu_debug_dump_init_err;
+
 	ret = mtsnd_init();
 	if (unlikely(ret))
 		pr_warn("mtgpu: failed to init the audio function\n");
 
 	return 0;
 
+mtgpu_debug_dump_init_err:
+	mtgpu_drm_fini();
 mtgpu_drm_init_err:
 	platform_driver_unregister(&mtgpu_platform_driver);
 platform_register_driver_err:
@@ -592,6 +667,9 @@ platform_register_driver_err:
 pci_register_driver_err:
 	mtgpu_ob_res_deinit();
 ob_res_fail:
+	if (mtgpu_get_driver_mode() == MTGPU_DRIVER_MODE_HOST)
+		mtgpu_vz_driver_exit();
+mtgpu_vz_driver_init_err:
 	if (mtgpu_get_driver_mode() == MTGPU_DRIVER_MODE_NATIVE)
 		mtlink_driver_exit();
 mtlink_driver_init_err:
@@ -613,11 +691,17 @@ static void __exit mtgpu_driver_exit(void)
 	if (disable_driver)
 		return;
 
+	mtgpu_ecc_global_data_deinit();
 	mtsnd_deinit();
+	mtgpu_debug_dump_deinit();
+
 	mtgpu_drm_fini();
 	pci_unregister_driver(&mtgpu_pci_driver);
 	platform_driver_unregister(&mtgpu_platform_driver);
 	mtgpu_ob_res_deinit();
+
+	if (mtgpu_get_driver_mode() == MTGPU_DRIVER_MODE_HOST)
+		mtgpu_vz_driver_exit();
 
 	if (mtgpu_get_driver_mode() == MTGPU_DRIVER_MODE_NATIVE)
 		mtlink_driver_exit();
@@ -641,6 +725,12 @@ MODULE_FIRMWARE(FIRMWARE_LOAD_PATH("musa.sh.1.0.0.0"));
 MODULE_FIRMWARE(FIRMWARE_LOAD_PATH("mtvpu-00-1.0.bin"));
 MODULE_FIRMWARE(FIRMWARE_LOAD_PATH("mtvpu-01-1.0.bin"));
 MODULE_FIRMWARE(FIRMWARE_LOAD_PATH("mtvpu-02-1.0.bin"));
+MODULE_FIRMWARE(FIRMWARE_LOAD_PATH("mtfw-gen1.bin"));
+MODULE_FIRMWARE(FIRMWARE_LOAD_PATH("mtfw-gen2.bin"));
+MODULE_FIRMWARE(FIRMWARE_LOAD_PATH("mtfw-gen3.bin"));
+MODULE_FIRMWARE(FIRMWARE_LOAD_PATH("mtlog-gen1.dict"));
+MODULE_FIRMWARE(FIRMWARE_LOAD_PATH("mtlog-gen2.dict"));
+MODULE_FIRMWARE(FIRMWARE_LOAD_PATH("mtlog-gen3.dict"));
 
 #if (RGX_NUM_OS_SUPPORTED > 1)
 MODULE_FIRMWARE(FIRMWARE_LOAD_PATH("musa.fw.1.0.0.0.vz.linux"));

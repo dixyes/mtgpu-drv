@@ -50,6 +50,41 @@ static const u8 display_port_type[] = {
 	DRM_MODE_CONNECTOR_LVDS        /*PORT_TYPE_DP2LVDS*/
 };
 
+bool
+mtgpu_display_mode_compare(const struct drm_display_mode *mode,
+			   struct mt_display_mode *mt_mode)
+{
+	if (mode->clock		== mt_mode->clock &&
+	    mode->hdisplay	== mt_mode->hdisplay &&
+	    mode->hsync_start	== mt_mode->hsync_start &&
+	    mode->hsync_end	== mt_mode->hsync_end &&
+	    mode->htotal	== mt_mode->htotal &&
+	    mode->vdisplay	== mt_mode->vdisplay &&
+	    mode->vsync_start	== mt_mode->vsync_start &&
+	    mode->vsync_end	== mt_mode->vsync_end &&
+	    mode->vtotal	== mt_mode->vtotal &&
+	    mode->flags		== mt_mode->flags)
+		return true;
+
+	return false;
+}
+
+static void
+mtgpu_display_mode_copy(struct drm_display_mode *adjusted_mode,
+			struct mt_display_mode *patch_mode)
+{
+	adjusted_mode->clock		= patch_mode->clock;
+	adjusted_mode->hdisplay		= patch_mode->hdisplay;
+	adjusted_mode->hsync_start	= patch_mode->hsync_start;
+	adjusted_mode->hsync_end	= patch_mode->hsync_end;
+	adjusted_mode->htotal		= patch_mode->htotal;
+	adjusted_mode->vdisplay		= patch_mode->vdisplay;
+	adjusted_mode->vsync_start	= patch_mode->vsync_start;
+	adjusted_mode->vsync_end	= patch_mode->vsync_end;
+	adjusted_mode->vtotal		= patch_mode->vtotal;
+	adjusted_mode->flags		= patch_mode->flags;
+}
+
 static ssize_t
 mtgpu_dp_aux_transfer(struct drm_dp_aux *aux, struct drm_dp_aux_msg *msg)
 {
@@ -137,6 +172,7 @@ mtgpu_dp_connector_detect(struct drm_connector *connector, bool force)
 	}
 
 	dp->connected = dp->core->is_plugin(&dp->ctx);
+	DRM_INFO("DP-%d: HPD state is %d\n", dp->ctx.id, dp->connected);
 
 	if (dp->connected && dp->ctx.dsc_param.dsc_capable)
 		mtgpu_dp_dsc_discover(dp);
@@ -185,31 +221,31 @@ mtgpu_dp_connector_best_encoder(struct drm_connector *connector)
 static int mtgpu_dp_mode_supported_by_product(struct mtgpu_dp *dp,
 					      struct drm_display_mode *mode)
 {
+	int max_pclk;
 	struct mtgpu_dp_dsc_param *dp_dsc_param = &dp->ctx.dsc_param;
 	bool dsc_support = (dp_dsc_param->dsc_capable &&
 			    dp_dsc_param->sink_dsc_support);
-	int max_pclk;
-
-	if (dp->fixed_edid && !dp->connected) {
-		if (mode->clock > dp->ctx.max_pclk_100khz * 100)
-			return MODE_CLOCK_HIGH;
-	} else {
-		if (dp->ctx.max_rate == 0)
-			mtgpu_dp_get_sinkcaps(dp);
-
-		max_pclk = mtgpu_dp_link_rate_to_pclk(dp->ctx.max_rate,
-						      dp->ctx.lane_cnt, 24);
-
-		if (mode->clock > dp->ctx.max_pclk_100khz * 100 ||
-		    (!dsc_support && mode->clock > max_pclk))
-			return MODE_CLOCK_HIGH;
-	}
 
 	if (mode->hdisplay > dp->ctx.max_hres)
 		return MODE_H_ILLEGAL;
 
 	if (mode->vdisplay > dp->ctx.max_vres)
 		return MODE_V_ILLEGAL;
+
+	if (mode->clock > dp->ctx.max_pclk_100khz * 100)
+		return MODE_CLOCK_HIGH;
+
+	if (dp->ctx.max_rate == 0 || dp->ctx.max_lanes == 0)
+		if(mtgpu_dp_get_sinkcaps(dp) < 0)
+			return MODE_BAD;
+
+	max_pclk = mtgpu_dp_link_rate_to_pclk(dp->ctx.max_rate,
+					      dp->ctx.lane_cnt, 24);
+
+	max_pclk = dsc_support ? max_pclk * 3 : max_pclk;
+
+	if (mode->clock > max_pclk)
+		return MODE_CLOCK_HIGH;
 
 	return MODE_OK;
 }
@@ -266,6 +302,9 @@ static int mtgpu_dp_connector_mode_valid(struct drm_connector *connector,
 	struct mtgpu_dp *dp = connector_to_mtgpu_dp(connector);
 
 	DRM_DEV_DEBUG(dp->dev, "%s()\n", __func__);
+
+	/* update sink_dsc_support */
+	mtgpu_dp_dsc_discover(dp);
 
 	/* check if the mode can be supported by product. */
 	mode_status = mtgpu_dp_mode_supported_by_product(dp, mode);
@@ -357,11 +396,15 @@ mtgpu_dp_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	dp->ctx.pclk = adjusted_mode->clock;
 
 	if (dp->ctx.dsc_param.dsc_capable && dp->connected) {
-		mtgpu_dp_get_sinkcaps(dp);
+		if (dp->ctx.max_rate == 0 || dp->ctx.max_lanes == 0)
+			mtgpu_dp_get_sinkcaps(dp);
 
 		max_pclk = mtgpu_dp_link_rate_to_pclk(dp->ctx.max_rate,
 						      dp->ctx.lane_cnt,
 						      dp->ctx.bpp);
+
+		/* update sink_dsc_support */
+		mtgpu_dp_dsc_discover(dp);
 
 		/* dp->ctx.pclk > max_pclk:
 		 * Use DSC when pixel clock exceed DP link clock!
@@ -376,24 +419,35 @@ mtgpu_dp_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	return;
 }
 
-static int
-mtgpu_dp_encoder_atomic_check(struct drm_encoder *encoder,
-			      struct drm_crtc_state *crtc_state,
-			      struct drm_connector_state *conn_state)
+static bool
+mtgpu_dp_encoder_mode_fixup(struct drm_encoder *encoder,
+			    const struct drm_display_mode *mode,
+			    struct drm_display_mode *adjusted_mode)
 {
 	struct mtgpu_dp *dp = encoder_to_mtgpu_dp(encoder);
+	struct monitor_patch *patch;
 
-	/* TODO: maybe we should check something here */
 	DRM_DEV_DEBUG(dp->dev, "%s()\n", __func__);
 
-	return 0;
+	patch = mtgpu_dp_monitor_select_patch(dp, mode,
+					      PATCH_FORCE_OVERWRITE_TIMING);
+
+	if (!patch)
+		return true;
+
+	mtgpu_display_mode_copy(adjusted_mode, &patch->patched_mode);
+	drm_mode_set_crtcinfo(adjusted_mode, 0);
+
+	DRM_DEV_DEBUG(dp->dev, DRM_MODE_FMT "\n", DRM_MODE_ARG(adjusted_mode));
+
+	return true;
 }
 
 static const struct drm_encoder_helper_funcs mtgpu_dp_encoder_helper_funcs = {
 	.enable			= mtgpu_dp_encoder_enable,
 	.disable		= mtgpu_dp_encoder_disable,
 	.atomic_mode_set	= mtgpu_dp_encoder_atomic_mode_set,
-	.atomic_check		= mtgpu_dp_encoder_atomic_check,
+	.mode_fixup		= mtgpu_dp_encoder_mode_fixup,
 };
 
 static const struct drm_encoder_funcs mtgpu_dp_encoder_funcs = {
@@ -616,11 +670,12 @@ static int mtgpu_dp_audio_register(struct mtgpu_dp *dp, struct drm_device *drm)
 		.i2s = 1,
 		.data = dp,
 	};
-	int idx = drm->primary->index;
+	int idx = mtgpu_cnt - 1; // idx starts from 0
 	char dev_name[64];
 	const char *name = dev_name;
 
 	snprintf(dev_name, sizeof(dev_name), "mtgpu-%d-dp-audio-codec-%d", idx, dp->ctx.id);
+	DRM_DEV_INFO(dp->dev, "audio codec name: '%s'\n", dev_name);
 
 	dp->dp_audio = platform_device_register_data(dp->dev, name,
 						     PLATFORM_DEVID_AUTO, &codec_data,
@@ -729,27 +784,17 @@ static int mtgpu_dp_component_bind(struct device *dev,
 		goto err_free_dp;
 	}
 
-	if (pdata->soc_gen == GPU_SOC_GEN2 || pdata->soc_gen == GPU_SOC_GEN3) {
-		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "tzc-regs");
-		if (!res) {
-			DRM_DEV_ERROR(dev, "failed to get display tzc-regs\n");
-			ret = -EIO;
-			goto err_free_dp;
-		}
-
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "tzc-regs");
+	if (res) {
 		dp->ctx.tzc_regs = devm_ioremap(dev, res->start, resource_size(res));
 		if (IS_ERR(dp->ctx.tzc_regs)) {
 			ret = PTR_ERR(dp->ctx.tzc_regs);
 			goto err_free_dp;
 		}
+	}
 
-		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "amt-regs");
-		if (!res) {
-			DRM_DEV_ERROR(dev, "failed to get display amt-regs\n");
-			ret = -EIO;
-			goto err_free_dp;
-		}
-
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "amt-regs");
+	if (res) {
 		dp->ctx.amt_regs = devm_ioremap(dev, res->start, resource_size(res));
 		if (IS_ERR(dp->ctx.amt_regs)) {
 			ret = PTR_ERR(dp->ctx.amt_regs);
@@ -757,14 +802,8 @@ static int mtgpu_dp_component_bind(struct device *dev,
 		}
 	}
 
-	if (pdata->soc_gen == GPU_SOC_GEN3) {
-		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "cust-regs");
-		if (!res) {
-			DRM_DEV_ERROR(dev, "failed to get display cust-regs\n");
-			ret = -EIO;
-			goto err_free_dp;
-		}
-
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "cust-regs");
+	if (res) {
 		dp->ctx.cust_regs = devm_ioremap(dev, res->start, resource_size(res));
 		if (IS_ERR(dp->ctx.cust_regs)) {
 			ret = PTR_ERR(dp->ctx.cust_regs);
@@ -773,16 +812,12 @@ static int mtgpu_dp_component_bind(struct device *dev,
 	}
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "glb-regs");
-	if (!res) {
-		DRM_DEV_ERROR(dev, "failed to get display glb-regs\n");
-		ret = -EIO;
-		goto err_free_dp;
-	}
-
-	dp->ctx.glb_regs = devm_ioremap(dev, res->start, resource_size(res));
-	if (IS_ERR(dp->ctx.glb_regs)) {
-		ret = PTR_ERR(dp->ctx.glb_regs);
-		goto err_free_dp;
+	if (res) {
+		dp->ctx.glb_regs = devm_ioremap(dev, res->start, resource_size(res));
+		if (IS_ERR(dp->ctx.glb_regs)) {
+			ret = PTR_ERR(dp->ctx.glb_regs);
+			goto err_free_dp;
+		}
 	}
 
 	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
@@ -830,17 +865,22 @@ static int mtgpu_dp_component_bind(struct device *dev,
 		break;
 	case GPU_SOC_GEN2:
 		chip = &mtgpu_dp_chip_qy1;
-		if (mtgpu_fec_enable)
+		if (fec_display_enable)
 			chip->core = &mtgpu_dp_fec;
 		break;
 	case GPU_SOC_GEN3:
 		chip = &mtgpu_dp_chip_qy2;
+		break;
+	case GPU_SOC_GEN4:
+		chip = &mtgpu_dp_chip_ph1;
 		break;
 	default:
 		DRM_DEV_ERROR(dev, "current SOC_GEN%d is not supported\n", pdata->soc_gen);
 		ret = -ENOTSUPP;
 		goto err_free_dp;
 	}
+
+	dp->soc_gen = pdata->soc_gen;
 
 	dp->core = chip->core;
 	if (!dp->core) {
@@ -977,8 +1017,10 @@ static int mtgpu_dp_resume(struct device *dev)
 	if (dp->core->audio_enable && dp->audio_enabled)
 		dp->core->audio_enable(&dp->ctx);
 
-	if (dp->core->is_plugin)
+	if (dp->core->is_plugin) {
 		dp->connected = dp->core->is_plugin(&dp->ctx);
+		DRM_INFO("DP-%d: HPD state is %d\n", dp->ctx.id, dp->connected);
+	}
 
 	DRM_DEV_INFO(dp->dev, "mtgpu dp device resume early exit\n");
 	

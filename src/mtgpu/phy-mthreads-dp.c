@@ -140,6 +140,9 @@ static int mtgpu_phy_probe(struct platform_device *pdev)
 	case GPU_SOC_GEN3:
 		mtgpu->ops = &mtgpu_phy_snps;
 		break;
+	case GPU_SOC_GEN4:
+		mtgpu->ops = &mtgpu_phy_cdns;
+		break;
 	default:
 		dev_err(dev, "%s() current SOC_GEN%d is not supported\n", __func__,
 			phy_pdata->soc_gen);

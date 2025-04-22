@@ -27,9 +27,15 @@ struct sg_table;
 struct dma_buf_attachment;
 struct drm_mode_create_dumb;
 struct edid;
+struct spsc_queue;
+struct spsc_node;
 
 DECLARE_OS_STRUCT_COMMON_FUNCS(drm_gem_object);
 
+struct drm_file *os_get_drm_file_by_fd(int fd);
+struct drm_device *os_get_drm_device_by_fd(int fd);
+bool os_drm_dev_enter(struct drm_device *dev, int *idx);
+void os_drm_dev_exit(int idx);
 struct mutex *os_get_drm_device_mutex(struct drm_device *dev);
 struct device *os_get_drm_device_base(struct drm_device *drm);
 bool os_drm_is_registered(struct drm_device *dev);
@@ -71,6 +77,7 @@ void os_get_drm_mode_create_dumb_args(struct drm_mode_create_dumb *args,
 void os_set_drm_mode_create_dumb_args(struct drm_mode_create_dumb *args,
 				      u32 handle, u32 pitch, u64 size);
 struct file *os_get_drm_file_filp(struct drm_file *file);
+void os_set_drm_file_event_space(struct drm_file *file, int event_space);
 
 /* drm dp helper interface */
 bool os_drm_dp_channel_eq_ok(const u8 link_status[DP_LINK_STATUS_SIZE], int lane_count);
@@ -133,6 +140,7 @@ struct drm_device *os_get_drm_gem_object_dev(struct drm_gem_object *obj);
 size_t os_get_drm_gem_object_size(struct drm_gem_object *obj);
 struct dma_buf *os_get_drm_gem_object_dma_buf(struct drm_gem_object *obj);
 struct dma_buf_attachment *os_get_drm_gem_object_import_attach(struct drm_gem_object *obj);
+void *os_get_drm_gem_object_resv(struct drm_gem_object *obj);
 
 #define OS_DRM_GEM_OBJECT_MEMBER(ptr, member)	(os_get_drm_gem_object_##member(ptr))
 
@@ -145,6 +153,19 @@ DECLARE_OS_STRUCT_COMMON_FUNCS(drm_encoder);
 DECLARE_OS_STRUCT_COMMON_FUNCS(drm_connector);
 DECLARE_OS_STRUCT_COMMON_FUNCS(videomode);
 DECLARE_OS_STRUCT_COMMON_FUNCS(drm_dp_aux);
+
+/* spsc interface */
+DECLARE_OS_STRUCT_COMMON_FUNCS(spsc_node);
+int os_spsc_queue_create(struct spsc_queue **queue);
+void os_spsc_queue_destroy(struct spsc_queue *queue);
+struct spsc_node *os_spsc_queue_pop(struct spsc_queue *queue);
+int os_spsc_queue_count(struct spsc_queue *queue);
+struct spsc_node *os_spsc_queue_peek(struct spsc_queue *queue);
+bool os_spsc_queue_push(struct spsc_queue *queue, struct spsc_node *node);
+
+/* drm syncobj interface */
+int os_drm_syncobj_find_fence(struct drm_file *file_private, u32 handle,
+			      u64 point, u64 flags, struct dma_fence **fence);
 
 /* drm debug interface */
 void os_drm_dev_printk(const struct device *dev, const char *level, const char *format, ...);

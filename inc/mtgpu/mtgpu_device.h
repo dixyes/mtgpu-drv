@@ -5,8 +5,16 @@
 
 #ifndef __MTGPU_DEVICE_H__
 #define __MTGPU_DEVICE_H__
+
 #include "mtgpu.h"
-#define MTGPU_PCIE_DMA_DESC_MEM_SIZE		0x800000
+
+#define MTGPU_PCIE_DMA_DESC_MEM_SIZE		(0x800000)
+#define MTGPU_FW_CFG_CE_QUEUE_BITMAP_DEFAULT	(0xFF)
+#define MTGPU_FW_CFG_CACHE_PREFETCH_DISABLE	(0x0)
+#define MTGPU_FW_CFG_CACHE_PREFETCH_MODE1	(0x1)
+#define MTGPU_FW_CFG_CACHE_PREFETCH_MODE2	(0x2)
+#define MTGPU_FW_CFG_CACHE_PREFETCH_MODE3	(0x3)
+#define MTGPU_FW_MTS_SCHEDULE_REG_MAX_COUNT	(16)
 
 struct mtlink_ops;
 struct mtlink_device;
@@ -15,6 +23,8 @@ struct mtgpu_platform_data;
 struct crypto_shash;
 struct mtgpu_mdev_vpu_info;
 struct mtgpu_softirq_ctrl;
+struct mtgpu_fw_info;
+struct mtgpu_fw_ops;
 
 enum hw_module_type {
 	MTGPU_HW_MODULE_GPU = 0,
@@ -101,6 +111,12 @@ struct mtgpu_chip_info {
 	u64 ob_addr_flag;
 	u64 ob_addr_size;
 
+	u64 fec_ob_addr_flag;
+	u64 fec_bl_offset;
+	u64 fec_bl_startup_pc;
+	u64 fec_img_offset;
+	u32 fec_bl_location;
+
 	u32 intd_cd_reg_offset;
 	u32 intd_cd_reg_size;
 	u32 pcie_mhi_reg_offset;
@@ -116,6 +132,12 @@ struct mtgpu_chip_info {
 	u32 pfm_d2d_0_reg_size;
 	u32 pfm_llc_reg_offset;
 	u32 pfm_llc_reg_size;
+
+	u64 mts_reg_count;
+	u32 mts_reg_offset[MTGPU_FW_MTS_SCHEDULE_REG_MAX_COUNT];
+
+	u32 fec_sram_offset;
+	u32 fec_sram_size;
 };
 
 struct mtlink_private_data {
@@ -134,17 +156,32 @@ struct mtgpu_driver_data {
 	struct mtgpu_pcie_perf_ops *pcie_perf_ops;
 	const struct mtgpu_smc_ops *smc_ops;
 	const struct mtgpu_fec_ops *fec_ops;
+	const struct mtgpu_cmc_ops *cmc_ops;
 	struct mtgpu_llc_ops *llc_ops;
 	struct mtlink_ops *link_ops;
 	struct mtgpu_ob_ops *ob_ops;
 	struct mtgpu_gpu_ss_ops *gpu_ss_ops;
+	struct mtgpu_pcie_ss_ops *pcie_ss_ops;
 	struct mtgpu_pfm_ops *pfm_ops;
 	struct mtgpu_daa_ops *daa_ops;
+	struct mtgpu_reg_decode_ops *reg_decode_ops;
+	struct mtgpu_ecc_ops *ecc_ops;
 	int (*get_platform_device_info)(struct mtgpu_device *mtdev, u32 hw_module, u32 hw_id,
 					struct mtgpu_resource **mtgpu_res, u32 *num_res,
 					void **data, size_t *size_data);
+	void (*get_fw_cfg_info)(void **fw_cfg, int *size);
 	int (*register_access_check)(struct mtgpu_device *mtdev);
 	int (*get_softirq_ctrls)(struct mtgpu_softirq_ctrl **softirq_ctrls, int *ctrls_cnt);
+	void (*get_mpx_map)(struct mtgpu_device *mtdev, void *reg_base);
+};
+
+struct mtgpu_device_node {
+	/* gpu platform device base */
+	struct device *dev;
+	const struct mtgpu_fw_ops *fw_ops;
+
+	/* address of device registers */
+	void __iomem *regs_base;
 };
 
 #define MT_OPS_DECLARE(name) \
@@ -157,10 +194,13 @@ extern struct mtgpu_display_ops name##_display_ops; \
 extern struct mtgpu_pcie_local_mgmt_ops name##_pcie_local_mgmt_ops; \
 extern struct mtgpu_smc_ops name##_smc_ops; \
 extern struct mtgpu_fec_ops name##_fec_ops; \
+extern struct mtgpu_cmc_ops name##_cmc_ops; \
 extern struct mtlink_ops name##_mtlink_ops; \
 extern struct mtgpu_ob_ops name##_ob_ops; \
 extern struct mtgpu_pfm_ops name##_pfm_ops; \
-extern struct mtgpu_gpu_ss_ops name##_gpu_ss_ops;
+extern struct mtgpu_gpu_ss_ops name##_gpu_ss_ops; \
+extern struct mtgpu_reg_decode_ops name##_reg_decode_ops; \
+extern struct mtgpu_ecc_ops name##_ecc_ops;
 
 int mtgpu_resource_init_mem(struct mtgpu_resource *res, resource_size_t start,
 			    int size, const char *name);
@@ -179,9 +219,6 @@ int mtgpu_device_memory_fixup(struct mtgpu_device *mtdev,
 int mtgpu_pcie_resize_videomem_bar(struct mtgpu_device *mtdev, int resize);
 
 int mtgpu_device_common_init(struct mtgpu_device *mtdev, struct mtgpu_module_param *param);
-int mtgpu_register_devices(struct mtgpu_device *mtdev);
-void mtgpu_unregister_devices(struct mtgpu_device *mtdev);
-void mtgpu_device_common_exit(struct mtgpu_device *mtdev);
 int mtgpu_mtrr_setup(struct mtgpu_device *mtdev);
 void mtgpu_mtrr_cleanup(struct mtgpu_device *mtdev);
 int request_pci_io_addr(struct pci_dev *pdev, u32 index,
@@ -201,6 +238,7 @@ int mtgpu_register_video_device(struct mtgpu_device *mtdev);
 void mtgpu_unregister_video_device(struct mtgpu_device *mtdev);
 int mtgpu_register_gpu_device_with_coreid(struct mtgpu_device *mtdev, int logic_core_id,
 					  int physical_core_id);
+void mtgpu_generate_device_uuid(struct mtgpu_device *mtdev, bool is_mpc_parent, u32 instance_id, u8 *uuid);
 void mtgpu_unregister_gpu_device(struct mtgpu_device *mtdev);
 int mtgpu_register_dummy_device_with_core_id(struct mtgpu_device *mtdev, u8 coreid);
 void mtgpu_register_drm_device_with_core_id(struct mtgpu_device *mtdev, u8 coreid);
@@ -215,11 +253,19 @@ int mtgpu_register_hdmi_device(struct mtgpu_device *mtdev);
 void mtgpu_pci_dev_config_data_release(struct mtgpu_device *mtdev);
 void mtgpu_gpu_timer_enable(struct mtgpu_device *mtdev);
 void mtgpu_gpu_timer_disable(struct mtgpu_device *mtdev);
+u32 mtgpu_device_get_soc_timer(struct mtgpu_device *mtdev);
 int mtgpu_guest_get_vpu_info(struct mtgpu_device *mtdev, struct mtgpu_mdev_vpu_info *vpu_info);
 int mtgpu_guest_notify_host_vpu(struct device *dev);
 struct platform_device *mtgpu_get_first_valid_drm_device(struct mtgpu_device *mtdev);
-void mtgpu_set_gpu_page_size(struct device *dev, u32 page_size);
+void mtgpu_set_gpu_page_size(struct mtgpu_device *mtdev, u32 page_size);
 void mtgpu_host_notify_linux_guest_start_hwr(struct device *dev, u32 mpc_id);
 void mtgpu_host_notify_linux_guest_end_hwr(struct device *dev, u32 mpc_id);
 bool mtgpu_device_node_is_active(struct mtgpu_device *mtdev);
+struct device *mtgpu_get_pcie_device_base(struct mtgpu_device_node *mt_dev_node);
+u32 mtgpu_device_get_mpx_map(struct mtgpu_device *mtdev, void *reg_base);
+int mtgpu_get_fw_cfg_info(struct mtgpu_device *mtdev, void **fw_cfg, int *size);
+void mtgpu_device_node_init(struct mtgpu_device_node *mt_dev_node, void *dev);
+void mtgpu_device_pci_slot_info_release(struct mtgpu_device *mtdev);
+void mtgpu_device_fw_versions_release(struct mtgpu_device *mtdev);
+
 #endif /* __MTGPU_DEVICE_H__ */

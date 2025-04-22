@@ -577,17 +577,19 @@ typedef struct PVRSRV_BRIDGE_IN_RGXKICKTA3D5_TAG
 
 	IMG_HANDLE* phCheckUFOSyncPrimBlock;
 	IMG_UINT32* pui32CheckSyncOffset;
-	IMG_UINT32* pui32CheckValue;
+	IMG_UINT64* pui64CheckValue;
 
 	IMG_HANDLE* phUpdateUFOSyncPrimBlock;
 	IMG_UINT32* pui32UpdateSyncOffset;
-	IMG_UINT32* pui32UpdateValue;
+	IMG_UINT64* pui64UpdateValue;
 
 	IMG_UINT32* pui32SyncPMRFlags;
 	IMG_HANDLE* phSyncPMRs;
 
+	IMG_UINT32  ui32SubmissionFlags;
 	IMG_UINT64  ui64SubmissionVa;
 	IMG_UINT32  ui32SubmissionSize;
+	IMG_UINT64  ui64SubmissionId;
 
 	IMG_UINT32  ui32CheckCount;
 	IMG_UINT32  ui32UpdateCount;

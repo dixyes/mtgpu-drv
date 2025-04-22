@@ -99,6 +99,7 @@ typedef struct _HWPERF_SETTING_
 
 typedef struct _HWPERF_CONNECTION_DATA_
 {
+	IMG_BOOL	bConnected;
 	HWPERF_SETTING *psSetting;
 	DLLIST_NODE	sListNode;
 } HWPERF_CONNECTION_DATA;

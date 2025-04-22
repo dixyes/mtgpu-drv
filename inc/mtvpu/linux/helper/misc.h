@@ -9,5 +9,6 @@
 void vpu_set_vm_core(struct mt_chip *chip);
 void vpu_slice_mode_config(struct mt_chip *chip, int core_idx);
 int vpu_fixed_mem_qy2(struct mt_chip *chip, int type);
+int vpu_check_handle(VpuHandle handle);
 
 #endif /*_MISC_H_ */

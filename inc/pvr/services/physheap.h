@@ -49,6 +49,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pmr_impl.h"
 #include "physheap_config.h"
 #include "mtgpu_segment.h"
+#include "pvr_notifier.h"
 
 #ifndef PHYSHEAP_H
 #define PHYSHEAP_H
@@ -321,6 +322,8 @@ PHYS_HEAP_USAGE_FLAGS PhysHeapGetFlags(PHYS_HEAP *psPhysHeap);
 
 IMG_BOOL PhysHeapValidateDefaultHeapExists(PPVRSRV_DEVICE_NODE psDevNode);
 
+IMG_BOOL PhysHeapIsUMA(PHYS_HEAP *psPhysHeap);
+
 PVRSRV_ERROR PhysHeapGetCpuPAddr(PHYS_HEAP *psPhysHeap,
 									   IMG_CPU_PHYADDR *psCpuPAddr);
 
@@ -506,6 +509,10 @@ PVRSRV_ERROR PhysHeapPagesClean(PHYS_HEAP *psPhysHeap,
 @Return         IMG_UINT32   Log2 page shift
 */ /**************************************************************************/
 IMG_UINT32 PhysHeapGetPageShift(PHYS_HEAP *psPhysHeap);
+
+void PhysHeapDebugDump(PPVRSRV_DEVICE_NODE psDeviceNode,
+		       DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+		       void *pvDumpDebugFile);
 
 PVRSRV_ERROR acquireBackupAreasFromHeap(PHYS_HEAP *heap,
 					MEM_REGION_INFO **ppsAreas,

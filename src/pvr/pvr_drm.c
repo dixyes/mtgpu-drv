@@ -75,8 +75,7 @@
 #include "mtgpu_vm.h"
 #include "mtgpu_bo.h"
 #include "mtgpu_dma_next.h"
-#include "mtgpu_drv_next.h"
-#include "mtgpu_info.h"
+#include "mtgpu_ioctl.h"
 #include "mtgpu_semaphore.h"
 #include "mtgpu_fence.h"
 #include "mtgpu_job.h"
@@ -218,6 +217,9 @@ err_unset_dma_parms:
 	mutex_unlock(&g_device_mutex);
 	if (ddev->dev->dma_parms == &priv->dma_parms)
 		ddev->dev->dma_parms = NULL;
+
+	dev_set_drvdata(dev, NULL);
+
 	return err;
 }
 
@@ -256,7 +258,8 @@ int pvr_drm_open(struct drm_device *ddev, struct drm_file *dfile)
 #if (PVRSRV_DEVICE_INIT_MODE == PVRSRV_LINUX_DEV_INIT_ON_OPEN)
 	struct pvr_drm_private *priv = ddev->dev_private;
 
-	return PVRSRVDeviceServicesOpen(priv->dev_node, dfile);
+	if (priv)
+		return PVRSRVDeviceServicesOpen(priv->dev_node, dfile);
 #else
 	return 0;
 #endif
@@ -266,7 +269,8 @@ void pvr_drm_release(struct drm_device *ddev, struct drm_file *dfile)
 {
 	struct pvr_drm_private *priv = ddev->dev_private;
 
-	PVRSRVDeviceRelease(priv->dev_node, dfile);
+	if (priv)
+		PVRSRVDeviceRelease(priv->dev_node, dfile);
 }
 
 struct drm_ioctl_desc pvr_drm_ioctls[128] = {
@@ -285,87 +289,7 @@ struct drm_ioctl_desc pvr_drm_ioctls[128] = {
 			  DRM_RENDER_ALLOW),
 #endif
 #if !defined(NO_HARDWARE)
-	DRM_IOCTL_DEF_DRV(MTGPU_DEVICE_INIT, mtgpu_device_init_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_QUERY_INFO, mtgpu_query_info_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_BO_CREATE, mtgpu_bo_create_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_BO_FROM_USERPTR, mtgpu_bo_from_userptr_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_BO_GET_MMAP_OFFSET, mtgpu_bo_get_mmap_offset_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_BO_EXPORT_GLOBAL_HANDLE, mtgpu_bo_export_global_handle_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_BO_IMPORT_GLOBAL_HANDLE, mtgpu_bo_import_global_handle_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_VM_CONTEXT_CREATE, mtgpu_vm_context_create_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_VM_CONTEXT_DESTROY, mtgpu_vm_context_destroy_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_VM_MAP, mtgpu_vm_map_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_VM_UNMAP, mtgpu_vm_unmap_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_TIMELINE_CREATE, mtgpu_timeline_create_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_TIMELINE_DESTROY, mtgpu_timeline_destroy_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_TIMELINE_READ, mtgpu_timeline_read_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_FENCE_WAIT, mtgpu_fence_wait_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_FENCE_TO_FD, mtgpu_fence_to_fd_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_CONTEXT_CREATE, mtgpu_context_create_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_CONTEXT_DESTROY, mtgpu_context_destroy_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_JOB_SUBMIT, mtgpu_job_submit_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_SEMAPHORE_SUBMIT, mtgpu_semaphore_submit_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_SEMAPHORE_CREATE, mtgpu_semaphore_create_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_SEMAPHORE_DESTROY, mtgpu_semaphore_destroy_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_SEMAPHORE_CPU_SIGNAL, mtgpu_semaphore_cpu_signal_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_SEMAPHORE_EXPORT_FD, mtgpu_semaphore_export_fd_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_CACHE_OP, mtgpu_cache_op_ioctl,
-			  DRM_RENDER_ALLOW),
-#if defined SUPPORT_DMA_TRANSFER
-	DRM_IOCTL_DEF_DRV(MTGPU_DMA_TRANSFER, mtgpu_dma_transfer_ioctl,
-			  DRM_RENDER_ALLOW),
-#endif /* SUPPORT_DMA_TRANSFER */
-	DRM_IOCTL_DEF_DRV(MTGPU_OBJECT_CREATE, mtgpu_object_create_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_OBJECT_DESTROY, mtgpu_object_destroy_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_TRANSPORT_LAYER, mtgpu_transport_layer_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_HWPERF, mtgpu_hwperf_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_NOTIFY_QUEUE_UPDATE, mtgpu_notify_queue_update_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_ALIGN_CHECK, mtgpu_align_check_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_VERSION_CHECK, mtgpu_version_check_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_JOB_CONTEXT_CREATE, mtgpu_job_context_create_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_JOB_CONTEXT_DESTROY, mtgpu_job_context_destroy_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_JOB_SUBMIT_V3, mtgpu_job_submit_ioctl_v3,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_JOB_APPEND, mtgpu_job_append_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_CODEC_WAIT, mtgpu_codec_wait_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_SEMAPHORE_IMPORT_FD, mtgpu_semaphore_import_fd_ioctl,
-			  DRM_RENDER_ALLOW),
-	DRM_IOCTL_DEF_DRV(MTGPU_SEMAPHORE_WAIT, mtgpu_semaphore_wait_ioctl,
+	DRM_IOCTL_DEF_DRV(MTGPU_CMD, mtgpu_ioctl,
 			  DRM_RENDER_ALLOW),
 #endif
 };

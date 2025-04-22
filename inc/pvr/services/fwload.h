@@ -135,6 +135,18 @@ PVRSRV_ERROR OSLoadFirmware(PVRSRV_DEVICE_NODE *psDeviceNode,
 const void* OSFirmwareData(OS_FW_IMAGE *psFWImage);
 
 /*************************************************************************/ /*!
+@Function     OSGetFirmware
+@Description  This function returns a pointer to a `struct firmware` which
+              represents the FW image binary data held in memory. The pointer
+              must remain valid until OSUnloadFirmware() is called.
+@Input        psFWImage  Private data opaque handle
+@Return       const struct firmware*  Pointer to the firmware structure
+                                      containing the FW binary image to load
+                                      on the GPU.
+*/ /**************************************************************************/
+const struct firmware *OSGetFirmware(OS_FW_IMAGE *psFWImage);
+
+/*************************************************************************/ /*!
 @Function     OSFirmwareSize
 @Description  This function returns the size of the FW image binary data.
 @Input        psFWImage  Private data opaque handle
@@ -150,6 +162,30 @@ size_t OSFirmwareSize(OS_FW_IMAGE *psFWImage);
 @Input        psFWImage  Private data opaque handle
 */ /**************************************************************************/
 void OSUnloadFirmware(OS_FW_IMAGE *psFWImage);
+
+/*************************************************************************/ /*!
+@Function     OSGetFirmwareImageByNode
+@Description  This is called when the server traversing the fw image list.
+@Input        psNode         Private data opaque handle
+@Return       OS_FW_IMAGE*   Pointer to the OS_FW_IMAGE structure
+*/ /**************************************************************************/
+OS_FW_IMAGE *OSGetFirmwareImageByNode(DLLIST_NODE *psNode);
+
+/*************************************************************************/ /*!
+@Function     OSGetFirmwareNode
+@Description  This is called when the server read/write fw image list.
+@Input        psFWImage      Private data opaque handle
+@Return       DLLIST_NODE*   Pointer to the DLLIST_NODE structure
+*/ /**************************************************************************/
+DLLIST_NODE *OSGetFirmwareNode(OS_FW_IMAGE *psFWImage);
+
+/*************************************************************************/ /*!
+@Function     OSFirmwareFilename
+@Description  This is called when the server get fw image filename.
+@Input        psFWImage      Private data opaque handle
+@Return       IMG_CHAR*      The fw image filename
+*/ /**************************************************************************/
+const IMG_CHAR *OSFirmwareFilename(OS_FW_IMAGE *psFWImage);
 
 #endif /* FWLOAD_H */
 

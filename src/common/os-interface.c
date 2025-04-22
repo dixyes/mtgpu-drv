@@ -55,6 +55,7 @@
 #include <linux/poll.h>
 #include <linux/kref.h>
 #include <linux/sched/task.h>
+#include <linux/sched/mm.h>
 #include <linux/pid.h>
 #include <linux/dcache.h>
 #include <linux/seq_file.h>
@@ -65,11 +66,15 @@
 #include <linux/interval_tree.h>
 #include <linux/iommu.h>
 #include <linux/iova.h>
+#if defined(OS_LINUX_DMA_IOMMU_H_EXIST)
+#include <linux/dma-iommu.h>
+#endif
 #include <linux/random.h>
 #include <linux/device.h>
 #include <linux/ktime.h>
 #include <linux/timekeeping.h>
 #include <linux/crypto.h>
+#include <linux/sort.h>
 #include <linux/list_sort.h>
 #include <linux/kfifo.h>
 #include <crypto/hash.h>
@@ -89,6 +94,8 @@
 #include <linux/pm_runtime.h>
 #include <acpi/acpixf.h>
 #include <asm-generic/bitsperlong.h>
+#include <linux/namei.h>
+#include <linux/mount.h>
 #if defined(OS_LINUX_FIND_H_EXIST)
 #include <linux/find.h>
 #else
@@ -105,6 +112,12 @@
 #if defined(OS_FUNC_DEVICE_BYPASS_SMMU_EXIST)
 #include <linux/sva.h>
 #endif
+#if defined(OS_LINUX_SCHED_CLOCK_H_EXIST)
+#include <linux/sched/clock.h>
+#endif
+#if !defined(OS_FUNC_SCHED_SET_FIFO_LOW_EXIST)
+#include <uapi/linux/sched/types.h>
+#endif
 
 #include "mtgpu_device.h"
 #include "os-interface.h"
@@ -118,7 +131,19 @@
 #include <asm/cpufeature.h>
 #endif
 
-#ifndef OS_FUNC_PCI_STATUS_GET_AND_CLEAR_ERRORS_EXIST
+#ifndef untagged_addr
+#include <linux/bitops.h>
+#define __untagged_addr(addr)	\
+	((__force __typeof__(addr))sign_extend64((__force u64)(addr), 55))
+
+#define untagged_addr(addr)	({					\
+	u64 __addr = (__force u64)(addr);				\
+	__addr &= __untagged_addr(__addr);				\
+	(__force __typeof__(addr))__addr;				\
+})
+#endif
+
+#ifndef PCI_STATUS_ERROR_BITS
 
 #define PCI_STATUS_ERROR_BITS ((PCI_STATUS_DETECTED_PARITY)  | \
 			       (PCI_STATUS_SIG_SYSTEM_ERROR) | \
@@ -148,12 +173,21 @@ struct mt_miscdevice {
 	void *data;
 };
 
+struct mt_affinity_notify {
+	struct irq_affinity_notify affinity_notify;
+	void *data;
+};
+
 const u64 os_value[] = {
 #define X(VALUE) VALUE,
 	DECLEAR_OS_VALUE
 #undef X
 };
 
+int os_num_online_cpus(void)
+{
+	return num_online_cpus();
+}
 
 struct file *os_anon_inode_getfile(const char *name, const struct mt_file_operations *ops, void *priv,
 				   int flags)
@@ -259,6 +293,59 @@ IMPLEMENT_OS_STRUCT_COMMON_FUNCS(rb_root_cached);
 void os_rb_root_init(struct rb_root_cached *root)
 {
 	*root = RB_ROOT_CACHED;
+}
+
+IMPLEMENT_OS_STRUCT_COMMON_FUNCS(rb_node);
+
+struct rb_node *os_rb_first_cached(struct rb_root_cached *rb_root)
+{
+	return rb_first_cached(rb_root);
+}
+
+struct rb_node *os_rb_next(const struct rb_node *node)
+{
+	return rb_next(node);
+}
+
+void OS_RB_CLEAR_NODE(struct rb_node *node)
+{
+	RB_CLEAR_NODE(node);
+}
+
+bool OS_RB_EMPTY_NODE(struct rb_node *node)
+{
+	return RB_EMPTY_NODE(node);
+}
+
+bool OS_RB_EMPTY_ROOT(struct rb_root *root)
+{
+	return RB_EMPTY_ROOT(root);
+}
+
+void os_rb_erase_cached(struct rb_node *node, struct rb_root_cached *root)
+{
+	rb_erase_cached(node, root);
+}
+
+void os_rb_add_cached(struct rb_node *node, struct rb_root_cached *tree,
+		      bool (*less)(struct rb_node *, const struct rb_node *))
+{
+	struct rb_node **link = &tree->rb_root.rb_node;
+	struct rb_node *parent = NULL;
+	bool leftmost = true;
+
+	while (*link) {
+		parent = *link;
+		if (less(node, parent)) {
+			link = &parent->rb_left;
+		} else {
+			link = &parent->rb_right;
+			leftmost = false;
+		}
+	}
+
+	rb_link_node(node, parent, link);
+	rb_insert_color_cached(node, tree, leftmost);
 }
 
 struct shash_desc *os_create_shash_desc(struct crypto_shash *tfm)
@@ -383,6 +470,11 @@ void *os_dev_get_drvdata(const struct device *dev)
 void os_dev_set_drvdata(struct device *dev, void *data)
 {
 	dev_set_drvdata(dev, data);
+}
+
+void *os_dev_get_platdata(const struct device *dev)
+{
+	return dev_get_platdata(dev);
 }
 
 struct device *os_get_device(struct device *dev)
@@ -598,6 +690,11 @@ struct page *os_phys_to_page(phys_addr_t pa)
 #endif
 }
 
+struct page *os_get_page_by_index(struct page *pages, u32 index)
+{
+	return pages + index;
+}
+
 int os_sg_table_create(struct sg_table **sgt)
 {
 	*sgt = kzalloc(sizeof(struct sg_table), GFP_KERNEL);
@@ -671,7 +768,7 @@ void os_sg_free_table(struct sg_table *sgt)
 	sg_free_table(sgt);
 }
 
-void os_get_task_comm(char *to, int size)
+void os_get_current_task_comm(char *to, int size)
 {
 	__get_task_comm(to, size, current);
 }
@@ -679,6 +776,11 @@ void os_get_task_comm(char *to, int size)
 void *os_vmap(struct page **pages, unsigned int count)
 {
 	return vmap(pages, count, VM_MAP, pgprot_noncached(PAGE_KERNEL));
+}
+
+void *os_vmap_cache(struct page **pages, unsigned int count)
+{
+	return vmap(pages, count, VM_MAP, PAGE_KERNEL);
 }
 
 void os_vunmap(const void *addr)
@@ -777,6 +879,16 @@ void os_task_unlock(struct task_struct *p)
 	task_unlock(p);
 }
 
+void os_get_task_struct(struct task_struct *t)
+{
+	get_task_struct(t);
+}
+
+void os_put_task_struct(struct task_struct *t)
+{
+	put_task_struct(t);
+}
+
 char *os_d_path(const struct path *p, char *param, int size)
 {
 	return d_path(p, param, size);
@@ -840,9 +952,46 @@ void os_set_vm_area_struct_vm_page_prot_writecombine(struct vm_area_struct *vma)
 	vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
 }
 
+void os_set_vm_area_struct_vm_page_prot_noncached(struct vm_area_struct *vma)
+{
+	vma->vm_page_prot = pgprot_noncached(vm_get_page_prot(vma->vm_flags));
+}
+
+/* only for arm64 vgpu bar2 mmap environment */
+void os_set_vm_area_any_uc_flags(struct vm_area_struct *vma)
+{
+#ifdef VM_ALLOW_ANY_UNCACHED
+#if defined(OS_VM_FLAGS_IS_NOT_CONST)
+	vma->vm_flags |= VM_ALLOW_ANY_UNCACHED;
+#else
+	vm_flags_set(vma, VM_ALLOW_ANY_UNCACHED);
+#endif
+#endif
+}
+
+bool os_has_vm_area_any_uc_flags(void)
+{
+#ifdef VM_ALLOW_ANY_UNCACHED
+	return true;
+#else
+	return false;
+#endif
+}
+
+
 void *os_memcpy(void *dst, const void *src, size_t size)
 {
 	return memcpy(dst, src, size);
+}
+
+void os_memcpy_flushcache(void *dst, const void *src, size_t cnt)
+{
+	memcpy_flushcache(dst, src, cnt);
+}
+
+int os_memcmp(const void *buf1, const void *buf2, size_t size)
+{
+	return memcmp(buf1, buf2, size);
 }
 
 void os_memcpy_fromio(void *dst, const void __iomem *src, size_t size)
@@ -864,7 +1013,7 @@ void os_memcpy_fromio(void *dst, const void __iomem *src, size_t size)
 		size--;
 	}
 
-	while (size >= 8) {
+	while (size >= 8 && IS_ALIGNED((unsigned long)dst, 8)) {
 		*(u64 *)dst = __raw_readq(src);
 		src += 8;
 		dst += 8;
@@ -899,7 +1048,7 @@ void os_memcpy_toio(void __iomem *dst, const void *src, size_t size)
 		size--;
 	}
 
-	while (size >= 8) {
+	while (size >= 8 && IS_ALIGNED((unsigned long)src, 8)) {
 		__raw_writeq(*(u64 *)src, dst);
 		src += 8;
 		dst += 8;
@@ -982,6 +1131,16 @@ void os_complete(struct completion *x)
 	complete(x);
 }
 
+void os_complete_all(struct completion *x)
+{
+	complete_all(x);
+}
+
+void os_reinit_completion(struct completion *x)
+{
+	reinit_completion(x);
+}
+
 int os_mutex_create(struct mutex **lock)
 {
 	*lock = kzalloc(sizeof(struct mutex), GFP_KERNEL);
@@ -1012,6 +1171,11 @@ void os_mutex_destroy(struct mutex *lock)
 {
 	mutex_destroy(lock);
 	kfree(lock);
+}
+
+int os_mutex_is_locked(struct mutex *lock)
+{
+	return mutex_is_locked(lock);
 }
 
 int os_spin_lock_create(spinlock_t **lock)
@@ -1244,6 +1408,28 @@ bool os_queue_delayed_work(struct workqueue_struct *wq,
 bool os_cancel_delayed_work_sync(struct delayed_work *dwork)
 {
 	return cancel_delayed_work_sync(dwork);
+}
+
+bool os_cancel_delayed_work(struct delayed_work *dwork)
+{
+	return cancel_delayed_work(dwork);
+}
+
+bool os_mod_delayed_work(struct workqueue_struct *wq,
+			 struct delayed_work *dwork,
+			 unsigned long delay)
+{
+	return mod_delayed_work(wq, dwork, delay);
+}
+
+struct delayed_work *os_to_delayed_work(struct work_struct *work)
+{
+	return to_delayed_work(work);
+}
+
+unsigned long os_get_delayed_work_timer_expires(struct delayed_work *dwork)
+{
+	return dwork->timer.expires;
 }
 
 __poll_t os_key_to_poll(void *key)
@@ -1490,6 +1676,11 @@ void *os_get_file_private_data(struct file *file)
 	return file->private_data;
 }
 
+size_t os_get_file_node_size(const struct file *file)
+{
+	return file->f_inode->i_size;
+}
+
 void *os_get_file_node_private_data(struct file *file)
 {
     return file_inode(file)->i_private;
@@ -1581,6 +1772,11 @@ bool os_queue_work(struct workqueue_struct *wq, struct work_struct *work)
 	return queue_work(wq, work);
 }
 
+struct workqueue_struct *os_get_system_wq(void)
+{
+	return system_wq;
+}
+
 void os_destroy_workqueue(struct workqueue_struct *wq)
 {
 	destroy_workqueue(wq);
@@ -1637,9 +1833,30 @@ void os_destroy_waitqueue_head(struct wait_queue_head *wq_head)
 	kfree(wq_head);
 }
 
+int os_signal_pending(void)
+{
+	return signal_pending(current);
+}
+
 void os_might_sleep(void)
 {
 	might_sleep();
+}
+
+void os_schedule(void)
+{
+	schedule();
+}
+
+void os_sched_set_fifo_low(struct task_struct *p)
+{
+#if defined(OS_FUNC_SCHED_SET_FIFO_LOW_EXIST)
+	sched_set_fifo_low(p);
+#else
+	struct sched_param sparam = {.sched_priority = 1};
+
+	sched_setscheduler(current, SCHED_FIFO, &sparam);
+#endif
 }
 
 long os_schedule_timeout(long timeout)
@@ -1663,6 +1880,17 @@ long os_prepare_to_wait_event_uninterruptible(struct wait_queue_head *wq_head,
 	return prepare_to_wait_event(wq_head, wq_entry, TASK_UNINTERRUPTIBLE);
 }
 
+long os_prepare_to_wait_event_interruptible(struct wait_queue_head *wq_head,
+					    struct wait_queue_entry *wq_entry)
+{
+	return prepare_to_wait_event(wq_head, wq_entry, TASK_INTERRUPTIBLE);
+}
+
+int os_wait_event_killable(struct wait_queue_head *wq_head, bool condition)
+{
+	return wait_event_killable(*wq_head, condition);
+}
+
 void os_add_wait_queue(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry)
 {
 	add_wait_queue(wq_head, wq_entry);
@@ -1673,6 +1901,11 @@ void os_init_waitqueue_func_entry(struct wait_queue_entry *wq_entry, wait_queue_
 	init_waitqueue_func_entry(wq_entry, func);
 }
 
+void *os_get_work_func(struct work_struct *work)
+{
+	return work->func;
+}
+
 void os_init_work(struct work_struct *work, work_func_t func)
 {
 	INIT_WORK(work, func);
@@ -1681,6 +1914,11 @@ void os_init_work(struct work_struct *work, work_func_t func)
 bool os_flush_work(struct work_struct *work)
 {
 	return flush_work(work);
+}
+
+bool os_schedule_work(struct work_struct *work)
+{
+	return schedule_work(work);
 }
 
 bool os_cancel_work_sync(struct work_struct *work)
@@ -1701,6 +1939,26 @@ void os_wmb(void)
 void os_mb(void)
 {
 	mb(); /* memory barrier */
+}
+
+void os_rmb(void)
+{
+	rmb();/* memory barrier */
+}
+
+void os_smp_mb(void)
+{
+	smp_mb();/* memory barrier */
+}
+
+void os_smp_wmb(void)
+{
+	smp_wmb();/* memory barrier */
+}
+
+void os_smp_rmb(void)
+{
+	smp_rmb();/* memory barrier */
 }
 
 int os_smp_load_acquire(int *p)
@@ -1761,6 +2019,77 @@ int os_get_user_pages_fast(unsigned long start, int nr_pages,
 	return get_user_pages_fast(start, nr_pages, gup_flags, pages);
 }
 
+long os_get_user_pages(unsigned long start, unsigned long nr_pages, unsigned int gup_flags,
+		       struct page **pages, struct vm_area_struct **vmas)
+{
+#ifdef OS_GET_USER_PAGES_USE_VM_AREA_STRUCT
+	return get_user_pages(start, nr_pages, gup_flags, pages, vmas);
+#else
+	(void)vmas;
+	return get_user_pages(start, nr_pages, gup_flags, pages);
+#endif
+}
+
+/* https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/commit/?id=64019a2e467a */
+long os_get_user_pages_remote(struct task_struct *tsk, struct mm_struct *mm, unsigned long start,
+			      unsigned long nr_pages, unsigned int gup_flags, struct page **pages,
+			      struct vm_area_struct **vmas, int *locked)
+{
+#if defined(OS_GET_USER_PAGES_REMOTE_ARGS_HAS_TASK)
+	return get_user_pages_remote(tsk, mm, start, nr_pages, gup_flags, pages, vmas, locked);
+#else
+#ifdef OS_GET_USER_PAGES_REMOTE_USE_VM_AREA_STRUCT
+	return get_user_pages_remote(mm, start, nr_pages, gup_flags, pages, vmas, locked);
+#else
+	return get_user_pages_remote(mm, start, nr_pages, gup_flags, pages, locked);
+#endif
+#endif
+}
+
+#if defined(OS_FUNC_PIN_USER_PAGES_REMOTE_EXIST)
+static long _os_pin_user_pages_remote(struct task_struct *tsk, struct mm_struct *mm,
+				      unsigned long start, unsigned long nr_pages,
+				      unsigned int gup_flags, struct page **pages,
+				      struct vm_area_struct **vmas, int *locked)
+{
+#if defined(OS_PIN_USER_PAGES_REMOTE_ARGS_HAS_TASK)
+	return pin_user_pages_remote(tsk, mm, start, nr_pages, gup_flags, pages, vmas, locked);
+#else
+#ifdef OS_PIN_USER_PAGES_REMOTE_USE_VM_AREA_STRUCT
+	return pin_user_pages_remote(mm, start, nr_pages, gup_flags, pages, vmas, locked);
+#else
+	return pin_user_pages_remote(mm, start, nr_pages, gup_flags, pages, locked);
+#endif
+#endif
+}
+#endif // OS_FUNC_PIN_USER_PAGES_REMOTE_EXIST
+
+long os_pin_user_pages_remote(struct task_struct *tsk, struct mm_struct *mm, unsigned long start,
+			      unsigned long nr_pages, unsigned int gup_flags, struct page **pages,
+			      struct vm_area_struct **vmas, int *locked)
+{
+#if defined(OS_FUNC_PIN_USER_PAGES_REMOTE_EXIST)
+	return _os_pin_user_pages_remote(tsk, mm, start, nr_pages, gup_flags | FOLL_LONGTERM, pages,
+					 vmas, locked);
+#else
+	return os_get_user_pages_remote(tsk, mm, start, nr_pages, gup_flags, pages, vmas, locked);
+#endif
+}
+
+void os_unpin_user_pages_dirty_lock(struct page **pages, unsigned long npages, bool make_dirty)
+{
+#if defined(OS_FUNC_UNPIN_USER_PAGES_DIRTY_LOCK_EXIST)
+	unpin_user_pages_dirty_lock(pages, npages, make_dirty);
+#else
+	unsigned long i;
+	for (i = 0; i < npages; i++) {
+		if (make_dirty)
+			os_set_pages_dirty(pages[i], 1);
+		os_put_page(pages[i]);
+	}
+#endif
+}
+
 void os_put_page(struct page *page)
 {
 	put_page(page);
@@ -1787,6 +2116,63 @@ void os_clear_pages_reserved(struct page *pages, int n)
 		ClearPageReserved(pages + i);
 }
 
+void os_set_pages_dirty(struct page *pages, int n)
+{
+	int i;
+
+	for (i = 0; i < n; i++)
+		SetPageDirty(pages + i);
+}
+
+struct vm_area_struct *os_find_vma_intersection(struct mm_struct *mm, unsigned long start_addr,
+						unsigned long end_addr)
+{
+	return find_vma_intersection(mm, start_addr, end_addr);
+}
+
+struct vm_area_struct *os_find_vma_intersection_locked(struct mm_struct *mm, unsigned long start_addr,
+						       unsigned long end_addr)
+{
+	struct vm_area_struct *vma = NULL;
+
+#if defined(OS_STRUCT_MM_STRUCT_HAS_MMAP_SEM)
+	down_read(&mm->mmap_sem);
+	vma =find_vma_intersection(mm, start_addr, end_addr);
+	up_read(&mm->mmap_sem);
+#elif defined(OS_STRUCT_MM_STRUCT_HAS_MMAP_LOCK)
+	down_read(&mm->mmap_lock);
+	vma =find_vma_intersection(mm, start_addr, end_addr);
+	up_read(&mm->mmap_lock);
+#endif
+
+	return vma;
+}
+
+struct vm_area_struct *os_find_vma(struct mm_struct *mm, unsigned long addr)
+{
+	return find_vma(mm, addr);
+}
+
+uint64_t os_untagged_addr(u64 addr)
+{
+	return untagged_addr(addr);
+}
+
+int os_follow_pfn(struct vm_area_struct *vma, unsigned long address, unsigned long *pfn)
+{
+	return follow_pfn(vma, address, pfn);
+}
+
+int os_fixup_user_fault(struct task_struct *tsk, struct mm_struct *mm, unsigned long address,
+			unsigned int fault_flags, bool *unlocked)
+{
+#if defined(OS_FIXUP_USER_FAULT_ARGS_HAS_TASK)
+	return fixup_user_fault(tsk, mm, address, fault_flags, unlocked);
+#else
+	return fixup_user_fault(mm, address, fault_flags, unlocked);
+#endif
+}
+
 struct page *os_alloc_pages(gfp_t gfp_mask, unsigned int order)
 {
 	return alloc_pages(gfp_mask, order);
@@ -1807,9 +2193,14 @@ unsigned int os_ioread32(void __iomem *addr)
 	return ioread32(addr);
 }
 
-u32 os_readl(const void __iomem *addr)
+u64 os_ioread64(void __iomem *addr)
 {
-	return readl(addr);
+	u32 low, high;
+
+	low = ioread32(addr);
+	high = ioread32(addr + 4);
+
+	return ((u64)high << 32) | low;
 }
 
 void os_iowrite16(u16 b, void __iomem *addr)
@@ -1822,9 +2213,50 @@ void os_iowrite32(u32 b, void __iomem *addr)
 	iowrite32(b, addr);
 }
 
+u8 os_readb(const void __iomem *addr)
+{
+	return readb(addr);
+}
+
+u16 os_readw(const void __iomem *addr)
+{
+	return readw(addr);
+}
+
+u32 os_readl(const void __iomem *addr)
+{
+	return readl(addr);
+}
+
+u64 os_readq(const void __iomem *addr)
+{
+	u32 low, high;
+
+	low = readl(addr);
+	high = readl(addr + 4);
+
+	return ((u64)high << 32) | low;
+}
+
+void os_writeb(u8 value, void __iomem *addr)
+{
+	writeb(value, addr);
+}
+
+void os_writew(u16 value, void __iomem *addr)
+{
+	writew(value, addr);
+}
+
 void os_writel(u32 value, void __iomem *addr)
 {
 	writel(value, addr);
+}
+
+void os_writeq(u64 value, void __iomem *addr)
+{
+	writel((u32)value, addr);
+	writel(value >> 32, addr + 4);
 }
 
 unsigned int os_get_pci_dev_virfn(struct pci_dev *pdev)
@@ -1890,12 +2322,6 @@ kernel_ulong_t os_get_pci_device_data(const struct pci_device_id *id)
 int os_pci_domain_nr(struct pci_dev *pdev)
 {
 	return pci_domain_nr(pdev->bus);
-}
-
-int os_request_pci_io_addr(struct pci_dev *pdev, u32 index,
-			   resource_size_t offset, resource_size_t length)
-{
-	return request_pci_io_addr(pdev, index, offset, length);
 }
 
 unsigned int os_pci_slot(unsigned int devfn)
@@ -2269,6 +2695,14 @@ unsigned long os_copy_to_user(void __user *to, const void *from, unsigned long n
 	return copy_to_user(to, from, n);
 }
 
+unsigned long os_get_user(u64 *val, u64 __user *user_ptr)
+{
+	if (!val || !user_ptr)
+		 return -EINVAL;
+
+	return get_user(*val, user_ptr);
+}
+
 int os_request_firmware(const struct firmware **fw, const char *name, struct device *device)
 {
 	return request_firmware(fw, name, device);
@@ -2299,9 +2733,49 @@ struct task_struct *os_kthread_create(int (*threadfn)(void *data),
 	return task;
 }
 
+struct task_struct *os_kthread_run(int (*threadfn)(void *data),
+				   void *data, const char *namefmt, ...)
+{
+	struct task_struct *task;
+	va_list args;
+	char name[TASK_COMM_LEN];
+
+	va_start(args, namefmt);
+	vsnprintf(name, TASK_COMM_LEN, namefmt, args);
+	va_end(args);
+
+	task = kthread_run(threadfn, data, "%s", name);
+	if (IS_ERR(task)) {
+		os_printk("Failed to create kernel thread\n");
+		return NULL;
+	}
+
+	return task;
+}
+
 int os_kthread_stop(struct task_struct *k)
 {
 	return kthread_stop(k);
+}
+
+bool os_kthread_should_park(void)
+{
+	return kthread_should_park();
+}
+
+void os_kthread_parkme(void)
+{
+	kthread_parkme();
+}
+
+int os_kthread_park(struct task_struct *k)
+{
+	return kthread_park(k);
+}
+
+void os_kthread_unpark(struct task_struct *k)
+{
+	kthread_unpark(k);
 }
 
 int os_wake_up_process(struct task_struct *p)
@@ -2359,6 +2833,33 @@ void os_destroy_timer(struct timer_list *timer)
 	kfree(timer);
 }
 
+void os_hrtimer_init(struct hrtimer *timer, void *function)
+{
+	hrtimer_init(timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+
+	timer->function = (enum hrtimer_restart(*)(struct hrtimer *))function;
+}
+
+void os_hrtimer_start(struct hrtimer *timer, u64 periods)
+{
+	hrtimer_start(timer, periods, HRTIMER_MODE_REL);
+}
+
+int os_hrtimer_cancel(struct hrtimer *timer)
+{
+	return hrtimer_cancel(timer);
+}
+
+u64 os_hrtimer_forward_now(struct hrtimer *timer, u64 interval)
+{
+	return hrtimer_forward_now(timer, interval);
+}
+
+void os_hrtimer_add_expires_ns(struct hrtimer *timer, u64 ns)
+{
+	hrtimer_add_expires_ns(timer, ns);
+}
+
 u64 os_kclock_ns64(void)
 {
 	ktime_t sTime = ktime_get();
@@ -2394,6 +2895,45 @@ void os_ktime_get_real_tm(struct mt_tm *mt_time, int offset)
 	mt_time->cur_tm_hour = time.tm_hour;
 	mt_time->cur_tm_min  = time.tm_min;
 	mt_time->cur_tm_sec  = time.tm_sec;
+}
+
+void os_time64_to_tm(u64 totalsecs, struct mt_tm *mt_time, int offset)
+{
+	struct tm time;
+
+	time64_to_tm(totalsecs, offset, &time);
+
+	mt_time->cur_tm_year = time.tm_year + 1900;
+	mt_time->cur_tm_mon = time.tm_mon + 1;
+	mt_time->cur_tm_mday = time.tm_mday;
+	mt_time->cur_tm_hour = time.tm_hour;
+	mt_time->cur_tm_min = time.tm_min;
+	mt_time->cur_tm_sec = time.tm_sec;
+}
+
+u64 os_sched_clock_get_ns(void)
+{
+	return sched_clock();
+}
+
+u64 os_ktime_get_real_ns(void)
+{
+	return ktime_get_real_ns();
+}
+
+u64 os_ktime_get(void)
+{
+	return ktime_get();
+}
+
+bool os_ktime_before(const ktime_t cmp1, const ktime_t cmp2)
+{
+	return ktime_before(cmp1, cmp2);
+}
+
+bool os_time_after(unsigned long a, unsigned long b)
+{
+	return time_after(a, b);
 }
 
 struct resource *os_request_region(resource_size_t start,
@@ -2476,16 +3016,103 @@ struct inode *os_file_inode(const struct file *f)
 	return file_inode(f);
 }
 
+void os_sort(void *base, size_t num, size_t size,
+	     int (*cmp)(const void *, const void *),
+	     void (*swap)(void *, void *, int))
+{
+	return sort(base, num, size, cmp, swap);
+}
+
 void os_list_sort(void *priv, struct list_head *head,
 		  int (*cmp)(void *priv, const struct list_head *a,
 			     const struct list_head *b))
 {
 #if defined(OS_LIST_SORT_CMP_USE_CONST_MODIFIER)
-	return list_sort(priv, head, cmp);
+	list_sort(priv, head, cmp);
 #else
 typedef int (*cmp_func)(void *priv, struct list_head *a, struct list_head *b);
-	return list_sort(priv, head, (cmp_func)cmp);
+	list_sort(priv, head, (cmp_func)cmp);
 #endif
+}
+
+const struct cpumask *os_cpumask_of_node(int node)
+{
+	return cpumask_of_node(node);
+}
+
+const struct cpumask *os_get_cpu_online_mask(void)
+{
+	return cpu_online_mask;
+}
+
+void os_cpumask_copy(struct cpumask *dstp, const struct cpumask *srcp)
+{
+	cpumask_copy(dstp, srcp);
+}
+
+struct irq_data *os_irq_get_irq_data(int irq)
+{
+	return irq_get_irq_data(irq);
+}
+
+struct irq_chip *os_irq_data_get_irq_chip(struct irq_data *data)
+{
+	return irq_data_get_irq_chip(data);
+}
+
+struct cpumask *os_irq_data_get_affinity_mask(struct irq_data *data)
+{
+	return (struct cpumask *)irq_data_get_affinity_mask(data);
+}
+
+void *os_irq_chip_support_set_affinity(struct irq_chip *chip)
+{
+	return chip->irq_set_affinity;
+}
+
+void os_irq_set_affinity(struct irq_chip *chip,
+			      struct irq_data *data,
+			      const struct cpumask *affinity,
+			      bool force)
+{
+	chip->irq_set_affinity(data, affinity, force);
+}
+
+void os_irq_set_affinity_notifier(unsigned int irq, struct irq_affinity_notify *notify)
+{
+	irq_set_affinity_notifier(irq, notify);
+}
+
+int os_create_irq_affinity_notify(struct irq_affinity_notify **affinity_notify,
+			    void (*notify)(struct irq_affinity_notify *, const cpumask_t *mask),
+			    void (*release)(struct kref *ref))
+{
+	*affinity_notify = kzalloc(sizeof(struct mt_affinity_notify), GFP_KERNEL);
+	if (!(*affinity_notify))
+		return -ENOMEM;
+	(*affinity_notify)->notify = notify;
+	(*affinity_notify)->release = release;
+
+	return 0;
+}
+
+void os_destroy_irq_affinity_notify(struct irq_affinity_notify *affinity_notify)
+{
+	kfree(affinity_notify);
+}
+
+void *os_get_irq_affinity_notify_drvdata(struct irq_affinity_notify *affinity_notify)
+{
+	struct mt_affinity_notify *mt_affinity_notify = (struct mt_affinity_notify *)affinity_notify;
+
+	return mt_affinity_notify->data;
+}
+
+void os_set_irq_affinity_notify_drvdata(struct irq_affinity_notify *affinity_notify, void *data)
+{
+	struct mt_affinity_notify *mt_affinity_notify = (struct mt_affinity_notify *)affinity_notify;
+
+	mt_affinity_notify->data = data;
 }
 
 struct radix_tree_root *os_create_radix_tree(void)
@@ -2803,6 +3430,11 @@ u32 os_acpi_evaluate_object(void *object, char *path_name,
 				    return_object_buffer);
 }
 
+int os_acpi_device_set_power(struct acpi_device *device, int state)
+{
+	return acpi_device_set_power(device, state);
+}
+
 unsigned long os_iova_size(struct iova *iova)
 {
 	return iova_size(iova);
@@ -2945,6 +3577,11 @@ struct iommu_domain *os_iommu_get_domain_for_dev(struct device *dev)
 	return iommu_get_domain_for_dev(dev);
 }
 
+int os_iommu_get_msi_cookie(struct iommu_domain *domain, dma_addr_t base)
+{
+	return iommu_get_msi_cookie(domain, base);
+}
+
 unsigned int os_get_iommu_domain_type(struct iommu_domain *domain)
 {
 	return domain->type;
@@ -2953,6 +3590,12 @@ unsigned int os_get_iommu_domain_type(struct iommu_domain *domain)
 bool os_iommu_present(struct bus_type *bus)
 {
 	return iommu_present(bus);
+}
+
+int os_iommu_group_for_each_dev(struct iommu_group *group, void *data,
+				int (*fn)(struct device *, void *))
+{
+	return iommu_group_for_each_dev(group, data, fn);
 }
 
 bool os_virt_addr_valid(void *address)
@@ -3028,6 +3671,11 @@ int os_test_bit(int nr, const volatile unsigned long *addr)
 	return test_bit(nr, addr);
 }
 
+void os_set_bit(long nr, volatile unsigned long *addr)
+{
+	set_bit(nr, addr);
+}
+
 void *os_kmem_cache_alloc(struct kmem_cache *cachep, gfp_t flags)
 {
 	return kmem_cache_alloc(cachep, flags);
@@ -3063,6 +3711,36 @@ void os_call_rcu(struct rcu_head *head, rcu_callback_t func)
 void os_rcu_barrier(void)
 {
 	rcu_barrier();
+}
+
+void *os_rcu_dereference_check(void __rcu *p, bool c)
+{
+	return rcu_dereference_check(p, c);
+}
+
+void *os_rcu_dereference(void __rcu *p)
+{
+	return rcu_dereference(p);
+}
+
+void os_rcu_assign_pointer(void __rcu **p, void *v)
+{
+	rcu_assign_pointer(*p, v);
+}
+
+void os_rcu_init_pointer(void __rcu *p, void *v)
+{
+	RCU_INIT_POINTER(p, v);
+}
+
+void os_rcu_read_lock(void)
+{
+	rcu_read_lock();
+}
+
+void os_rcu_read_unlock(void)
+{
+	rcu_read_unlock();
 }
 
 int os_atomic_xchg(atomic_t *v, int val)
@@ -3105,6 +3783,11 @@ bool os_atomic_dec_and_test(atomic_t *v)
 	return atomic_dec_and_test(v);
 }
 
+void os_atomic_dec(atomic_t *v)
+{
+	return atomic_dec(v);
+}
+
 int os_atomic_dec_return(atomic_t *v)
 {
 	return atomic_dec_return(v);
@@ -3120,6 +3803,11 @@ int os_atomic_fetch_add(int i, atomic_t *v)
 	return atomic_fetch_add(i, v);
 }
 
+int os_atomic_sub(int i, atomic_t *v)
+{
+	return atomic_sub_return(i, v);
+}
+
 void os_atomic64_set(atomic64_t *v, s64 i)
 {
 	atomic64_set(v, i);
@@ -3133,6 +3821,16 @@ s64 os_atomic64_inc_return(atomic64_t *v)
 s64 os_atomic64_read(const atomic64_t *v)
 {
 	return atomic64_read(v);
+}
+
+int os_atomic_cmpxchg(atomic_t *addr, int oldval, int newval)
+{
+	return atomic_cmpxchg(addr, oldval, newval);
+}
+
+void *os_cmpxchg(void **ptr, void *old, void *new)
+{
+	return cmpxchg(ptr, old, new);
 }
 
 struct file *os_filp_open(const char *filename, int flags, umode_t mode)
@@ -3399,6 +4097,11 @@ const char *os_get_paltform_device_name(struct platform_device *pdev)
 	return pdev->name;
 }
 
+void *os_get_platform_data(struct device *dev)
+{
+	return dev->platform_data;
+}
+
 u64 os_roundup_pow_of_two(u64 size)
 {
 	return roundup_pow_of_two(size);
@@ -3432,6 +4135,11 @@ u32 os_cpu_to_le32(u32 data)
 u64 os_div64_u64(u64 dividend, u64 divisor)
 {
 	return div64_u64(dividend, divisor);
+}
+
+u32 os_int_sqrt(u32 num)
+{
+	return int_sqrt(num);
 }
 
 resource_size_t os_get_system_available_ram_size(void)
@@ -3527,6 +4235,121 @@ int os_ilog2(u64 n)
 	return ilog2(n);
 }
 
+/*
+ * When dkms build with open ftrace kernel, gcc will insert _mcount function into
+ * all function include close source code(mtgpu.o).
+ * This will case build err(undefined _mcount) in close ftrace kernel.
+ * So we should define the _mcount function to cover this case.
+ */
+#ifndef CONFIG_FUNCTION_TRACER
+void _mcount(unsigned long input)
+{
+	return;
+}
+#endif
+
+void *os_path_create(void)
+{
+	return os_kzalloc(sizeof(struct path));
+}
+
+struct dentry *os_kern_path_create(int dfd, const char *name,
+				   struct path *path,
+				   unsigned int lookup_flags)
+{
+	return kern_path_create(dfd, name, path, lookup_flags);
+}
+
+int os_kern_path(const char *name, unsigned int flags, struct path *path)
+{
+	return kern_path(name, flags, path);
+}
+
+int os_security_path_mkdir(struct path *path, struct dentry *dentry, umode_t mode)
+{
+	return security_path_mkdir(path, dentry, mode);
+}
+
+int os_vfs_mkdir(struct path *path, struct dentry *dentry, umode_t mode)
+{
+#ifdef OS_VFS_MKDIR_USE_USER_NAMESPACE
+	struct user_namespace *mnt_userns = current_user_ns();
+
+	return vfs_mkdir(mnt_userns, path->dentry->d_inode, dentry, mode);
+#elif defined OS_VFS_MKDIR_USE_MNT_IDMAP
+	return vfs_mkdir(mnt_idmap(path->mnt), path->dentry->d_inode, dentry, mode);
+#else
+	return vfs_mkdir(path->dentry->d_inode, dentry, mode);
+#endif
+}
+
+int os_vfs_unlink(struct inode *dir, struct dentry *dentry, struct inode **delegated_inode)
+{
+#if defined(OS_VFS_MKDIR_USE_MNT_IDMAP)
+	return vfs_unlink(&nop_mnt_idmap, dir, dentry, delegated_inode);
+#elif defined(OS_VFS_MKDIR_USE_USER_NAMESPACE)
+	return vfs_unlink(current_user_ns(), dir, dentry, delegated_inode);
+#else
+	return vfs_unlink(dir, dentry, delegated_inode);
+#endif
+}
+
+struct dentry *os_dget_parent(struct dentry *dentry)
+{
+	return dget_parent(dentry);
+}
+
+struct inode *os_d_inode(const struct dentry *dentry)
+{
+	return d_inode(dentry);
+}
+
+void os_dput(struct dentry *dentry)
+{
+	dput(dentry);
+}
+
+void os_path_put(const struct path *path)
+{
+	path_put(path);
+}
+
+void os_inode_lock(struct inode *inode)
+{
+	inode_lock(inode);
+}
+
+void os_inode_unlock(struct inode *inode)
+{
+	inode_unlock(inode);
+}
+
+void os_done_path_create(struct path *path, struct dentry *dentry)
+{
+	done_path_create(path, dentry);
+}
+
+struct inode *os_get_inode_from_path(struct path *path)
+{
+	return path->dentry->d_inode;
+}
+
+struct dentry *os_get_dentry_from_path(struct path *path)
+{
+	return path->dentry;
+}
+
+bool os_retry_estale(int error, unsigned int lookup_flags)
+{
+	return retry_estale(error, lookup_flags);
+}
+
+int os_current_umask(void)
+{
+	return current_umask();
+}
+
+
 mempool_t *os_mempool_create(int min_nr, mempool_alloc_t *alloc_fn,
 			     mempool_free_t *free_fn, void *pool_data)
 {
@@ -3546,6 +4369,11 @@ void *os_mempool_alloc(mempool_t *pool, gfp_t gfp_mask)
 void os_mempool_free(void *element, mempool_t *pool)
 {
 	mempool_free(element, pool);
+}
+
+int os_vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
+{
+	return vsnprintf(buf, size, fmt, args);
 }
 
 int os_snprintf(char *buf, size_t size, const char *fmt, ...)
@@ -3690,9 +4518,123 @@ u64 os_get_current_tgid(void)
 	return current->tgid;
 }
 
+struct task_struct *os_get_current(void)
+{
+	return current;
+}
+
+struct mm_struct *os_get_current_mm(void)
+{
+	return current->mm;
+}
+
+struct task_struct *os_get_current_group_leader(void)
+{
+	return current->group_leader;
+}
+
+u32 os_get_current_flags(void)
+{
+	return current->flags;
+}
+
+int os_get_current_exit_code(void)
+{
+	return current->exit_code;
+}
+
+int os_mmap_write_lock_killable(struct mm_struct *mm)
+{
+#if defined(OS_FUNC_MMAP_WRITE_LOCK_KILLABLE_EXIST)
+	return mmap_write_lock_killable(mm);
+#elif defined(OS_STRUCT_MM_STRUCT_HAS_MMAP_SEM)
+	down_write(&mm->mmap_sem);
+	return 0;
+#elif defined(OS_STRUCT_MM_STRUCT_HAS_MMAP_LOCK)
+	down_write(&mm->mmap_lock);
+	return 0;
+#else
+#error "invalid ops"
+#endif
+}
+
+void os_mmap_write_unlock(struct mm_struct *mm)
+{
+#if defined(OS_FUNC_MMAP_WRITE_UNLOCK_EXIST)
+	mmap_write_unlock(mm);
+#elif defined(OS_STRUCT_MM_STRUCT_HAS_MMAP_SEM)
+	up_write(&mm->mmap_sem);
+#elif defined(OS_STRUCT_MM_STRUCT_HAS_MMAP_LOCK)
+	up_write(&mm->mmap_lock);
+#else
+#error "invalid ops"
+#endif
+}
+
+void os_mm_mmap_read_lock(struct mm_struct *mm)
+{
+#if defined(OS_FUNC_MMAP_READ_LOCK_EXIST)
+	mmap_read_lock(mm);
+#elif defined(OS_STRUCT_MM_STRUCT_HAS_MMAP_SEM)
+	down_read(&mm->mmap_sem);
+#elif defined(OS_STRUCT_MM_STRUCT_HAS_MMAP_LOCK)
+	down_read(&mm->mmap_lock);
+#else
+#error "invalid ops"
+#endif
+}
+
+void os_mm_mmap_read_unlock(struct mm_struct *mm)
+{
+#if defined(OS_FUNC_MMAP_READ_UNLOCK_EXIST)
+	mmap_read_unlock(mm);
+#elif defined(OS_STRUCT_MM_STRUCT_HAS_MMAP_SEM)
+	up_read(&mm->mmap_sem);
+#elif defined(OS_STRUCT_MM_STRUCT_HAS_MMAP_LOCK)
+	up_read(&mm->mmap_lock);
+#else
+#error "invalid ops"
+#endif
+}
+
+void os_mmgrab(struct mm_struct *mm)
+{
+	mmgrab(mm);
+}
+
+void os_mmdrop(struct mm_struct *mm)
+{
+	mmdrop(mm);
+}
+
+bool os_capable_cap_ipc_lock(void)
+{
+	return capable(CAP_IPC_LOCK);
+}
+
 char *os_get_utsname_version(void)
 {
 	return init_uts_ns.name.version;
+}
+
+char *os_get_uts_sysname(void)
+{
+	return utsname()->sysname;
+}
+
+char *os_get_uts_release(void)
+{
+	return utsname()->release;
+}
+
+char *os_get_uts_version(void)
+{
+	return utsname()->version;
+}
+
+char *os_get_uts_machine(void)
+{
+	return utsname()->machine;
 }
 
 DEFINE_MUTEX(fence_cache_mutex);
@@ -3718,6 +4660,27 @@ void os_set_dma_fence_drvdata(struct dma_fence *dma_fence, void *data)
 
 IMPLEMENT_GET_OS_MEMBER_FUNC(dma_fence, context);
 IMPLEMENT_GET_OS_MEMBER_FUNC(dma_fence, ops);
+IMPLEMENT_GET_OS_MEMBER_FUNC(dma_fence, error);
+
+struct rcu_head *os_get_dma_fence_rcu(struct dma_fence *dma_fence)
+{
+	return &dma_fence->rcu;
+}
+
+unsigned long *os_get_dma_fence_flags(struct dma_fence *dma_fence)
+{
+	return &dma_fence->flags;
+}
+
+u64 os_get_dma_fence_timestamp(struct dma_fence *dma_fence)
+{
+	return dma_fence->timestamp;
+}
+
+struct kref *os_get_dma_fence_refcount(struct dma_fence *dma_fence)
+{
+	return &dma_fence->refcount;
+}
 
 u64 os_get_dma_fence_seqno(struct dma_fence *dma_fence)
 {
@@ -3727,6 +4690,11 @@ u64 os_get_dma_fence_seqno(struct dma_fence *dma_fence)
 void os_set_dma_fence_struct_seqno(struct dma_fence *dma_fence, u64 seqno)
 {
 	dma_fence->seqno = seqno;
+}
+
+void os_set_dma_fence_timestamp(struct dma_fence *dma_fence, u64 timestamp)
+{
+	dma_fence->timestamp = timestamp;
 }
 
 void *os_create_dma_fence(void)
@@ -3774,6 +4742,14 @@ int os_dma_fence_get_status(struct dma_fence *fence)
 	return dma_fence_get_status(fence);
 }
 
+const char *os_dma_fence_get_timeline_name(struct dma_fence *fence)
+{
+	if (!fence || !fence->ops || !fence->ops->get_timeline_name)
+		return NULL;
+
+	return fence->ops->get_timeline_name(fence);
+}
+
 long os_dma_fence_wait_timeout(struct dma_fence *fence, bool intr, long timeout)
 {
 	return dma_fence_wait_timeout(fence, intr, timeout);
@@ -3795,9 +4771,28 @@ struct dma_fence *os_dma_fence_get(struct dma_fence *fence)
 	return dma_fence_get(fence);
 }
 
+struct dma_fence *os_dma_fence_get_rcu(struct dma_fence *fence)
+{
+	return dma_fence_get_rcu(fence);
+}
+
 void os_dma_fence_signal(struct dma_fence *fence)
 {
 	dma_fence_signal(fence);
+}
+
+u64 os_dma_fence_timestamp(struct dma_fence *fence)
+{
+#if defined(OS_FUNC_DMA_FENCE_TIMESTAMP_EXIST)
+	return dma_fence_timestamp(fence);
+#else
+	return 0;
+#endif
+}
+
+bool os_dma_fence_is_later(struct dma_fence *f1, struct dma_fence *f2)
+{
+	return dma_fence_is_later(f1, f2);
 }
 
 #if !defined(OS_FUNC_DMA_FENCE_GET_STUB_EXIST)
@@ -3843,6 +4838,11 @@ struct dma_fence_array *os_to_dma_fence_array(struct dma_fence *fence)
 	return to_dma_fence_array(fence);
 }
 
+struct dma_fence *os_dma_fence_from_rcu(struct rcu_head *rcu)
+{
+	return container_of(rcu, struct dma_fence, rcu);
+}
+
 struct dma_fence **os_dma_fence_array_get_fences(struct dma_fence_array *array)
 {
 	return array->fences;
@@ -3858,6 +4858,16 @@ bool os_dma_fence_is_signaled(struct dma_fence *fence)
 	return dma_fence_is_signaled(fence);
 }
 
+void os_dma_fence_set_error(struct dma_fence *fence, int error)
+{
+	dma_fence_set_error(fence, error);
+}
+
+int os_dma_fence_get_error(struct dma_fence *fence)
+{
+	return fence->error;
+}
+
 u64 os_dma_fence_context_alloc(unsigned num)
 {
 	return dma_fence_context_alloc(num);
@@ -3867,6 +4877,11 @@ int os_dma_fence_add_callback(struct dma_fence *fence, struct dma_fence_cb *cb,
 			      dma_fence_func_t func)
 {
 	return dma_fence_add_callback(fence, cb, func);
+}
+
+bool os_dma_fence_remove_callback(struct dma_fence *fence, struct dma_fence_cb *cb)
+{
+	return dma_fence_remove_callback(fence, cb);
 }
 
 signed long os_dma_fence_wait(struct dma_fence *fence, bool intr)
@@ -3955,6 +4970,76 @@ int os_dma_resv_get_fences(struct dma_resv *obj,
 						 pfence_excl, num_fences, pfences);
 #endif
 }
+
+#if defined(OS_STRUCT_DMA_RESV_ITER_EXIST)
+u32 os_dma_resv_usage_rw(bool write)
+{
+	return dma_resv_usage_rw(write);
+}
+
+void os_dma_resv_assert_held(void *obj)
+{
+	dma_resv_assert_held((struct dma_resv *)obj);
+}
+
+void os_dma_resv_iter_begin(void *cursor, void *obj, u32 usage)
+{
+	dma_resv_iter_begin((struct dma_resv_iter *)cursor, (struct dma_resv *)obj, usage);
+}
+
+struct dma_fence *os_dma_resv_iter_first(void *cursor)
+{
+	return dma_resv_iter_first((struct dma_resv_iter *)cursor);
+}
+
+struct dma_fence *os_dma_resv_iter_next(void *cursor)
+{
+	return dma_resv_iter_next((struct dma_resv_iter *)cursor);
+}
+
+void *os_create_dma_resv_iter(void)
+{
+	return kzalloc(sizeof(struct dma_resv_iter), GFP_KERNEL);
+}
+
+void os_destroy_dma_resv_iter(void *iter)
+{
+	kfree(iter);
+}
+#else
+u32 os_dma_resv_usage_rw(bool write)
+{
+	return 0;
+}
+
+void os_dma_resv_assert_held(void *obj)
+{
+}
+
+void os_dma_resv_iter_begin(void *cursor, void *obj, u32 usage)
+{
+}
+
+struct dma_fence *os_dma_resv_iter_first(void *cursor)
+{
+	return NULL;
+}
+
+struct dma_fence *os_dma_resv_iter_next(void *cursor)
+{
+	return NULL;
+}
+
+void *os_create_dma_resv_iter(void)
+{
+	return NULL;
+}
+
+void os_destroy_dma_resv_iter(void *iter)
+{
+	kfree(iter);
+}
+#endif
 
 struct ww_class *os_get_reservation_ww_class(void)
 {
@@ -4058,6 +5143,115 @@ void os_gen_pool_free(struct gen_pool *pool, unsigned long addr, size_t size)
 	gen_pool_free(pool, addr, size);
 }
 
+#if defined(OS_STRUCT_XARRAY_EXIST)
+void *os_create_xarray(void)
+{
+	struct xarray *array = kzalloc(sizeof(*array), GFP_KERNEL);
+
+	if (!array)
+		return NULL;
+
+	xa_init_flags(array, XA_FLAGS_ALLOC);
+
+	return array;
+}
+
+void os_destroy_xarray(void *array)
+{
+	kfree(array);
+}
+
+void *os_xa_load(void *xa, unsigned long index)
+{
+	return xa_load((struct xarray *)xa, index);
+}
+
+void os_xa_destroy(void *xa)
+{
+	xa_destroy((struct xarray *)xa);
+}
+
+void *os_xa_find(void *xa, unsigned long *indexp,
+		 unsigned long max, unsigned filter)
+{
+	return xa_find((struct xarray *)xa, indexp, max, filter);
+}
+
+void *os_xa_find_after(void *xa, unsigned long *indexp,
+		       unsigned long max, unsigned filter)
+{
+	return xa_find_after((struct xarray *)xa, indexp, max, filter);
+}
+
+void *os_xa_erase(void *xa, unsigned long index)
+{
+	return xa_erase((struct xarray *)xa, index);
+}
+
+void *os_xa_store(void *xa, unsigned long index, void *entry)
+{
+	return xa_store((struct xarray *)xa, index, entry, GFP_KERNEL);
+}
+
+int os_xa_alloc(void *xa, u32 *id, void *entry)
+{
+#if defined(OS_XA_ALLOC_USE_XA_LIMIT)
+	return xa_alloc((struct xarray *)xa, id, entry, xa_limit_32b, GFP_KERNEL);
+#else
+	return xa_alloc((struct xarray *)xa, id, UINT_MAX, entry, GFP_KERNEL);
+#endif
+}
+#else
+/* TODO: implement on kernel without xarray*/
+void *os_create_xarray(void)
+{
+	return NULL;
+}
+
+void os_destroy_xarray(void *array)
+{
+	return;
+}
+
+void *os_xa_load(void *xa, unsigned long index)
+{
+	return NULL;
+}
+
+void os_xa_destroy(void *xa)
+{
+	return;
+}
+
+void *os_xa_find(void *xa, unsigned long *indexp,
+		 unsigned long max, unsigned filter)
+{
+	return NULL;
+}
+
+void *os_xa_find_after(void *xa, unsigned long *indexp,
+		       unsigned long max, unsigned filter)
+{
+	return NULL;
+}
+
+void *os_xa_erase(void *xa, unsigned long index)
+{
+	return NULL;
+}
+
+void *os_xa_store(void *xa, unsigned long index, void *entry)
+{
+	return NULL;
+}
+
+int os_xa_alloc(void *xa, u32 *id, void *entry)
+{
+	return 0;
+}
+
+#endif
+
 /*About dev print*/
 static void __os_dev_printk(const char *level, const struct device *dev,
 			    struct va_format *vaf)
@@ -4099,6 +5293,11 @@ int OS_READ_ONCE(int *val)
 	return READ_ONCE(*val);
 }
 
+void OS_WRITE_ONCE(void **ptr, void *val)
+{
+	WRITE_ONCE(*ptr, val);
+}
+
 bool OS_WARN_ON(bool condition)
 {
 	return WARN_ON(condition);
@@ -4112,6 +5311,16 @@ bool OS_WARN_ON_ONCE(bool condition)
 void OS_BUG_ON(bool condition)
 {
 	BUG_ON(condition);
+}
+
+int OS_IS_POSIXACL(struct inode *inode)
+{
+	return IS_POSIXACL(inode);
+}
+
+unsigned long OS_PAGE_OFFSET(void)
+{
+	return PAGE_OFFSET;
 }
 
 void os_dump_stack(void)
@@ -4174,6 +5383,11 @@ char *os_strncpy(char *dest, const char *src, size_t count)
 char *os_strchr(const char *s, int c)
 {
 	return strchr(s, c);
+}
+
+char *os_strrchr(const char *s, int c)
+{
+	return strrchr(s, c);
 }
 
 char *os_strstr(const char *s1, const char *s2)
@@ -4335,6 +5549,15 @@ bool os_running_on_hypervisor(void)
 #endif
 }
 
+bool os_x86_vendor_is_intel(void)
+{
+#ifdef CONFIG_X86
+	return boot_cpu_data.x86_vendor == X86_VENDOR_INTEL;
+#else
+	return false;
+#endif
+}
+
 struct sock *os_netlink_kernel_create(struct net *net, int unit,
 				      struct netlink_kernel_cfg *cfg)
 {
@@ -4382,6 +5605,26 @@ int os_nlmsg_unicast(struct sock *sk, struct sk_buff *skb, u32 portid)
 	return nlmsg_unicast(sk, skb, portid);
 }
 
+
+/*
+ * Test whether a block of memory is a valid user space address.
+ * Returns 1 if the range is valid, 0 otherwise.
+ *
+ * This is equivalent to the following test:
+ * (u65)addr + (u65)size <= (u65)TASK_SIZE_MAX
+ *
+ * type: 0 for VERIFY_READ
+ * 	 1 for VERIFY_WRITE
+ */
+int os_access_ok(int type, const void __user *addr, unsigned long size)
+{
+#ifdef OS_ACCESS_OK_HAS_TWO_ARGS
+	return access_ok(addr, size);
+#else
+	return access_ok(type, addr, size);
+#endif
+}
+
 #define define_os_dev_printk_level(func, kern_level)		\
 void func(const struct device *dev, const char *fmt, ...)	\
 {								\
@@ -4412,3 +5655,4 @@ IMPLEMENT_OS_STRUCT_COMMON_FUNCS(poll_table_struct);
 IMPLEMENT_OS_STRUCT_COMMON_FUNCS(wait_queue_entry);
 IMPLEMENT_OS_STRUCT_COMMON_FUNCS(timer_list);
 IMPLEMENT_OS_STRUCT_COMMON_FUNCS(dma_fence_cb);
+IMPLEMENT_OS_STRUCT_COMMON_FUNCS(hrtimer);

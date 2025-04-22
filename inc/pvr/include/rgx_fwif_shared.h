@@ -225,6 +225,7 @@ typedef struct
 	IMG_UINT32 ui32DepOffsetBackup;
 	IMG_UINT32 ui32LastReadOffsetNeedSkip;
 	IMG_BOOL   bNeedSkip;
+	IMG_BOOL   bNeedReset;
 #endif
 } UNCACHED_ALIGN RGXFWIF_CCCB_CTL;
 

@@ -57,7 +57,7 @@ bool mtgpu_drm_is_fwpath_exist(const char *filename)
 		return false;
 
 	if (kern_path(filename, LOOKUP_FOLLOW, &path)) {
-		DRM_INFO(" %s not exist.\n", filename);
+		DRM_DEBUG(" %s not exist.\n", filename);
 		return false;
 	}
 
@@ -182,13 +182,14 @@ bool  mtgpu_drm_get_fixed_edid_flag(struct drm_connector *connector)
 
 	filp_close(fp, NULL);
 
-read_exit:
 	if (!strncmp(op, "enable", 6))
 		ret = true;
 	else
 		ret = false;
 
-	DRM_INFO("get fixed flag from %s: ret:%d.\n", filename, ret);
+	DRM_INFO("%s edid fixed: %s\n", ret ?  "Enable" : "Disable", filename);
+
+read_exit:
 	__putname(filename);
 
 	return ret;

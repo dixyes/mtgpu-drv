@@ -44,9 +44,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #if !defined(NO_HARDWARE)
 
 #include <linux/devfreq.h>
-#if defined(CONFIG_DEVFREQ_THERMAL)
-#include <linux/devfreq_cooling.h>
-#endif
+#include <linux/thermal.h>
+#include <linux/acpi.h>
 #include <linux/version.h>
 #include <linux/device.h>
 #include <drm/drm.h>
@@ -71,6 +70,21 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "kernel_compatibility.h"
 
+#include "mtgpu_util.h"
+#include "mtgpu_module_param.h"
+
+#define THERMAL_COOLING_STATE_MAX 4
+#define THERMAL_COOLING_STATE_DEFAULT 0
+#define THERMAL_COOLING_DEVICE_NAME "mtgpu"
+
+struct _THERMAL_COOLING_DATA_
+{
+	struct thermal_cooling_device_ops sCoolingOps;
+	PPVRSRV_DEVICE_NODE psDeviceNode;
+	IMG_UINT32 ui32CurState;
+	IMG_UINT32 ui32MaxState;
+};
+
 static int _device_get_devid(struct device *dev)
 {
 	struct drm_device *ddev = dev_get_drvdata(dev);
@@ -94,13 +108,14 @@ static int _device_get_devid(struct device *dev)
 
 static IMG_INT32 devfreq_target(struct device *dev, unsigned long *requested_freq, IMG_UINT32 flags)
 {
-	int deviceId = _device_get_devid(dev);
-	PVRSRV_DEVICE_NODE *psDeviceNode = PVRSRVGetDeviceInstanceByOSId(deviceId);
-	RGX_DATA		*psRGXData = NULL;
-	IMG_DVFS_DEVICE		*psDVFSDevice = NULL;
-	IMG_DVFS_DEVICE_CFG	*psDVFSDeviceCfg = NULL;
-	RGX_TIMING_INFORMATION	*psRGXTimingInfo = NULL;
-	IMG_UINT32		ui32Freq, ui32CurFreq, ui32Volt;
+	int				deviceId = _device_get_devid(dev);
+	PVRSRV_DEVICE_NODE		*psDeviceNode = PVRSRVGetDeviceInstanceByOSId(deviceId);
+	RGX_DATA			*psRGXData = NULL;
+	IMG_DVFS_DEVICE			*psDVFSDevice = NULL;
+	IMG_DVFS_DEVICE_CFG		*psDVFSDeviceCfg = NULL;
+	RGX_TIMING_INFORMATION		*psRGXTimingInfo = NULL;
+	PVRSRV_DEVICE_HEALTH_STATUS	eNewStatus;
+	IMG_UINT32			ui32Freq, ui32CurFreq, ui32Volt = 0;
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 13, 0))
 	struct opp *opp;
 #else
@@ -124,12 +139,33 @@ static IMG_INT32 devfreq_target(struct device *dev, unsigned long *requested_fre
 	}
 
 	psRGXTimingInfo = psRGXData->psRGXTimingInfo;
-	if (!psDVFSDevice->bEnabled)
+
+	eNewStatus = OSAtomicRead(&psDeviceNode->eHealthStatus);
+
+	if (!psDVFSDevice->bEnabled || eNewStatus != PVRSRV_DEVICE_HEALTH_STATUS_OK)
 	{
+		/* If DVFS has been suspend or the device status is not OK,
+		 * the frequency will not be adjusted and the previous frequency
+		 * will be returned.
+		 */
 		*requested_freq = psRGXTimingInfo->ui32CoreClockSpeed;
 		return 0;
 	}
 
+	if (psDVFSDevice->bPerfMode)
+	{
+		/* perf mode, get max frequency */
+#if defined(CHROMIUMOS_KERNEL) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0)) && (LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0))
+		ui32Freq = psDVFSDevice->psDevFreq->policy.user.max_freq;
+#elif defined(OS_STRUCT_DEVFREQ_HAS_MIN_FREQ)
+		ui32Freq = psDVFSDevice->psDevFreq->max_freq;
+#else
+		ui32Freq = psDVFSDevice->psDevFreq->scaling_max_freq;
+#endif
+		*requested_freq = ui32Freq;
+	}
+
+	/* Get recommended frequency */
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 11, 0))
 	rcu_read_lock();
 #endif
@@ -234,16 +270,25 @@ static int devfreq_get_dev_status(struct device *dev, struct devfreq_dev_status 
 	}
 
 	eError = psDevInfo->pfnGetGpuUtilStats(psDeviceNode,
-						psDVFSDevice->hGpuUtilUserDVFS,
-						asGpuUtilStats);
-
-	if (eError != PVRSRV_OK)
+					       psDVFSDevice->hGpuUtilUserDVFS,
+					       asGpuUtilStats);
+	if (eError == PVRSRV_OK)
 	{
-		return -EAGAIN;
+		stat->busy_time = asGpuUtilStats[RGXFWIF_GPU_OVERALL_UTIL].ui64GpuStatActive;
+		stat->total_time = asGpuUtilStats[RGXFWIF_GPU_OVERALL_UTIL].ui64GpuStatCumulative;
+		psDVFSDevice->ui64PreBusyTime = asGpuUtilStats[RGXFWIF_GPU_OVERALL_UTIL].ui64GpuStatActive;
+		psDVFSDevice->ui64PreTotalTime = asGpuUtilStats[RGXFWIF_GPU_OVERALL_UTIL].ui64GpuStatCumulative;
 	}
-
-	stat->busy_time = asGpuUtilStats[RGXFWIF_GPU_OVERALL_UTIL].ui64GpuStatActive;
-	stat->total_time = asGpuUtilStats[RGXFWIF_GPU_OVERALL_UTIL].ui64GpuStatCumulative;
+	else if (eError == PVRSRV_ERROR_RESOURCE_UNAVAILABLE)
+	{
+		stat->busy_time = psDVFSDevice->ui64PreBusyTime;
+		stat->total_time = psDVFSDevice->ui64PreTotalTime;
+	}
+	else
+	{
+		PVR_DPF((PVR_DBG_ERROR, "failed to Get GPU utilisation statistics(%s)", PVRSRVGETERRORSTRING(eError)));
+		return -PvrErrorToLinuxErrno(eError);
+	}
 
 	return 0;
 }
@@ -393,7 +438,7 @@ static int GetOPPValues(struct device *dev,
 
 	*min_volt = dev_pm_opp_get_voltage(opp);
 	*max_freq = *min_freq = freq_table[0] = freq;
-	dev_info(dev, "opp[%d/%d]: (%lu Hz, %lu uV)\n", 1, count, freq, *min_volt);
+	dev_dbg(dev, "opp[%d/%d]: (%lu Hz, %lu uV)\n", 1, count, freq, *min_volt);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0))
 	dev_pm_opp_put(opp);
 #endif
@@ -412,12 +457,12 @@ static int GetOPPValues(struct device *dev,
 
 		freq_table[i] = freq;
 		*max_freq = freq;
-		dev_info(dev,
-				 "opp[%d/%d]: (%lu Hz, %lu uV)\n",
-				  i + 1,
-				  count,
-				  freq,
-				  dev_pm_opp_get_voltage(opp));
+		dev_dbg(dev,
+			"opp[%d/%d]: (%lu Hz, %lu uV)\n",
+			i + 1,
+			count,
+			freq,
+			dev_pm_opp_get_voltage(opp));
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0))
 		dev_pm_opp_put(opp);
 #endif
@@ -447,42 +492,117 @@ exit:
 	return err;
 }
 
-#if defined(CONFIG_DEVFREQ_THERMAL)
-static int RegisterCoolingDevice(struct device *dev,
-								 IMG_DVFS_DEVICE *psDVFSDevice,
-								 struct devfreq_cooling_power *powerOps)
+static int cooling_ops_get_max_state(struct thermal_cooling_device *cdev, unsigned long *max_state)
 {
-	struct device_node *of_node;
+	struct _THERMAL_COOLING_DATA_ *psCoolingData = (struct _THERMAL_COOLING_DATA_ *)cdev->ops;
+
+	if (!psCoolingData)
+		return -EINVAL;
+
+	*max_state = psCoolingData->ui32MaxState - 1;
+
+	return 0;
+}
+
+static int cooling_ops_get_cur_state(struct thermal_cooling_device *cdev, unsigned long *cur_state)
+{
+	struct _THERMAL_COOLING_DATA_ *psCoolingData = (struct _THERMAL_COOLING_DATA_ *)cdev->ops;
+
+	if (!psCoolingData)
+		return -EINVAL;
+
+	*cur_state = psCoolingData->ui32CurState;
+
+	return 0;
+}
+
+static int cooling_ops_set_cur_state(struct thermal_cooling_device *cdev, unsigned long state)
+{
+	IMG_UINT64 ui64CappingMaxFreq;
+	PVRSRV_DEVICE_NODE *psDeviceNode;
+	IMG_DVFS_DEVICE *psDVFSDevice;
+	IMG_DVFS_DEVICE_CFG *psDVFSDeviceCfg;
+	struct _THERMAL_COOLING_DATA_ *psCoolingData = (struct _THERMAL_COOLING_DATA_ *)cdev->ops;
+
+	if (!psCoolingData || !psCoolingData->psDeviceNode)
+		return -EINVAL;
+
+	if (state >= psCoolingData->ui32MaxState)
+		return -ERANGE;
+
+	if (state  == psCoolingData->ui32CurState)
+		return 0;
+
+	psDeviceNode = psCoolingData->psDeviceNode;
+	psDVFSDevice = &psDeviceNode->psDevConfig->sDVFS.sDVFSDevice;
+	psDVFSDeviceCfg = &psDeviceNode->psDevConfig->sDVFS.sDVFSDeviceCfg;
+
+	ui64CappingMaxFreq = psDVFSDeviceCfg->ui64MaxFreq -
+			     (psDVFSDeviceCfg->ui64MaxFreq - psDVFSDeviceCfg->ui64MinFreq) /
+			     psCoolingData->ui32MaxState * state;
+	ui64CappingMaxFreq = ui64CappingMaxFreq / 1000 * 1000;
+
+	/* Modify the max frequency of devfreq */
+#if defined(CHROMIUMOS_KERNEL) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0)) && (LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0))
+	psDVFSDevice->psDevFreq->policy.user.max_freq = ui64CappingMaxFreq;
+#elif defined(OS_STRUCT_DEVFREQ_HAS_MIN_FREQ)
+	psDVFSDevice->psDevFreq->max_freq = ui64CappingMaxFreq;
+#else
+	psDVFSDevice->psDevFreq->scaling_max_freq = ui64CappingMaxFreq;
+#endif
+
+	psCoolingData->ui32CurState = state;
+
+	return 0;
+}
+
+static int RegisterCoolingDevice(PPVRSRV_DEVICE_NODE psDeviceNode)
+{
 	int err = 0;
+	struct device *psOSDevice;
+	struct device *psPcieDevice;
+	struct acpi_device *psAcpiDevice;
+	IMG_DVFS_DEVICE *psDVFSDevice;
+	IMG_DVFS_DEVICE_CFG *psDVFSDeviceCfg;
+	struct _THERMAL_COOLING_DATA_ *psCoolingData;
+
 	PVRSRV_VZ_RET_IF_MODE(GUEST, err);
 
-	if (!psDVFSDevice)
+	psDVFSDevice = &psDeviceNode->psDevConfig->sDVFS.sDVFSDevice;
+	psDVFSDeviceCfg = &psDeviceNode->psDevConfig->sDVFS.sDVFSDeviceCfg;
+
+	psOSDevice = OSGetOSDeviceFromDeviceNode(psDeviceNode);
+	psPcieDevice = OSGetPcieDeviceFromOSDevice(psOSDevice);
+	psAcpiDevice = ACPI_COMPANION(psPcieDevice);
+
+	psCoolingData = kzalloc(sizeof(*psDVFSDeviceCfg->psCoolingData), GFP_KERNEL);
+	if (!psCoolingData)
 	{
-		return -EINVAL;
+		return -ENOMEM;
 	}
 
-	if (!powerOps)
+	psCoolingData->ui32CurState = THERMAL_COOLING_STATE_DEFAULT;
+	psCoolingData->ui32MaxState = THERMAL_COOLING_STATE_MAX;
+	psCoolingData->psDeviceNode = psDeviceNode;
+	psCoolingData->sCoolingOps.get_max_state = &cooling_ops_get_max_state;
+	psCoolingData->sCoolingOps.get_cur_state = &cooling_ops_get_cur_state;
+	psCoolingData->sCoolingOps.set_cur_state = &cooling_ops_set_cur_state;
+
+	psDVFSDevice->psCoolingDevice = thermal_cooling_device_register(
+			THERMAL_COOLING_DEVICE_NAME, psAcpiDevice,
+			(struct thermal_cooling_device_ops *)psCoolingData);
+	if (IS_ERR(psDVFSDevice->psCoolingDevice))
 	{
-		dev_info(dev, "Cooling: power ops not registered, not enabling cooling");
-		return 0;
+		err = PTR_ERR(psDVFSDevice->psCoolingDevice);
+		dev_err(psOSDevice, "Failed to register cooling device %d", err);
+		kfree(psCoolingData);
+		return err;
 	}
 
-	of_node = of_node_get(dev->of_node);
+	psDVFSDeviceCfg->psCoolingData = psCoolingData;
 
-	psDVFSDevice->psDevfreqCoolingDevice = of_devfreq_cooling_register_power(
-		of_node, psDVFSDevice->psDevFreq, powerOps);
-
-	if (IS_ERR(psDVFSDevice->psDevfreqCoolingDevice))
-	{
-		err = PTR_ERR(psDVFSDevice->psDevfreqCoolingDevice);
-		dev_err(dev, "Failed to register as devfreq cooling device %d", err);
-	}
-
-	of_node_put(of_node);
-
-	return err;
+	return 0;
 }
-#endif
 
 #define TO_IMG_ERR(err) ((err == -EPROBE_DEFER) ? PVRSRV_ERROR_PROBE_DEFER : PVRSRV_ERROR_INIT_FAILURE)
 
@@ -496,10 +616,6 @@ PVRSRV_ERROR InitDVFS(PPVRSRV_DEVICE_NODE psDeviceNode)
 
 	PVRSRV_VZ_RET_IF_MODE(GUEST, PVRSRV_OK);
 
-#if !defined(CONFIG_PM_OPP)
-	return PVRSRV_ERROR_NOT_SUPPORTED;
-#endif
-
 	if (!psDeviceNode)
 	{
 		return PVRSRV_ERROR_INVALID_PARAMS;
@@ -509,6 +625,10 @@ PVRSRV_ERROR InitDVFS(PPVRSRV_DEVICE_NODE psDeviceNode)
 	{
 		return PVRSRV_OK;
 	}
+
+#if !defined(CONFIG_PM_OPP)
+	return PVRSRV_ERROR_NOT_SUPPORTED;
+#endif
 
 	if (psDeviceNode->psDevConfig->sDVFS.sDVFSDevice.bInitPending)
 	{
@@ -523,7 +643,15 @@ PVRSRV_ERROR InitDVFS(PPVRSRV_DEVICE_NODE psDeviceNode)
 	psDVFSDeviceCfg = &psDeviceNode->psDevConfig->sDVFS.sDVFSDeviceCfg;
 	psDeviceNode->psDevConfig->sDVFS.sDVFSDevice.bInitPending = IMG_TRUE;
 
-	eError = SORgxGpuUtilStatsRegister(&psDVFSDevice->hGpuUtilUserDVFS);
+	if (mtgpu_drm_major == 1)
+	{
+		eError = SORgxGpuUtilStatsRegister(&psDVFSDevice->hGpuUtilUserDVFS);
+	}
+	else
+	{
+		err = mtgpu_util_stats_register(&psDVFSDevice->hGpuUtilUserDVFS);
+		eError = LinuxErrnoToPvrError(err);
+	}
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "Failed to register to the GPU utilisation stats, %d", eError));
@@ -613,6 +741,9 @@ PVRSRV_ERROR RegisterDVFSDevice(PPVRSRV_DEVICE_NODE psDeviceNode)
 		goto err_exit;
 	}
 
+	psDVFSDeviceCfg->ui64MaxFreq = max_freq;
+	psDVFSDeviceCfg->ui64MinFreq = min_freq;
+
 	img_devfreq_dev_profile.initial_freq = min_freq;
 	img_devfreq_dev_profile.polling_ms = psDVFSDeviceCfg->ui32PollMs;
 
@@ -629,23 +760,23 @@ PVRSRV_ERROR RegisterDVFSDevice(PPVRSRV_DEVICE_NODE psDeviceNode)
 	}
 
 #if defined(CONFIG_DEVFREQ_GOV_SIMPLE_ONDEMAND)
-	psDVFSDevice->data = OSAllocMem(sizeof(struct devfreq_simple_ondemand_data));
-	PVR_GOTO_IF_NOMEM(psDVFSDevice->data, eError, err_exit);
+	psDVFSDevice->psOndemandData = kzalloc(sizeof(*psDVFSDevice->psOndemandData), GFP_KERNEL);
+	PVR_GOTO_IF_NOMEM(psDVFSDevice->psOndemandData, eError, err_exit);
 
-	psDVFSDevice->data->upthreshold = psDVFSGovernorCfg->ui32UpThreshold;
-	psDVFSDevice->data->downdifferential = psDVFSGovernorCfg->ui32DownDifferential;
+	psDVFSDevice->psOndemandData->upthreshold = psDVFSGovernorCfg->ui32UpThreshold;
+	psDVFSDevice->psOndemandData->downdifferential = psDVFSGovernorCfg->ui32DownDifferential;
 #endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0))
 	psDVFSDevice->psDevFreq = devm_devfreq_add_device(psDev,
 													  &img_devfreq_dev_profile,
 													  "simple_ondemand",
-													  psDVFSDevice->data);
+													  psDVFSDevice->psOndemandData);
 #else
 	psDVFSDevice->psDevFreq = devfreq_add_device(psDev,
 												 &img_devfreq_dev_profile,
 												 "simple_ondemand",
-												 psDVFSDevice->data);
+												 psDVFSDevice->psOndemandData);
 #endif
 
 	if (IS_ERR(psDVFSDevice->psDevFreq))
@@ -684,14 +815,15 @@ PVRSRV_ERROR RegisterDVFSDevice(PPVRSRV_DEVICE_NODE psDeviceNode)
 		goto err_exit;
 	}
 
-#if defined(CONFIG_DEVFREQ_THERMAL)
-	err = RegisterCoolingDevice(psDev, psDVFSDevice, psDVFSDeviceCfg->psPowerOps);
-	if (err)
+	if (!acpi_disabled)
 	{
-		eError = TO_IMG_ERR(err);
-		goto err_exit;
+		err = RegisterCoolingDevice(psDeviceNode);
+		if (err)
+		{
+			eError = TO_IMG_ERR(err);
+			goto err_exit;
+		}
 	}
-#endif
 
 	PVR_TRACE(("MTGPU DVFS activated: %lu-%lu Hz, Period: %ums",
 			   min_freq,
@@ -707,6 +839,7 @@ err_exit:
 
 void UnregisterDVFSDevice(PPVRSRV_DEVICE_NODE psDeviceNode)
 {
+	IMG_DVFS_DEVICE_CFG *psDVFSDeviceCfg = NULL;
 	IMG_DVFS_DEVICE *psDVFSDevice = NULL;
 	struct device *psDev = NULL;
 	IMG_INT32 i32Error;
@@ -719,6 +852,7 @@ void UnregisterDVFSDevice(PPVRSRV_DEVICE_NODE psDeviceNode)
 
 	PVRSRV_VZ_RETN_IF_MODE(GUEST);
 
+	psDVFSDeviceCfg = &psDeviceNode->psDevConfig->sDVFS.sDVFSDeviceCfg;
 	psDVFSDevice = &psDeviceNode->psDevConfig->sDVFS.sDVFSDevice;
 	psDev = psDeviceNode->psDevConfig->pvOSDevice;
 
@@ -727,13 +861,14 @@ void UnregisterDVFSDevice(PPVRSRV_DEVICE_NODE psDeviceNode)
 		return;
 	}
 
-#if defined(CONFIG_DEVFREQ_THERMAL)
-	if (!IS_ERR_OR_NULL(psDVFSDevice->psDevfreqCoolingDevice))
+	if (!IS_ERR_OR_NULL(psDVFSDevice->psCoolingDevice))
 	{
-		devfreq_cooling_unregister(psDVFSDevice->psDevfreqCoolingDevice);
-		psDVFSDevice->psDevfreqCoolingDevice = NULL;
+		thermal_cooling_device_unregister(psDVFSDevice->psCoolingDevice);
+		psDVFSDevice->psCoolingDevice = NULL;
+
+		kfree(psDVFSDeviceCfg->psCoolingData);
+		psDVFSDeviceCfg->psCoolingData = NULL;
 	}
-#endif
 
 	if (psDVFSDevice->psDevFreq)
 	{
@@ -749,9 +884,9 @@ void UnregisterDVFSDevice(PPVRSRV_DEVICE_NODE psDeviceNode)
 		devm_devfreq_remove_device(psDev, psDVFSDevice->psDevFreq);
 #endif
 
-		if (psDVFSDevice->data)
+		if (psDVFSDevice->psOndemandData)
 		{
-			OSFreeMem(psDVFSDevice->data);
+			kfree(psDVFSDevice->psOndemandData);
 		}
 
 		psDVFSDevice->psDevFreq = NULL;
@@ -792,7 +927,14 @@ void DeinitDVFS(PPVRSRV_DEVICE_NODE psDeviceNode)
 #endif
 #endif
 
-	SORgxGpuUtilStatsUnregister(psDVFSDevice->hGpuUtilUserDVFS);
+	if (mtgpu_drm_major == 1)
+	{
+		SORgxGpuUtilStatsUnregister(psDVFSDevice->hGpuUtilUserDVFS);
+	}
+	else
+	{
+		mtgpu_util_stats_unregister(psDVFSDevice->hGpuUtilUserDVFS);
+	}
 	psDVFSDevice->hGpuUtilUserDVFS = NULL;
 	psDVFSDevice->bInitPending = IMG_FALSE;
 	psDVFSDevice->bReady = IMG_FALSE;
@@ -842,4 +984,28 @@ PVRSRV_ERROR ResumeDVFS(PPVRSRV_DEVICE_NODE psDeviceNode)
 	return PVRSRV_OK;
 }
 
+PVRSRV_ERROR PVRDVFSPerfModeSet(PPVRSRV_DEVICE_NODE psDeviceNode, IMG_BOOL bEnable)
+{
+	IMG_DVFS_DEVICE	*psDVFSDevice = NULL;
+	IMG_DVFS_DEVICE_CFG *psDVFSDeviceCfg = NULL;
+
+	/* Check the device is registered */
+	if (!psDeviceNode)
+	{
+		return PVRSRV_ERROR_INVALID_DEVICE;
+	}
+
+	psDVFSDevice = &psDeviceNode->psDevConfig->sDVFS.sDVFSDevice;
+	psDVFSDeviceCfg = &psDeviceNode->psDevConfig->sDVFS.sDVFSDeviceCfg;
+
+	if (!psDVFSDeviceCfg->bSupportDVFS || psDVFSDevice->bPerfMode == bEnable)
+	{
+		return PVRSRV_OK;
+	}
+
+	/* Not supported in GuestOS drivers */
+	psDVFSDevice->bPerfMode = PVRSRV_VZ_MODE_IS(GUEST) ? IMG_FALSE : bEnable;
+
+	return PVRSRV_OK;
+}
 #endif /* !NO_HARDWARE */

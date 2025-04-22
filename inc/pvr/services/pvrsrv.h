@@ -75,6 +75,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define OS_THREAD_DESTROY_TIMEOUT_US 100000ULL
 #define OS_THREAD_DESTROY_RETRY_COUNT 10
 
+typedef enum _MTGPU_BUFFER_DOMAIN_
+{
+	MTGPU_BUF_DOMAIN_VRAM_ONLY,
+	MTGPU_BUF_DOMAIN_SYSTEM_ONLY,
+	MTGPU_BUF_DOMAIN_VRAM_PREFERRED
+} MTGPU_BUFFER_DOMAIN;
+
 typedef enum _POLL_FLAGS_
 {
 	POLL_FLAG_NONE = 0, /* No message or dump is printed on poll timeout */
@@ -183,6 +190,8 @@ typedef struct PVRSRV_DATA_TAG
 	DEVMEM_MEMDESC        *psInfoPageMemDesc;             /*! Memory descriptor of the information page. */
 	POS_LOCK              hInfoPageLock;                  /*! Lock guarding access to information page. */
 
+	ATOMIC64_T            ui64SubmissionToken;            /*! global unique id of submission in kmd */
+
 #if defined(SUPPORT_VALIDATION) && defined(__linux__)
 	MEM_LEAK_INTERVALS    sMemLeakIntervals;              /*!< How often certain memory leak types will trigger */
 #endif
@@ -191,8 +200,10 @@ typedef struct PVRSRV_DATA_TAG
 	IMG_UINT32            ui32PDumpBoundDevice;           /*!< PDump is bound to the device first connected to */
 
 #if (RGX_NUM_OS_SUPPORTED > 1)
-	IMG_UINT32 ui32FWTraceBackup;
+	IMG_HANDLE mdev_drv_data;
 #endif
+	POS_LOCK              hFwImageListLock;               /*!< Lock for firmware images list */
+	DLLIST_NODE           sFwImageList;                   /*!< List of firmware images(OS_FW_IMAGE)*/
 } PVRSRV_DATA;
 
 
@@ -553,9 +564,12 @@ int mtgpu_vram_alloc(struct drm_device *ddev, int segment_id, size_t size,
 void mtgpu_vram_free(void *handle);
 int mtgpu_vram_vmap(void *handle, size_t size, u64 *private_data, void **kaddr);
 void mtgpu_vram_vunmap(void *handle, u64 private_data);
+int mtgpu_buffer_alloc(struct drm_device *ddev, int segment_id, size_t size,
+		       dma_addr_t *dev_addr, void **handle, MTGPU_BUFFER_DOMAIN domain);
 #if (RGX_NUM_OS_SUPPORTED > 1)
 /* In virtualization scenarios, check the fw mode */
 IMG_BOOL mtgpu_is_win_fw_mode(void);
+PVRSRV_ERROR mtgpu_vgpu_version_check_compat(PVRSRV_DEVICE_NODE *psDeviceNode);
 #endif
 void PVRSRVDisableClientsAccess(void);
 void PVRSRVEnableClientsAccess(void);
@@ -565,9 +579,10 @@ void PVRSRVDeInitGpuMemStats(PVRSRV_DEVICE_NODE *psDeviceNode);
 IMG_BOOL PVRSRVIsSupportDMA(PVRSRV_DEVICE_NODE *psDeviceNode);
 PVRSRV_ERROR PVRSRVGetDevice(PVRSRV_DEVICE_NODE *psDeviceNode, struct device **psDev);
 
-PVRSRV_ERROR MTCpuPhysToPcieObNocAddr(PVRSRV_DEVICE_NODE *psDevNode,
-				      IMG_UINT64 ui64CpuPAddr,
-				      IMG_UINT64 *puiObNocAddr);
+PVRSRV_ERROR MTCpuPhysArrayToPcieObNocAddrArray(PVRSRV_DEVICE_NODE *psDevNode,
+						IMG_CPU_PHYADDR *psCpuPhysAddr,
+						IMG_DEV_PHYADDR *psDevPAddr, IMG_BOOL *pbValid,
+						IMG_UINT32 ui32PageCount);
 
 PVRSRV_ERROR MTGetPcieAccessSysMemAddrRange(PVRSRV_DEVICE_NODE *psDevNode,
 					    IMG_UINT64 *pui64SysMemStart,

@@ -92,6 +92,7 @@ typedef struct _RGX_SRVINIT_APPHINTS_
 	IMG_BOOL   bFilteringMode;
 	IMG_BOOL   bHWPerfDisableCounterFilter;
 	IMG_BOOL   bZeroFreelist;
+	IMG_UINT32 ui32GpuUtilConfig;
 	IMG_UINT32 ui32EnableFWContextSwitch;
 	IMG_UINT32 ui32FWContextSwitchProfile;
 	IMG_UINT32 ui32ISPSchedulingLatencyMode;

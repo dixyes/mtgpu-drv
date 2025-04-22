@@ -18,9 +18,11 @@
 #define GPU_SOC_GEN2		2
 #define GPU_SOC_GEN3		3
 #define GPU_SOC_GEN4		4
+#define GPU_SOC_GEN6		6
 
 #define MAX_NUM_DEV		256
 
+struct drm_file;
 struct vgpu_info;
 struct mtgpu_vz_data {
 	resource_size_t fw_heap_base;
@@ -101,9 +103,14 @@ struct mtgpu_video_platform_data {
 	u16 pcie_dev_id;
 };
 
-struct mtgpu_drm_platform_data {
+struct mtgpu_drm_fb_data {
 	resource_size_t fb_base;
 	resource_size_t fb_size;
+};
+
+struct mtgpu_drm_platform_data {
+	struct mtgpu_drm_fb_data fb_data;
+	bool is_device_ready;
 };
 
 struct mtgpu_dispc_platform_data {
@@ -151,8 +158,10 @@ struct mtgpu_dsc_platform_data {
 extern struct mtgpu_driver_data sudi_drvdata;
 extern struct mtgpu_driver_data quyuan1_drvdata;
 extern struct mtgpu_driver_data quyuan2_drvdata;
-extern struct mtgpu_driver_data apollo_drvdata;
+extern struct mtgpu_driver_data m1000_drvdata;
 extern struct mtgpu_driver_data pinghu1_drvdata;
+extern struct mtgpu_driver_data pinghu1s_drvdata;
+extern struct mtgpu_driver_data huashan_drvdata;
 #if defined(OS_STRUCT_PROC_OPS_EXIST)
 extern const struct proc_ops config_proc_ops;
 extern const struct proc_ops mpc_enable_proc_ops;
@@ -166,8 +175,10 @@ extern const struct proc_ops mtlink_irqcounter_counter_proc_ops;
 extern const struct proc_ops mtlink_monitor_start_proc_ops;
 extern const struct proc_ops mtlink_monitor_counter_proc_ops;
 extern const struct proc_ops mtlink_warm_rest_proc_ops;
+extern const struct proc_ops mtlink_disable_hwr_proc_ops;
 extern const struct proc_ops process_util_proc_ops;
 extern const struct proc_ops event_message_proc_ops;
+extern const struct proc_ops vgpu_monitor_proc_ops;
 #else
 extern const struct file_operations config_proc_ops;
 extern const struct file_operations mpc_enable_proc_ops;
@@ -181,8 +192,10 @@ extern const struct file_operations mtlink_irqcounter_counter_proc_ops;
 extern const struct file_operations mtlink_monitor_start_proc_ops;
 extern const struct file_operations mtlink_monitor_counter_proc_ops;
 extern const struct file_operations mtlink_warm_rest_proc_ops;
+extern const struct file_operations mtlink_disable_hwr_proc_ops;
 extern const struct file_operations process_util_proc_ops;
 extern const struct file_operations event_message_proc_ops;
+extern const struct file_operations vgpu_monitor_proc_ops;
 #endif
 
 bool mtgpu_display_is_dummy(void);
@@ -190,12 +203,15 @@ bool mtgpu_display_is_none(void);
 bool mtgpu_card_support_display(struct mtgpu_device *mtdev);
 bool mtgpu_card_is_server(struct pci_dev *pdev);
 
+void mtgpu_dump_driver_commit_info(struct drm_device *drm, struct drm_file *file_priv);
 int mtgpu_get_driver_mode(void);
 u64 mtgpu_get_vram_size(struct mtgpu_device *mtdev);
-bool mtgpu_sriov_is_supported(struct pci_dev *pdev);
+bool mtgpu_sriov_is_supported(struct mtgpu_device *mtdev);
 bool mtgpu_sriov_enabled(struct pci_dev *pdev);
 bool mtgpu_pstate_is_enabled(void);
+void mtgpu_pstate_set_disabled(void);
 int mtgpu_ipc_init(void);
 void mtgpu_ipc_exit(void);
+bool mtgpu_is_dgpu(struct device *dev);
 
 #endif /* __MTGPU_DRV_H__ */

@@ -79,8 +79,29 @@
 )
 #endif
 
+#ifndef rounddown
+#define rounddown(x, y) (				\
+{							\
+	typeof(x) __x = (x);				\
+	__x - (__x % (y));				\
+}							\
+)
+#endif
+
 #ifndef INT_MAX
 #define INT_MAX	((int)(~0U >> 1))
+#endif
+
+#ifndef UINT_MAX
+#define UINT_MAX	(~0U)
+#endif
+
+#ifndef va_arg
+	typedef __builtin_va_list va_list;
+#define va_start(v, l)		__builtin_va_start(v, l)
+#define va_end(v)               __builtin_va_end(v)
+#define va_arg(v, l)            __builtin_va_arg(v, l)
+#define va_copy(d, s)           __builtin_va_copy(d, s)
 #endif
 
 #define OS_VAL(index)	(os_value[OS_##index])
@@ -177,8 +198,21 @@
 	X(PCI_EXP_TYPE_ENDPOINT)\
 	X(PCI_EXP_TYPE_ROOT_PORT)\
 	X(PCI_EXP_TYPE_RC_EC)\
+	X(PCI_EXP_LNKSTA)\
+	X(PCI_EXP_LNKSTA_CLS_16_0GB)\
+	X(PCI_EXP_LNKCAP)\
+	X(PCI_EXP_LNKCAP_SLS_2_5GB)\
+	X(PCI_EXP_LNKCAP_SLS_5_0GB)\
+	X(PCI_EXP_LNKCAP_SLS_8_0GB)\
+	X(PCI_EXP_LNKCAP_SLS_16_0GB)\
+	X(PCI_EXP_LNKCAP2)\
+	X(PCI_EXP_LNKCAP2_SLS_2_5GB)\
+	X(PCI_EXP_LNKCAP2_SLS_5_0GB)\
+	X(PCI_EXP_LNKCAP2_SLS_8_0GB)\
+	X(PCI_EXP_LNKCAP2_SLS_16_0GB)\
 	X(PCIE_SPEED_2_5GT)\
 	X(PCI_STD_HEADER_SIZEOF)\
+	X(PCIE_LNK_X16)\
 	X(PCI_HEADER_TYPE_BRIDGE)\
 	X(IRQF_SHARED)\
 	X(MODE_OK)\
@@ -199,20 +233,26 @@
 	X(O_WRONLY)\
 	X(O_TRUNC)\
 	X(O_CREAT)\
+	X(O_APPEND)\
 	X(O_CLOEXEC)\
 	X(O_NOFOLLOW)\
 	X(O_LARGEFILE)\
 	X(O_EXCL)\
+	X(O_DIRECTORY)\
 	X(EPOLLIN)\
 	X(EPOLLHUP)\
 	X(GFP_DMA)\
 	X(GFP_KERNEL)\
 	X(GFP_ATOMIC)\
 	X(GFP_NOWAIT)\
+	X(FAULT_FLAG_REMOTE)\
+	X(FAULT_FLAG_WRITE)\
 	X(PIDTYPE_PID)\
+	X(VM_WRITE)\
 	X(VM_EXEC)\
 	X(VM_LOCKED)\
 	X(VM_SHARED)\
+	X(VM_PFNMAP)\
 	X(IORESOURCE_MEM)\
 	X(IORESOURCE_IRQ)\
 	X(IORESOURCE_IO)\
@@ -249,6 +289,11 @@
 	X(ESPIPE)\
 	X(EDEADLK)\
 	X(EINTR)\
+	X(EOVERFLOW)\
+	X(ENODATA)\
+	X(ECANCELED)\
+	X(EOWNERDEAD)\
+	X(ESRCH)\
 	X(IRQ_HANDLED)\
 	X(IRQ_NONE)\
 	X(IRQF_TRIGGER_NONE)\
@@ -262,6 +307,7 @@
 	X(WQ_CPU_INTENSIVE)\
 	X(WQ_HIGHPRI)\
 	X(SIGINT)\
+	X(SIGKILL)\
 	X(SZ_4K)\
 	X(SZ_1M)\
 	X(SZ_1G)\
@@ -278,7 +324,33 @@
 	X(DEFAULT_RATELIMIT_INTERVAL)\
 	X(DEFAULT_RATELIMIT_BURST)\
 	X(ACPI_ALLOCATE_BUFFER)\
-	X(ACPI_TYPE_INTEGER)
+	X(ACPI_TYPE_INTEGER)\
+	X(ACPI_STATE_D0)\
+	X(ACPI_STATE_D3_HOT)\
+	X(NUMA_NO_NODE)\
+	X(HRTIMER_RESTART)\
+	X(HRTIMER_NORESTART)\
+	X(MAX_LINKS)\
+	X(ULONG_MAX)\
+	X(PF_EXITING)\
+	X(DMA_FENCE_FLAG_USER_BITS)\
+	X(SLAB_HWCACHE_ALIGN)\
+	X(MAX_SCHEDULE_TIMEOUT)\
+	X(AT_FDCWD)\
+	X(LOOKUP_REVAL)\
+	X(LOOKUP_DIRECTORY)\
+	X(S_IRWXU)\
+	X(S_IRWXG)\
+	X(S_IRWXO)\
+	X(S_IRUSR)\
+	X(S_IWUSR)\
+	X(S_IXUSR)\
+	X(S_IRGRP)\
+	X(S_IWGRP)\
+	X(S_IXGRP)\
+	X(S_IROTH)\
+	X(S_IWOTH)\
+	X(S_IXOTH)
 
 enum {
 #define X(VALUE) OS_##VALUE,
@@ -291,6 +363,8 @@ enum {
 #define os_round_up(x, y) ((((x) - 1) | __os_round_mask((x), (y))) + 1)
 
 #define os_dma_mmap_coherent(d, v, c, h, s) os_dma_mmap_attrs(d, v, c, h, s, 0)
+
+#define ATOMIC_INIT(i)	{ (i) }
 
 /*
  * Used to create numbers.
@@ -324,6 +398,9 @@ enum {
 #define _IOW(type, nr, size)  _IOC(_IOC_WRITE, (type), (nr), (_IOC_TYPECHECK(size)))
 #define _IOWR(type, nr, size) _IOC(_IOC_READ | _IOC_WRITE, (type), (nr), (_IOC_TYPECHECK(size)))
 #endif /* _IOC_NONE */
+
+#define VERIFY_READ     0
+#define VERIFY_WRITE    1
 
 struct mutex;
 struct semaphore;
@@ -374,6 +451,8 @@ struct attribute_group;
 struct device_attribute;
 struct kobject;
 struct seq_file;
+struct rb_node;
+struct rb_root;
 struct rb_root_cached;
 struct interval_tree_node;
 struct bus_type;
@@ -416,6 +495,9 @@ struct sock;
 struct sk_buff;
 struct nlmsghdr;
 struct netlink_kernel_cfg;
+struct cpumask;
+struct irq_affinity_notify;
+struct hrtimer;
 
 #if defined(SUPPORT_ION)
 struct ion_heap;
@@ -436,6 +518,7 @@ typedef int mt_kref;
 typedef int pci_power_t;
 typedef unsigned long kernel_ulong_t;
 typedef struct mempool_s mempool_t;
+typedef s64 ktime_t;
 
 struct mt_file_operations {
 	int (*open)(struct inode *, struct file *);
@@ -577,6 +660,7 @@ extern const u64 os_value[];
 
 DECLARE_OS_STRUCT_COMMON_FUNCS(interval_tree_node);
 DECLARE_OS_STRUCT_COMMON_FUNCS(rb_root_cached);
+DECLARE_OS_STRUCT_COMMON_FUNCS(rb_node);
 
 /**
  * Interface of interval tree and rbtree
@@ -592,6 +676,14 @@ struct interval_tree_node *os_interval_tree_iter_next(struct interval_tree_node 
 struct interval_tree_node *os_interval_tree_iter_first(struct rb_root_cached *root,
 						       unsigned long start, unsigned long last);
 void os_rb_root_init(struct rb_root_cached *root);
+struct rb_node *os_rb_first_cached(struct rb_root_cached *rb_root);
+struct rb_node *os_rb_next(const struct rb_node *node);
+void OS_RB_CLEAR_NODE(struct rb_node *node);
+bool OS_RB_EMPTY_NODE(struct rb_node *node);
+bool OS_RB_EMPTY_ROOT(struct rb_root *root);
+void os_rb_erase_cached(struct rb_node *node, struct rb_root_cached *root);
+void os_rb_add_cached(struct rb_node *node, struct rb_root_cached *tree,
+		      bool (*less)(struct rb_node *, const struct rb_node *));
 
 #if defined(SUPPORT_ION)
 size_t os_ion_query_heaps_kernel(struct ion_device *idev, struct ion_heap_data *hdata,
@@ -645,6 +737,7 @@ void os_device_unlock(struct device *dev);
 bool os_is_power_of_2(unsigned long n);
 void *os_dev_get_drvdata(const struct device *dev);
 void os_dev_set_drvdata(struct device *dev, void *data);
+void *os_dev_get_platdata(const struct device *dev);
 struct device *os_get_device(struct device *dev);
 void os_put_device(struct device *dev);
 int os_device_attach(struct device *dev);
@@ -672,6 +765,7 @@ int os_page_count(struct page *page);
 u64 os_page_to_phys(struct page *page);
 struct page *os_vmalloc_to_page(const void *vmalloc_addr);
 struct page *os_phys_to_page(phys_addr_t pa);
+struct page *os_get_page_by_index(struct page *pages, u32 index);
 int os_sg_table_create(struct sg_table **sgt);
 void os_sg_table_destroy(struct sg_table *sgt);
 struct scatterlist *os_sg_next(struct scatterlist *sg);
@@ -687,8 +781,9 @@ int os_sg_alloc_table_from_pages(struct sg_table *sgt, struct page **pages,
 				 unsigned long size);
 int os_sg_alloc_table(struct sg_table *sgt, unsigned int nents);
 void os_sg_free_table(struct sg_table *sgt);
-void os_get_task_comm(char *to, int size);
+void os_get_current_task_comm(char *to, int size);
 void *os_vmap(struct page **pages, unsigned int count);
+void *os_vmap_cache(struct page **pages, unsigned int count);
 void os_vunmap(const void *addr);
 int os_remap_pfn_range(struct vm_area_struct *vma, unsigned long addr,
 		       unsigned long pfn, unsigned long size, unsigned long pgprot);
@@ -714,6 +809,8 @@ struct task_struct *os_pid_task(struct pid *pid, int type);
 struct mm_struct *os_get_task_mm(struct task_struct *p);
 void os_task_lock(struct task_struct *p);
 void os_task_unlock(struct task_struct *p);
+void os_get_task_struct(struct task_struct *t);
+void os_put_task_struct(struct task_struct *t);
 char *os_d_path(const struct path *p, char *param, int size);
 
 struct path *os_get_exec_vma_file_path(struct mm_struct *mm);
@@ -727,15 +824,21 @@ struct file *os_get_vm_area_struct_vm_file(struct vm_area_struct *vma);
 void os_set_vm_area_struct_vm_pgoff(struct vm_area_struct *vma, unsigned long vm_pgoff);
 void os_set_vm_area_struct_vm_flags(struct vm_area_struct *vma, unsigned long flag);
 void os_set_vm_area_struct_vm_page_prot_writecombine(struct vm_area_struct *vma);
+void os_set_vm_area_struct_vm_page_prot_noncached(struct vm_area_struct *vma);
+void os_set_vm_area_any_uc_flags(struct vm_area_struct *vma);
+bool os_has_vm_area_any_uc_flags(void);
 
 void *os_memset(void *s, int c, size_t count);
 void *os_memcpy(void *dst, const void *src, size_t size);
+void os_memcpy_flushcache(void *dst, const void *src, size_t cnt);
+int os_memcmp(const void *buf1, const void *buf2, size_t size);
 void os_memcpy_fromio(void *dst, const void __iomem *src, size_t size);
 void os_memcpy_toio(void __iomem *dst, const void *src, size_t size);
 void os_memset_io(void __iomem *addr, int value, size_t size);
 void *os_memdup_user(const void __user *, size_t);
 unsigned long os_copy_from_user(void *to, const void *from, unsigned long n);
 unsigned long os_copy_to_user(void __user *to, const void *from, unsigned long n);
+unsigned long os_get_user(u64 *val, u64 __user *user_ptr);
 
 __poll_t os_key_to_poll(void *key);
 void os_init_poll_funcptr(poll_table *pt, poll_queue_proc qproc);
@@ -789,6 +892,7 @@ loff_t os_get_file_fpos(struct file *file);
 void os_set_file_private_data(struct file *file, void *private_data);
 void *os_get_file_private_data(struct file *file);
 void *os_get_file_node_private_data(struct file *file);
+size_t os_get_file_node_size(const struct file *file);
 unsigned int os_get_file_flags(struct file *file);
 
 struct fd *os_fdget(unsigned int fd);
@@ -812,6 +916,7 @@ void os_mutex_lock(struct mutex *lock);
 int os_mutex_trylock(struct mutex *lock);
 void os_mutex_unlock(struct mutex *lock);
 void os_mutex_destroy(struct mutex *lock);
+int os_mutex_is_locked(struct mutex *lock);
 
 int os_spin_lock_create(spinlock_t **lock);
 void os_spin_lock(spinlock_t *lock);
@@ -843,6 +948,8 @@ void os_completion_destroy(struct completion *x);
 void os_wait_for_completion(struct completion *x);
 unsigned long os_wait_for_completion_timeout(struct completion *x, unsigned long timeout);
 void os_complete(struct completion *x);
+void os_complete_all(struct completion *x);
+void os_reinit_completion(struct completion *x);
 
 unsigned long os_get_jiffies(void);
 unsigned long os_msecs_to_jiffies(const unsigned int m);
@@ -858,6 +965,7 @@ void *os_create_work(void);
 void *os_create_work_atomic(void);
 void os_destroy_work(struct work_struct *work);
 bool os_queue_work(struct workqueue_struct *wq, struct work_struct *work);
+struct workqueue_struct *os_get_system_wq(void);
 void *os_get_dwork_drvdata(struct work_struct *work);
 void os_set_dwork_drvdata(struct delayed_work *dwork, void *data);
 void *os_create_dwork(void);
@@ -868,7 +976,13 @@ bool os_queue_delayed_work(struct workqueue_struct *wq,
 			   struct delayed_work *dwork,
 			   unsigned long delay);
 bool os_cancel_delayed_work_sync(struct delayed_work *dwork);
+bool os_cancel_delayed_work(struct delayed_work *dwork);
+bool os_mod_delayed_work(struct workqueue_struct *wq,
+			 struct delayed_work *dwork,
+			 unsigned long delay);
+struct delayed_work *os_to_delayed_work(struct work_struct *work);
 void os_destroy_workqueue(struct workqueue_struct *wq);
+unsigned long os_get_delayed_work_timer_expires(struct delayed_work *dwork);
 struct workqueue_struct *os_create_freezable_workqueue(char *name);
 struct workqueue_struct *os_alloc_workqueue(const char *fmt, unsigned int flags, int max_active);
 struct workqueue_struct *os_alloc_ordered_workqueue(const char *fmt);
@@ -878,15 +992,20 @@ void os_wake_up_interruptible(struct wait_queue_head *wq_head);
 void os_wake_up_all(struct wait_queue_head *wq_head);
 int os_create_waitqueue_head(struct wait_queue_head **wq_head);
 void os_destroy_waitqueue_head(struct wait_queue_head *wq_head);
+int os_signal_pending(void);
 void os_might_sleep(void);
+void os_schedule(void);
 long os_schedule_timeout(long timeout);
+void os_sched_set_fifo_low(struct task_struct *p);
 void os_init_wait_entry(struct wait_queue_entry *wq_entry, int flags);
 void os_finish_wait(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry);
 long os_prepare_to_wait_event_uninterruptible(struct wait_queue_head *wq_head,
 					      struct wait_queue_entry *wq_entry);
+long os_prepare_to_wait_event_interruptible(struct wait_queue_head *wq_head,
+					    struct wait_queue_entry *wq_entry);
+int os_wait_event_killable(struct wait_queue_head *wq_head, bool condition);
 void os_add_wait_queue(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry);
 void os_init_waitqueue_func_entry(struct wait_queue_entry *wq_entry, wait_queue_func_t func);
-
 void os_blocking_init_notifier_head(struct blocking_notifier_head *nh);
 void os_notifier_block_set_notifier_call(struct notifier_block *nb, notifier_fn_t cb);
 int os_blocking_notifier_call_chain(struct blocking_notifier_head *nh,
@@ -948,6 +1067,67 @@ void os_sysfs_remove_file(struct kobject *kobj, const struct attribute *attr);
 	ret1;											\
 })
 
+#define os_wait_event_interruptible(wq_head, condition)						\
+({												\
+	long ret1 = 0;										\
+	os_might_sleep();									\
+	if (!(condition)) {									\
+		ret1 =										\
+		({										\
+			struct wait_queue_entry *wq_entry = os_create_wait_queue_entry();	\
+			long ret2 = 0;								\
+												\
+			os_init_wait_entry(wq_entry, 0);					\
+			for (;;) {								\
+				os_prepare_to_wait_event_interruptible(wq_head, wq_entry);	\
+												\
+				if (condition)							\
+					break;							\
+												\
+				os_schedule();							\
+			}									\
+			os_finish_wait(wq_head, wq_entry);					\
+			os_kfree(wq_entry);							\
+			ret2;									\
+		});										\
+	}											\
+	ret1;											\
+})
+
+#define os_wait_event_interruptible_timeout(wq_head, condition, timeout)			\
+({												\
+	long ret1 = timeout;									\
+	os_might_sleep();									\
+	if (!os_wait_cond_timeout(condition, ret1)) {						\
+		ret1 =										\
+		({										\
+			struct wait_queue_entry *wq_entry = os_create_wait_queue_entry();	\
+			long ret2 = timeout;	/* explicit shadow */				\
+												\
+			os_init_wait_entry(wq_entry, 0);					\
+			for (;;) {								\
+				os_prepare_to_wait_event_interruptible(wq_head, wq_entry);	\
+												\
+				if (os_wait_cond_timeout(condition, ret2))			\
+					break;							\
+												\
+				if (OSSignalPending()) {					\
+					ret2 = -OS_VAL(EINTR);					\
+					break;							\
+				}								\
+												\
+				ret2 = os_schedule_timeout(ret2);				\
+			}									\
+			os_finish_wait(wq_head, wq_entry);					\
+			os_kfree(wq_entry);							\
+			ret2;									\
+		});										\
+	}											\
+	ret1;											\
+})
+
+int os_num_online_cpus(void);
+
 struct file *os_anon_inode_getfile(const char *name, const struct mt_file_operations *fops, void *priv,
 				   int flags);
 void os_kfree_fops(struct file *filp);
@@ -955,19 +1135,31 @@ int os_stream_open(struct inode *inode, struct file *filp);
 void os_get_file(struct file *filp);
 void os_fput(struct file *filp);
 
+void *os_get_work_func(struct work_struct *work);
 void os_init_work(struct work_struct *work, work_func_t func);
 bool os_flush_work(struct work_struct *work);
+bool os_schedule_work(struct work_struct *work);
 bool os_cancel_work_sync(struct work_struct *work);
 bool os_schedule_delayed_work(struct delayed_work *dwork, unsigned long delay);
 struct task_struct *os_kthread_create(int (*threadfn)(void *data),
 				      void *data, const char *namefmt, ...);
+struct task_struct *os_kthread_run(int (*threadfn)(void *data),
+				   void *data, const char *namefmt, ...);
 int os_kthread_stop(struct task_struct *k);
 bool os_kthread_should_stop(void);
+bool os_kthread_should_park(void);
+void os_kthread_parkme(void);
+int os_kthread_park(struct task_struct *k);
+void os_kthread_unpark(struct task_struct *k);
 int os_wake_up_process(struct task_struct *p);
 void os_cond_resched(void);
 
 void os_wmb(void);
 void os_mb(void);
+void os_rmb(void);
+void os_smp_mb(void);
+void os_smp_wmb(void);
+void os_smp_rmb(void);
 int os_smp_load_acquire(int *p);
 void os_smp_store_release(int *p, int v);
 
@@ -983,23 +1175,51 @@ void os_iounmap(void __iomem *io_addr);
 
 int os_get_user_pages_fast(unsigned long start, int nr_pages,
 			   unsigned int gup_flags, struct page **pages);
+long os_get_user_pages(unsigned long start, unsigned long nr_pages, unsigned int gup_flags,
+		       struct page **pages, struct vm_area_struct **vmas);
+long os_get_user_pages_remote(struct task_struct *tsk, struct mm_struct *mm, unsigned long start,
+			      unsigned long nr_pages, unsigned int gup_flags, struct page **pages,
+			      struct vm_area_struct **vmas, int *locked);
+long os_pin_user_pages_remote(struct task_struct *tsk, struct mm_struct *mm, unsigned long start,
+			      unsigned long nr_pages, unsigned int gup_flags, struct page **pages,
+			      struct vm_area_struct **vmas, int *locked);
+void os_unpin_user_pages_dirty_lock(struct page **pages, unsigned long npages, bool make_dirty);
 void os_put_page(struct page *page);
 int os_page_reserved(struct page *page);
 void os_set_pages_reserved(struct page *pages, int n);
 void os_clear_pages_reserved(struct page *pages, int n);
+void os_set_pages_dirty(struct page *pages, int n);
+
+struct vm_area_struct *os_find_vma_intersection(struct mm_struct *mm, unsigned long start_addr,
+						unsigned long end_addr);
+
+struct vm_area_struct *os_find_vma_intersection_locked(struct mm_struct *mm, unsigned long start_addr,
+                                                       unsigned long end_addr);
+struct vm_area_struct *os_find_vma(struct mm_struct *mm, unsigned long addr);
+uint64_t os_untagged_addr(u64 addr);
+
+int os_follow_pfn(struct vm_area_struct *vma, unsigned long address, unsigned long *pfn);
+int os_fixup_user_fault(struct task_struct *tsk, struct mm_struct *mm, unsigned long address,
+			unsigned int fault_flags, bool *unlocked);
+
 struct page *os_alloc_pages(gfp_t gfp_mask, unsigned int order);
 void os_free_pages(struct page *page, unsigned int order);
 int os_get_order(unsigned long size);
 
 unsigned int os_ioread32(void __iomem *addr);
-u32 os_readl(const void __iomem *addr);
+u64 os_ioread64(void __iomem *addr);
 void os_iowrite16(u16 b, void __iomem *addr);
 void os_iowrite32(u32 b, void __iomem *addr);
+u8 os_readb(const void __iomem *addr);
+u16 os_readw(const void __iomem *addr);
+u32 os_readl(const void __iomem *addr);
+u64 os_readq(const void __iomem *addr);
+void os_writeb(u8 value, void __iomem *addr);
+void os_writew(u16 value, void __iomem *addr);
 void os_writel(u32 value, void __iomem *addr);
+void os_writeq(u64 value, void __iomem *addr);
 
 int os_pci_domain_nr(struct pci_dev *pdev);
-int os_request_pci_io_addr(struct pci_dev *pdev, u32 index,
-			   resource_size_t offset, resource_size_t length);
 unsigned int os_pci_slot(unsigned int devfn);
 unsigned int os_pci_func(unsigned int devfn);
 unsigned int os_get_pci_dev_virfn(struct pci_dev *pdev);
@@ -1132,6 +1352,7 @@ struct resource *os_platform_get_resource(struct platform_device *dev,
 struct device *os_get_platform_device_base(struct platform_device *pdev);
 struct platform_device *os_to_platform_device(struct device *dev);
 const char *os_get_paltform_device_name(struct platform_device *pdev);
+void *os_get_platform_data(struct device *dev);
 
 u64 os_roundup_pow_of_two(u64 size);
 u32 os_order_base_2(u64 size);
@@ -1140,6 +1361,7 @@ int os_fls64(unsigned long x);
 u64 os_cpu_to_le64(u64 data);
 u32 os_cpu_to_le32(u32 data);
 u64 os_div64_u64(u64 dividend, u64 divisor);
+u32 os_int_sqrt(u32 num);
 
 resource_size_t os_get_system_available_ram_size(void);
 resource_size_t os_get_system_free_ram_size(void);
@@ -1198,17 +1420,52 @@ void os_timer_setup(struct timer_list *timer, void (*function)(struct timer_list
 int os_create_timer(struct timer_list **timer);
 void os_destroy_timer(struct timer_list *timer);
 
+void os_hrtimer_init(struct hrtimer *timer, void *function);
+void os_hrtimer_start(struct hrtimer *timer, u64 periods);
+int os_hrtimer_cancel(struct hrtimer *timer);
+u64 os_hrtimer_forward_now(struct hrtimer *timer, u64 interval);
+void os_hrtimer_add_expires_ns(struct hrtimer *timer, u64 ns);
+
 u64 os_kclock_ns64(void);
+u64 os_ktime_get(void);
 u64 os_ktime_get_ns(void);
 u64 os_ktime_get_sec(void);
 
 void os_ktime_get_real_tm(struct mt_tm *mt_time, int offset);
 
+void os_time64_to_tm(u64 totalsecs, struct mt_tm *mt_time, int offset);
+u64 os_sched_clock_get_ns(void);
+u64 os_ktime_get_real_ns(void);
+bool os_ktime_before(const ktime_t cmp1, const ktime_t cmp2);
+bool os_time_after(unsigned long a, unsigned long b);
+
 struct inode *os_file_inode(const struct file *f);
+
+void os_sort(void *base, size_t num, size_t size,
+	     int (*cmp)(const void *, const void *),
+	     void (*swap)(void *, void *, int));
 
 void os_list_sort(void *priv, struct list_head *head,
 		  int (*cmp)(void *priv, const struct list_head *a,
 			     const struct list_head *b));
+struct irq_data *os_irq_get_irq_data(int irq);
+struct irq_chip *os_irq_data_get_irq_chip(struct irq_data *data);
+const struct cpumask *os_cpumask_of_node(int node);
+const struct cpumask *os_get_cpu_online_mask(void);
+void os_cpumask_copy(struct cpumask *dstp, const struct cpumask *srcp);
+struct cpumask *os_irq_data_get_affinity_mask(struct irq_data *data);
+void *os_irq_chip_support_set_affinity(struct irq_chip *chip);
+void os_irq_set_affinity(struct irq_chip *chip,
+			      struct irq_data *data,
+			      const struct cpumask *affinity,
+			      bool force);
+void os_irq_set_affinity_notifier(unsigned int irq, struct irq_affinity_notify *notify);
+int os_create_irq_affinity_notify(struct irq_affinity_notify **affinity_notify,
+			    void (*notify)(struct irq_affinity_notify *, const struct cpumask *mask),
+			    void (*release)(struct kref *ref));
+void os_destroy_irq_affinity_notify(struct irq_affinity_notify *affinity_notify);
+void *os_get_irq_affinity_notify_drvdata(struct irq_affinity_notify *affinity_notify);
+void os_set_irq_affinity_notify_drvdata(struct irq_affinity_notify *affinity_notify, void *data);
 struct radix_tree_root *os_create_radix_tree(void);
 void os_destroy_radix_tree(struct radix_tree_root *root);
 void *os_radix_tree_lookup(const struct radix_tree_root *root, unsigned long index);
@@ -1228,6 +1485,28 @@ struct eventfd_ctx *os_eventfd_ctx_fdget(int fd);
 
 int os_ilog2(u64 n);
 
+#ifndef CONFIG_FUNCTION_TRACER
+void _mcount(unsigned long);
+#endif
+
+void *os_path_create(void);
+struct dentry *os_kern_path_create(int dfd, const char *name, struct path *path, unsigned int lookup_flags);
+int os_kern_path(const char *name, unsigned int flags, struct path *path);
+int os_security_path_mkdir(struct path *path, struct dentry *dentry, umode_t mode);
+int os_vfs_mkdir(struct path *path, struct dentry *dentry, umode_t mode);
+int os_vfs_unlink(struct inode *dir, struct dentry *dentry, struct inode **delegated_inode);
+struct dentry *os_dget_parent(struct dentry *dentry);
+struct inode *os_d_inode(const struct dentry *dentry);
+void os_dput(struct dentry *dentry);
+void os_path_put(const struct path *path);
+void os_inode_lock(struct inode *inode);
+void os_inode_unlock(struct inode *inode);
+void os_done_path_create(struct path *path, struct dentry *dentry);
+struct inode *os_get_inode_from_path(struct path *path);
+struct dentry *os_get_dentry_from_path(struct path *path);
+bool os_retry_estale(int error, unsigned int lookup_flags);
+int os_current_umask(void);
+
 mempool_t *os_mempool_create(int min_nr, mempool_alloc_t *alloc_fn,
 			     mempool_free_t *free_fn, void *pool_data);
 void os_mempool_destroy(mempool_t *pool);
@@ -1243,7 +1522,7 @@ void _os_dev_warn(const struct device *dev, const char *fmt, ...);
 void _os_dev_notice(const struct device *dev, const char *fmt, ...);
 void _os_dev_info(const struct device *dev, const char *fmt, ...);
 void _os_dev_dbg(const struct device *dev, const char *fmt, ...);
-
+int os_vsnprintf(char *buf, size_t size, const char *fmt, va_list args);
 int os_snprintf(char *buf, size_t size, const char *fmt, ...);
 int os_printk(const char *fmt, ...);
 
@@ -1270,9 +1549,12 @@ long OS_PTR_ERR(__force const void *ptr);
 void *OS_ERR_CAST(__force const void *ptr);
 void *OS_ERR_PTR(long error);
 int OS_READ_ONCE(int *val);
+void OS_WRITE_ONCE(void **ptr, void *val);
 bool OS_WARN_ON(bool condition);
 bool OS_WARN_ON_ONCE(bool condition);
 void OS_BUG_ON(bool condition);
+int OS_IS_POSIXACL(struct inode *inode);
+unsigned long OS_PAGE_OFFSET(void);
 void os_dump_stack(void);
 
 int os_sscanf(const char *str, const char *fmt, ...);
@@ -1285,6 +1567,7 @@ int os_strncmp(const char *cs, const char *ct, size_t count);
 char *os_strcpy(char *dest, const char *src);
 char *os_strncpy(char *dest, const char *src, size_t count);
 char *os_strchr(const char *, int);
+char *os_strrchr(const char *, int);
 char *os_strstr(const char *s1, const char *s2);
 int os_kstrtol(const char *s, unsigned int base, long *res);
 char *os_strsep(char **s, const char *delim);
@@ -1314,6 +1597,7 @@ void *os_get_acpi_device_handle(struct acpi_device *adev);
 u32 os_acpi_evaluate_object(void *object, char *path_name,
 			    struct acpi_object_list *parameter_objects,
 			    struct acpi_buffer *return_object_buffer);
+int os_acpi_device_set_power(struct acpi_device *device, int state);
 unsigned long os_iova_size(struct iova *iova);
 unsigned long os_iova_shift(struct iova_domain *iovad);
 unsigned long os_iova_mask(struct iova_domain *iovad);
@@ -1339,6 +1623,7 @@ u64 os_iommu_iova_to_phys(struct iommu_domain *domain, u64 iova);
 void os_iommu_group_put(struct iommu_group *group);
 int os_iommu_group_id(struct iommu_group *group);
 struct iommu_group *os_iommu_group_get(struct device *dev);
+int os_iommu_get_msi_cookie(struct iommu_domain *domain, dma_addr_t base);
 int os_iommu_attach_group(struct iommu_domain *domain, struct iommu_group *group);
 void os_iommu_detach_group(struct iommu_domain *domain, struct iommu_group *group);
 struct iommu_domain *os_iommu_domain_alloc(struct bus_type *bus);
@@ -1346,6 +1631,8 @@ void os_iommu_domain_free(struct iommu_domain *domain);
 struct iommu_domain *os_iommu_get_domain_for_dev(struct device *dev);
 unsigned int os_get_iommu_domain_type(struct iommu_domain *domain);
 bool os_iommu_present(struct bus_type *bus);
+int os_iommu_group_for_each_dev(struct iommu_group *group, void *data,
+				int (*fn)(struct device *, void *));
 bool os_virt_addr_valid(void *address);
 phys_addr_t os_virt_to_phys(void *address);
 
@@ -1357,14 +1644,39 @@ struct device_node *os_get_device_of_node(struct device *dev);
 char *os_get_current_comm(void);
 u64 os_get_current_pid(void);
 u64 os_get_current_tgid(void);
+struct task_struct *os_get_current(void);
+struct mm_struct *os_get_current_mm(void);
+struct task_struct *os_get_current_group_leader(void);
+u32 os_get_current_flags(void);
+int os_get_current_exit_code(void);
+
+int os_mmap_write_lock_killable(struct mm_struct *mm);
+void os_mmap_write_unlock(struct mm_struct *mm);
+void os_mm_mmap_read_lock(struct mm_struct *mm);
+void os_mm_mmap_read_unlock(struct mm_struct *mm);
+void os_mmgrab(struct mm_struct *mm);
+void os_mmdrop(struct mm_struct *mm);
+
+bool os_capable_cap_ipc_lock(void);
+
 char *os_get_utsname_version(void);
+char *os_get_uts_sysname(void);
+char *os_get_uts_release(void);
+char *os_get_uts_version(void);
+char *os_get_uts_machine(void);
 
 void *os_get_dma_fence_drvdata(struct dma_fence *dma_fence);
 void os_set_dma_fence_drvdata(struct dma_fence *dma_fence, void *data);
 u64 os_get_dma_fence_seqno(struct dma_fence *dma_fence);
 u64 os_get_dma_fence_context(struct dma_fence *dma_fence);
 const struct dma_fence_ops *os_get_dma_fence_ops(struct dma_fence *dma_fence);
+int os_get_dma_fence_error(struct dma_fence *dma_fence);
+u64 os_get_dma_fence_timestamp(struct dma_fence *dma_fence);
+unsigned long *os_get_dma_fence_flags(struct dma_fence *dma_fence);
+struct kref *os_get_dma_fence_refcount(struct dma_fence *dma_fence);
+struct rcu_head *os_get_dma_fence_rcu(struct dma_fence *dma_fence);
 void os_set_dma_fence_struct_seqno(struct dma_fence *dma_fence, u64 seqno);
+void os_set_dma_fence_timestamp(struct dma_fence *dma_fence, u64 timestamp);
 void *os_create_dma_fence(void);
 void os_destroy_dma_fence(struct dma_fence *dma_fence);
 void os_dma_fence_init(struct dma_fence *fence,
@@ -1373,21 +1685,29 @@ void os_dma_fence_init(struct dma_fence *fence,
 int os_dma_fence_ops_init(struct dma_fence_ops **ops,
 			  const struct mt_dma_fence_ops *mt_ops);
 int os_dma_fence_get_status(struct dma_fence *fence);
+const char *os_dma_fence_get_timeline_name(struct dma_fence *fence);
 void os_dma_fence_put(struct dma_fence *fence);
 struct dma_fence *os_dma_fence_get(struct dma_fence *fence);
+struct dma_fence *os_dma_fence_get_rcu(struct dma_fence *fence);
 void os_dma_fence_signal(struct dma_fence *fence);
+u64 os_dma_fence_timestamp(struct dma_fence *fence);
+bool os_dma_fence_is_later(struct dma_fence *f1, struct dma_fence *f2);
 long os_dma_fence_wait_timeout(struct dma_fence *fence, bool intr, long timeout);
 long os_dma_fence_wait_any_timeout(struct dma_fence **fences, u32 count,
 				   bool intr, long timeout, u32 *idx);
 struct dma_fence *os_dma_fence_get_stub(void);
 bool os_dma_fence_is_array(struct dma_fence *fence);
 struct dma_fence_array *os_to_dma_fence_array(struct dma_fence *fence);
+struct dma_fence *os_dma_fence_from_rcu(struct rcu_head *rcu);
 struct dma_fence **os_dma_fence_array_get_fences(struct dma_fence_array *array);
 u32 os_dma_fence_array_get_fences_num(struct dma_fence_array *array);
 bool os_dma_fence_is_signaled(struct dma_fence *fence);
+void os_dma_fence_set_error(struct dma_fence *fence, int error);
+int os_dma_fence_get_error(struct dma_fence *fence);
 u64 os_dma_fence_context_alloc(unsigned num);
 int os_dma_fence_add_callback(struct dma_fence *fence, struct dma_fence_cb *cb,
 			      dma_fence_func_t func);
+bool os_dma_fence_remove_callback(struct dma_fence *fence, struct dma_fence_cb *cb);
 signed long os_dma_fence_wait(struct dma_fence *fence, bool intr);
 void os_dma_fence_enable_sw_signaling(struct dma_fence *fence);
 int os_dma_resv_reserve_shared(struct dma_resv *obj, unsigned int num_fences);
@@ -1400,6 +1720,19 @@ int os_dma_resv_get_fences(struct dma_resv *obj,
 			   struct dma_fence ***pfences,
 			   bool usage_write,
 			   bool *fence_overall);
+u32 os_dma_resv_usage_rw(bool write);
+void os_dma_resv_assert_held(void *obj);
+void os_dma_resv_iter_begin(void *cursor, void *obj, u32 usage);
+struct dma_fence *os_dma_resv_iter_first(void *cursor);
+struct dma_fence *os_dma_resv_iter_next(void *cursor);
+void *os_create_dma_resv_iter(void);
+void os_destroy_dma_resv_iter(void *iter);
+
+#define os_dma_resv_for_each_fence(cursor, obj, usage, fence) \
+	for (os_dma_resv_iter_begin(cursor, obj, usage), \
+		fence = os_dma_resv_iter_first(cursor); fence; \
+		fence = os_dma_resv_iter_next(cursor))
+
 struct ww_class *os_get_reservation_ww_class(void);
 struct ww_acquire_ctx *os_ww_acquire_ctx_create(void);
 void os_ww_acquire_ctx_destroy(struct ww_acquire_ctx *acquire_ctx);
@@ -1422,6 +1755,33 @@ int os_gen_pool_add_owner(struct gen_pool *pool, unsigned long virt, phys_addr_t
 			  size_t size, int nid, void *owner);
 unsigned long os_gen_pool_alloc_owner(struct gen_pool *pool, size_t size, void **owner);
 void os_gen_pool_free(struct gen_pool *pool, unsigned long addr, size_t size);
+
+void *os_create_xarray(void);
+void os_destroy_xarray(void *xa);
+void *os_xa_load(void *xa, unsigned long index);
+void os_xa_destroy(void *xa);
+void *os_xa_find(void *xa, unsigned long *indexp,
+		 unsigned long max, unsigned filter);
+void *os_xa_find_after(void *xa, unsigned long *indexp,
+		       unsigned long max, unsigned filter);
+void *os_xa_erase(void *xa, unsigned long index);
+void *os_xa_store(void *xa, unsigned long index, void *entry);
+int os_xa_alloc(void *xa, u32 *id, void *entry);
+
+#ifndef XA_PRESENT
+#define XA_PRESENT (8U)
+#endif
+
+#define os_xa_for_each_range(xa, index, entry, start, last) \
+	for (index = start, entry = os_xa_find(xa, &index, last, XA_PRESENT); \
+		entry; \
+		entry = os_xa_find_after(xa, &index, last, XA_PRESENT))
+
+#define os_xa_for_each_start(xa, index, entry, start) \
+	os_xa_for_each_range(xa, index, entry, start, OS_VAL(ULONG_MAX))
+
+#define os_xa_for_each(xa, index, entry) \
+	os_xa_for_each_start(xa, index, entry, 0)
 
 struct bus_type *os_get_dev_bus_type(struct device *dev);
 
@@ -1462,6 +1822,7 @@ unsigned long os_bitmap_find_next_zero_area(unsigned long *map,
 					    unsigned long align_mask);
 unsigned long os_find_first_zero_bit(const unsigned long *addr, unsigned long size);
 int os_test_bit(int nr, const volatile unsigned long *addr);
+void os_set_bit(long nr, volatile unsigned long *addr);
 
 void *os_kmem_cache_alloc(struct kmem_cache *cachep, gfp_t flags);
 void *os_kmem_cache_zalloc(struct kmem_cache *cachep, gfp_t flags);
@@ -1472,6 +1833,12 @@ struct kmem_cache *os_kmem_cache_create(const char *name, unsigned int size,
 void os_kmem_cache_destroy(struct kmem_cache *s);
 void os_call_rcu(struct rcu_head *head, rcu_callback_t func);
 void os_rcu_barrier(void);
+void *os_rcu_dereference_check(void __rcu *p, bool c);
+void *os_rcu_dereference(void __rcu *p);
+void os_rcu_init_pointer(void __rcu *p, void *v);
+void os_rcu_assign_pointer(void __rcu **p, void *v);
+void os_rcu_read_lock(void);
+void os_rcu_read_unlock(void);
 
 int os_atomic_xchg(atomic_t *v, int val);
 void os_atomic_set(atomic_t *v, int val);
@@ -1481,12 +1848,16 @@ bool os_atomic_inc_not_zero(atomic_t *v);
 void os_atomic_add(int i, atomic_t *v);
 int os_atomic_sub_return(int i, atomic_t *v);
 bool os_atomic_dec_and_test(atomic_t *v);
+void os_atomic_dec(atomic_t *v);
 int os_atomic_dec_return(atomic_t *v);
 int os_atomic_read(atomic_t *v);
 int os_atomic_fetch_add(int i, atomic_t *v);
+int os_atomic_sub(int i, atomic_t *v);
 void os_atomic64_set(atomic64_t *v, s64 i);
 s64 os_atomic64_inc_return(atomic64_t *v);
 s64 os_atomic64_read(const atomic64_t *v);
+int os_atomic_cmpxchg(atomic_t *addr, int oldval, int newval);
+void *os_cmpxchg(void **ptr, void *old, void *new);
 
 struct file *os_filp_open(const char *filename, int flags, umode_t mode);
 int os_filp_close(struct file *filp);
@@ -1503,12 +1874,15 @@ void *os_idr_remove(struct idr *idr, unsigned long id);
 void os_idr_preload(void);
 void os_idr_preload_end(void);
 bool os_running_on_hypervisor(void);
+bool os_x86_vendor_is_intel(void);
+int os_access_ok(int type, const void __user *addr, unsigned long size);
 
 DECLARE_OS_STRUCT_COMMON_FUNCS(notifier_block);
 DECLARE_OS_STRUCT_COMMON_FUNCS(poll_table_struct);
 DECLARE_OS_STRUCT_COMMON_FUNCS(wait_queue_entry);
 DECLARE_OS_STRUCT_COMMON_FUNCS(timer_list);
 DECLARE_OS_STRUCT_COMMON_FUNCS(dma_fence_cb);
+DECLARE_OS_STRUCT_COMMON_FUNCS(hrtimer);
 
 #ifndef KERN_SOH
 #define KERN_SOH	"\001"		/* ASCII Start Of Header */

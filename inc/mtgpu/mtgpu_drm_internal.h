@@ -33,6 +33,7 @@ struct mtgpu_gem_object {
 	u64 private_data;
 	u32 type;
 	u64 global_handle;
+	bool is_dma_mapped;
 };
 
 /* The following functions are defined in open source file */
@@ -59,5 +60,6 @@ struct drm_gem_object *mtgpu_gem_prime_import_sg_table(struct drm_device *drm,
 						       struct sg_table *sgt);
 int mtgpu_mmap(struct file *filp, struct vm_area_struct *vma);
 struct sg_table *mtgpu_gem_prime_get_sg_table(struct drm_gem_object *obj);
+void mtgpu_set_drm_event(struct drm_file *file);
 
 #endif /* __MTGPU_DRM_INTERNAL_H__ */

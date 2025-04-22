@@ -79,7 +79,6 @@ typedef enum {
     DEC_MV        = 7,
     DEC_ETC       = 8,
     DEC_COMMON    = 9,
-    DEC_VA_PARAM  = 10,
     ENC_TASK      = 50,
     ENC_WORK      = 51,
     ENC_FBC       = 52,
@@ -101,9 +100,9 @@ enum {
 	VDI_TYPE_QUYU2,
 	VDI_TYPE_QUYU1_GUEST,
 	VDI_TYPE_QUYU2_GUEST,
-	VDI_TYPE_APOLLO,
+	VDI_TYPE_M1000,
 	VDI_TYPE_PIHU1,
-	VDI_TYPE_PIHU2,
+	VDI_TYPE_PIHU1S,
 };
 
 typedef struct vpu_buffer {
@@ -117,6 +116,7 @@ typedef struct vpu_instance_pool {
     /* Since VDI don't know the size of CodecInst structure, VDI should have the enough space not to overflow. */
     Uint8        codecInstPool[MAX_NUM_INSTANCE][MAX_INST_HANDLE_SIZE];
     vpu_buffer_t vpu_common_buffer;
+    vpu_buffer_t vpu_log_buffer;
     int          vpu_instance_num;
     int          instance_pool_inited;
     void *       pendingInst;
@@ -130,6 +130,7 @@ extern "C" {
 void vdi_open_prepare(Uint32 coreIdx, Uint32 instIdx, int drm_id, int pool_id, int vcore_base,
         		      void *mmu_ctx);
 int vdi_init(Uint32 coreIdx);
+int vdi_reload_flag(Uint32 coreIdx);
 int vdi_release(Uint32 coreIdx);
 
 int vdi_lock(Uint32 coreIdx);
@@ -157,6 +158,14 @@ int vdi_write_memory(Uint32 coreIdx, vpu_buffer_t *vb, Uint32 offset,  Uint8 *da
 int vdi_read_memory(Uint32 coreIdx, vpu_buffer_t *vb, Uint32 offset, Uint8 *data, int len, int endian);
 int vdi_clear_memory(Uint32 coreIdx, vpu_buffer_t *vb);
 void vdi_reset_memory(Uint32 coreIdx, vpu_buffer_t *vb);
+int vdi_dump_memory(Uint32 coreIdx, Uint32 inst_idx, vpu_buffer_t *vb, char *file_name, Uint32 **pp_flag);
+int vdi_dump_host(Uint32 core_idx, Uint32 inst_idx, void *data, Uint32 size, char *file_name, Uint32 **pp_flag);
+void *vdi_open_file(Uint32 core_idx, Uint32 inst_idx, char *file_name);
+Uint64 vdi_write_file(void *fp, char *buf, Uint64 size, Uint64 *offset);
+void vdi_close_file(void *fp);
+void vdi_log_write(Uint32 core_idx, const char *format, ...);
+void vdi_set_log_file(Uint32 core_idx, char *filename);
+void vdi_close_log_file(Uint32 core_idx);
 
 int vdi_get_common_memory(Uint32 coreIdx, vpu_buffer_t *vb);
 int vdi_allocate_dma_memory(Uint32 coreIdx, vpu_buffer_t *vb, int memTypes, Uint32 instIdx);
@@ -174,8 +183,10 @@ int vdi_get_vcore_high_addr(Uint32 coreIdx, Uint32 instid);
 int vdi_set_bit_firmware_to_pm(Uint32 coreIdx, const Uint16 *code);
 
 int vdi_wait_interrupt(Uint32 coreIdx, Uint32 instIdx, int timeout);
+int vdi_wait_interrupt_ext(Uint32 coreIdx, Uint32 instIdx, int timeout, int supportCmdQueue);
 int vdi_wait_interrupt_poll(Uint32 coreIdx, Uint32 instIdx, int timeout);
 int vdi_wait_vpu_busy(Uint32 coreIdx, int timeout, Uint32 wait_addr, Uint32 wait_value);
+int vdi_mark_reload_vpu(Uint32 coreIdx);
 void vdi_delayms(int timeout);
 int vdi_wait_bus_busy(Uint32 coreIdx, int timeout, Uint32 busy_flag);
 int vdi_wait_vcpu_bus_busy(Uint32 coreIdx, int timeout, Uint32 busy_flag);
@@ -189,6 +200,8 @@ void vdi_dword_swap(unsigned char* data, int len);
 void vdi_lword_swap(unsigned char *data, int len);
 
 void vdi_memset(void *addr, Uint8 data, Uint32 size);
+
+int vdi_get_fences_pgtb(Uint32 coreIdx, Uint64 *pgtb_base);
 
 #if defined(_MSC_VER)
 /* todo: remove these APIs for windows internal use */

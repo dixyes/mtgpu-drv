@@ -1130,6 +1130,20 @@ PVRSRV_ERROR OSUninstallMISR(IMG_HANDLE hMISRData)
 }
 
 /*
+ *	OSCancelMISR
+*/
+PVRSRV_ERROR OSCancelMISR(IMG_HANDLE hMISRData)
+{
+	MISR_DATA *psMISRData = (MISR_DATA *) hMISRData;
+
+	PVR_DPF((PVR_DBG_MESSAGE, "Canceling MISR with cookie %p", psMISRData));
+
+	cancel_work_sync(&psMISRData->sMISRWork);
+
+	return PVRSRV_OK;
+}
+
+/*
 	OSScheduleMISR
 */
 PVRSRV_ERROR OSScheduleMISR(IMG_HANDLE hMISRData)
@@ -1784,6 +1798,11 @@ PVRSRV_ERROR OSCopyFromUser(void *pvProcess,
 		return PVRSRV_OK;
 	else
 		return PVRSRV_ERROR_FAILED_TO_COPY_VIRT_MEMORY;
+}
+
+IMG_UINT64 OSDivideU64rU64(IMG_UINT64 ui64Divident, IMG_UINT64 ui64Divisor, IMG_UINT64 *pui64Remainder)
+{
+	return div64_u64_rem(ui64Divident,ui64Divisor,pui64Remainder);
 }
 
 IMG_UINT64 OSDivide64r64(IMG_UINT64 ui64Divident, IMG_UINT32 ui32Divisor, IMG_UINT32 *pui32Remainder)
@@ -3224,6 +3243,11 @@ unsigned long OSFindFirstZeroBit(const unsigned long *addr, unsigned long size)
 	return find_first_zero_bit(addr, size);
 }
 
+unsigned long OSFindFirstBit(const unsigned long *addr, unsigned long size)
+{
+	return find_first_bit(addr, size);
+}
+
 IMG_INT OSAtomicRead(const ATOMIC_T *pCounter)
 {
 	return atomic_read(pCounter);
@@ -3422,6 +3446,16 @@ void OSClearPageReserved(struct page *psPage)
 void *OSPageAddress(const struct page *psPage)
 {
 	return page_address(psPage);
+}
+
+struct page *OSAllocPage(void)
+{
+	return alloc_page(GFP_KERNEL);
+}
+
+void OSFreePage(struct page *psPage)
+{
+	__free_page(psPage);
 }
 
 struct page *OSAllocUserPages(IMG_UINT32 ui32Order)
@@ -4615,7 +4649,7 @@ struct mt_dma_fence_cb {
 
 void *OSCreateDmaFenceCB(void)
 {
-	return kzalloc(sizeof(struct dma_fence_cb), GFP_KERNEL);
+	return kzalloc(sizeof(struct mt_dma_fence_cb), GFP_KERNEL);
 }
 
 void OSDestroyDmaFenceCB(struct dma_fence_cb *dma_fence_cb)
@@ -4736,6 +4770,11 @@ int OSDmaFenceAddCallback(struct dma_fence *fence, struct dma_fence_cb *cb,
 	return dma_fence_add_callback(fence, cb, func);
 }
 
+void OSDmaFenceEnableSWSignaling(struct dma_fence *fence)
+{
+	dma_fence_enable_sw_signaling(fence);
+}
+
 struct sync_file *OSSyncFileCreate(struct dma_fence *fence)
 {
 	return sync_file_create(fence);
@@ -4754,6 +4793,19 @@ void OSFDInstallSyncFile(int fd, struct sync_file *sync_file)
 struct dma_fence *OSSyncFileGetFence(int fd)
 {
 	return sync_file_get_fence(fd);
+}
+
+struct dma_fence *OSGetBaseFormDmaFenceArray(struct dma_fence_array *array)
+{
+	return &array->base;
+}
+
+struct dma_fence_array *OSDmaFenceArrayCreate(int num_fences,
+					      struct dma_fence **fences)
+{
+	return dma_fence_array_create(num_fences, fences,
+				      dma_fence_context_alloc(1),
+				      1, false);
 }
 
 /* Change the linux kernel's mapping of this address to cpu uncached wc. */

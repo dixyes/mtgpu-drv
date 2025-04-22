@@ -32,6 +32,8 @@ int mtgpu_proc_event_msg_open(struct inode *inode, struct file *file);
 ssize_t mtgpu_proc_event_msg_read(struct file *file, char __user *buf,
 				  size_t count, loff_t *offset);
 u32 mtgpu_proc_event_msg_poll(struct file *file, struct poll_table_struct *wait);
+int mtgpu_proc_vgpu_monitor_open(struct inode *inode, struct file *file);
+long mtgpu_proc_vgpu_monitor_ioctl(struct file *pfilp_t, unsigned int cmd, unsigned long arg);
 extern struct proc_dir_entry *mtgpu_proc_musa_dir;
 
 #endif /* __MTGPU_PROCFS_H__ */

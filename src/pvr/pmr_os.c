@@ -58,6 +58,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pmr.h"
 #include "pmr_os.h"
 #include "cache_km.h"
+#include "mtgpu_module_param.h"
 
 #include "asm/processor.h"
 
@@ -160,10 +161,13 @@ static void MMapPMRClose(struct vm_area_struct *ps_vma)
 		}
 	}
 #else
-	PVRSRVStatsDecrMemAllocStat(PVRSRV_MEM_ALLOC_TYPE_MAP_UMA_LMA_PAGES,
-				    ps_vma->vm_end - ps_vma->vm_start,
-				    OSGetCurrentClientProcessIDKM(),
-				    PMR_DeviceNode(psPMR));
+#if !defined(NO_HARDWARE)
+	if (mtgpu_enable_sysmem_stats)
+#endif
+		PVRSRVStatsDecrMemAllocStat(PVRSRV_MEM_ALLOC_TYPE_MAP_UMA_LMA_PAGES,
+					    ps_vma->vm_end - ps_vma->vm_start,
+					    OSGetCurrentClientProcessIDKM(),
+					    PMR_DeviceNode(psPMR));
 #endif
 #endif
 
@@ -374,6 +378,7 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 	IMG_UINT64 ui64VmOffset;
 	IMG_CPU_PHYADDR sCpuPAddr;
 	IMG_UINT64 ui64Pfn;
+	IMG_BOOL bContiVram = IMG_FALSE;
 
 	eError = PMRLockSysPhysAddresses(psPMR);
 	if (eError != PVRSRV_OK)
@@ -426,28 +431,22 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 	 * If yes, don't use vm_insert_page */
 	uiLog2PageSize = PMR_GetLog2Contiguity(psPMR);
 	ui32MapPageShift = uiLog2PageSize;
+	uiNumOfPFNs = uiLength >> uiLog2PageSize;
 
-#if defined(PMR_OS_USE_VM_INSERT_PAGE)
 	/*
-	 * user memory is an anonymous page, and cannot be remapped with insert page,
-	 * and remap_pfn_range must be used.
+	 * If the memory region is contiguous VRAM, then map the entire range
+	 * at once. This approach avoids mapping page by page, which is less efficient.
 	 */
-	if (PMR_IsVram(psPMR))
-	{
-		bUseVMInsertPage = (uiLog2PageSize == PAGE_SHIFT) &&
-				   (PMR_GetType(psPMR) != PMR_TYPE_EXTMEM);
+	if ((PhysHeapGetType(PMR_PhysHeap(psPMR)) != PHYS_HEAP_TYPE_UMA) &&
+	     PMR_IsVram(psPMR) && (!PMR_IsSparse(psPMR))) {
+		uiNumOfPFNs = 1;
+		bContiVram = IMG_TRUE;
 	}
-	else if (PMR_IsSystem(psPMR))
-	{
-		bUseVMInsertPage = (PMR_GetType(psPMR) != PMR_TYPE_EXTMEM);
-	}
-#endif
 
 	/* Can we use stack allocations */
-	uiNumOfPFNs = uiLength >> uiLog2PageSize;
 	if (uiNumOfPFNs > PMR_MAX_TRANSLATION_STACK_ALLOC)
 	{
-		psCpuPAddr = MemoryPoolAllocDefault(uiNumOfPFNs * sizeof(*psCpuPAddr));
+		psCpuPAddr = OSAllocMemNoStats(uiNumOfPFNs * sizeof(*psCpuPAddr));
 		if (psCpuPAddr == NULL)
 		{
 			eError = PVRSRV_ERROR_OUT_OF_MEMORY;
@@ -455,11 +454,11 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 		}
 
 		/* Should allocation fail, clean-up here before exiting */
-		pbValid = MemoryPoolAllocDefault(uiNumOfPFNs * sizeof(*pbValid));
+		pbValid = OSAllocMemNoStats(uiNumOfPFNs * sizeof(*pbValid));
 		if (pbValid == NULL)
 		{
 			eError = PVRSRV_ERROR_OUT_OF_MEMORY;
-			MemoryPoolFreeDefault(psCpuPAddr);
+			OSFreeMemNoStats(psCpuPAddr);
 			goto e2;
 		}
 	}
@@ -481,12 +480,7 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 		goto e3;
 	}
 
-	/*
-	 * If the memory region is contiguous VRAM, then map the entire range
-	 * at once. This approach avoids mapping page by page, which is less efficient.
-	 */
-	if ((PhysHeapGetType(PMR_PhysHeap(psPMR)) != PHYS_HEAP_TYPE_UMA) &&
-	    PMR_IsVram(psPMR) && (!PMR_IsSparse(psPMR)))
+	if (bContiVram)
 	{
 		ui64Pfn = PHYS_PFN(psCpuPAddr[0].uiAddr);
 
@@ -505,6 +499,22 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 	}
 	else
 	{
+#if defined(PMR_OS_USE_VM_INSERT_PAGE)
+		/*
+		 * user memory is an anonymous page, and cannot be remapped with insert page,
+		 * and remap_pfn_range must be used.
+		 */
+		if (PMR_IsVram(psPMR))
+		{
+			bUseVMInsertPage = (uiLog2PageSize == PAGE_SHIFT) &&
+					   (PMR_GetType(psPMR) != PMR_TYPE_EXTMEM);
+		}
+		else if (PMR_IsSystem(psPMR))
+		{
+			bUseVMInsertPage = (PMR_GetType(psPMR) != PMR_TYPE_EXTMEM);
+		}
+#endif
+
 		/*
 		 * Scan the map range for pfns without struct page* handling. If
 		 * we find one, this is a mixed map, and we can't use vm_insert_page()
@@ -623,16 +633,19 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 #endif
 
 #if defined(PVRSRV_ENABLE_PROCESS_STATS) && !defined(PVRSRV_ENABLE_MEMORY_STATS)
-	PVRSRVStatsIncrMemAllocStat(PVRSRV_MEM_ALLOC_TYPE_MAP_UMA_LMA_PAGES,
-				    uiNumOfPFNs * PAGE_SIZE,
-				    OSGetCurrentClientProcessIDKM(),
-				    psDevNode);
+#if !defined(NO_HARDWARE)
+	if (mtgpu_enable_sysmem_stats)
+#endif
+		PVRSRVStatsIncrMemAllocStat(PVRSRV_MEM_ALLOC_TYPE_MAP_UMA_LMA_PAGES,
+					    uiNumOfPFNs * PAGE_SIZE,
+					    OSGetCurrentClientProcessIDKM(),
+					    psDevNode);
 #endif
 
 	if (psCpuPAddr != asCpuPAddr)
 	{
-		MemoryPoolFreeDefault(psCpuPAddr);
-		MemoryPoolFreeDefault(pbValid);
+		OSFreeMemNoStats(psCpuPAddr);
+		OSFreeMemNoStats(pbValid);
 	}
 
 	/* let us see the PMR so we can unlock it later */
@@ -658,12 +671,12 @@ OSMMapPMRGeneric(PMR *psPMR, PMR_MMAP_DATA pOSMMapData)
 e3:
 	if (pbValid != abValid)
 	{
-		MemoryPoolFreeDefault(pbValid);
+		OSFreeMemNoStats(pbValid);
 	}
 e2:
 	if (psCpuPAddr != asCpuPAddr)
 	{
-		MemoryPoolFreeDefault(psCpuPAddr);
+		OSFreeMemNoStats(psCpuPAddr);
 	}
 e1:
 	PMRUnlockSysPhysAddresses(psPMR);

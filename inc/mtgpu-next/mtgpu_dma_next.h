@@ -20,9 +20,16 @@ struct mtgpu_dma_work_data {
 	struct drm_mtgpu_dma_cmd * dma_cmds;
 	int dma_cmd_count;
 	u8 *args_buffer;
+	struct mtgpu_vm_context *vm_ctx;
 	struct drm_mtgpu_semaphore *update_sem;
+	struct mtgpu_syncobj **update_sema_syncobj;
+	struct drm_mtgpu_semaphore *check_sema;
+	struct mtgpu_syncobj **check_sema_syncobj;
 	u32 update_sem_count;
+	u32 check_sem_count;
 	u64 page_table_root_addr;
+	u64 job_ctx_handle;
+	u64 submission_id;
 };
 
 int mtgpu_dma_transfer_ioctl(struct drm_device *drm, void *data,

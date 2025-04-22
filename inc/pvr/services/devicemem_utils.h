@@ -123,6 +123,9 @@ struct DEVMEM_CONTEXT_TAG
 
 	/* Private data handle for device specific data */
 	IMG_HANDLE hPrivData;
+
+	/* DDK2.0 */
+	struct mtgpu_job_list *psJobList;
 };
 
 /* Flags that record how a heaps virtual address space is managed. */

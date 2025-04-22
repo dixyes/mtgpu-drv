@@ -16,6 +16,8 @@
 #include <linux/dma-mapping.h>
 #include <drm/drm_gem.h>
 #include <drm/drm_drv.h>
+#include <linux/acpi.h>
+#include <linux/vmalloc.h>
 #if defined(OS_DRM_DRMP_H_EXIST)
 #include <drm/drmP.h>
 #else
@@ -55,10 +57,11 @@ int mtvpu_log_level = MTDEBUG;
 int mtvpu_log_level = WARN;
 #endif
 
+static struct platform_driver vpu_rpm_core_driver;
+
 module_param(mtvpu_log_level, int, 0444);
 MODULE_PARM_DESC(mtvpu_log_level,
 		 "mtgpu vpu component log level lower is important.");
-
 
 int get_mtvpu_log_level(){
 	return mtvpu_log_level;
@@ -83,7 +86,7 @@ static int vpu_component_bind(struct device *dev, struct device *master, void *d
 	int boda_bit_offset = 14;
 	int i, j, ret;
 	int jpu_core_size = 0;
-	struct file_operations *vinfo, *fwinfo;
+	struct file_operations *vinfo, *fwinfo, *vpulog;
 
 	bool is_host = mtgpu_get_driver_mode() == MTGPU_DRIVER_MODE_HOST;
 	bool is_guest = mtgpu_get_driver_mode() == MTGPU_DRIVER_MODE_GUEST;
@@ -100,6 +103,7 @@ static int vpu_component_bind(struct device *dev, struct device *master, void *d
 	chip->drm_host = drm;
 	private->chip = chip;
 	chip->driver_mode = mtgpu_get_driver_mode();
+	chip->auto_reset_en = 1;
 
 	if (os_dev_is_pci(chip->parent))
 		chip->soc_mode = false;
@@ -120,15 +124,18 @@ static int vpu_component_bind(struct device *dev, struct device *master, void *d
 	}
 
 	if (chip->soc_mode) {
-		if (vpu_init_conf(0x0A00, chip, false))
+		if (vpu_init_conf(0x0A00, chip, is_guest))
 			goto err_timer;
 	} else {
 		if (vpu_init_conf(pcid->device, chip, is_guest))
 			goto err_timer;
 	}
 
-	chip->timer = os_create_timer_list();
-	if (!chip->timer)
+	chip->util_timer = os_create_timer_list();
+	if (!chip->util_timer)
+		goto err_timer;
+	chip->stat_timer = os_create_timer_list();
+	if (!chip->stat_timer)
 		goto err_timer;
 
 	for (i = 0; i < MAX_HOST_VPU_GROUPS_GEN1_GEN2; i++) {
@@ -154,21 +161,6 @@ static int vpu_component_bind(struct device *dev, struct device *master, void *d
 		goto err_shared_mem_lock;
 	spin_lock_init(chip->shared_mem_lock);
 
-	chip->mm_lock = kzalloc(sizeof(*chip->mm_lock), GFP_KERNEL);
-	if (!chip->mm_lock)
-		goto err_mm_lock;
-	mutex_init(chip->mm_lock);
-
-	chip->sync.intr_lock = kzalloc(sizeof(*chip->sync.intr_lock), GFP_KERNEL);
-	if (!chip->sync.intr_lock)
-		goto err_intr_lock;
-	spin_lock_init(chip->sync.intr_lock);
-
-	chip->sync.sync_lock = kzalloc(sizeof(*chip->sync.sync_lock), GFP_KERNEL);
-	if (!chip->sync.sync_lock)
-		goto err_sync_lock;
-	spin_lock_init(chip->sync.sync_lock);
-
 	chip->mpc_lock = kzalloc(sizeof(*chip->mpc_lock), GFP_KERNEL);
 	if (!chip->mpc_lock)
 		goto err_mpc_lock;
@@ -179,48 +171,21 @@ static int vpu_component_bind(struct device *dev, struct device *master, void *d
 		goto err_inst_cnt_lock;
 	mutex_init(chip->inst_cnt_lock);
 
+	chip->reset_lock = kzalloc(sizeof(*chip->reset_lock), GFP_KERNEL);
+	if (!chip->reset_lock)
+		goto err_reset_lock;
+	mutex_init(chip->reset_lock);
+
 	chip->pool_lock = kzalloc(sizeof(*chip->pool_lock), GFP_KERNEL);
 	if (!chip->pool_lock)
 		goto err_pool_lock;
 	spin_lock_init(chip->pool_lock);
 
 	for (i = 0; i < chip->conf.core_size; i++) {
-		chip->sync.core_lock[i] = kzalloc(sizeof(*chip->sync.core_lock[i]), GFP_KERNEL);
-		if (!chip->sync.core_lock[i])
-			goto err_core_lock;
-		spin_lock_init(chip->sync.core_lock[i]);
-	}
-
-	chip->sync.sema = kzalloc(sizeof(*chip->sync.sema), GFP_KERNEL);
-	if (!chip->sync.sema)
-		goto err_core_lock;
-	sema_init(chip->sync.sema, 0);
-
-	for (i = 0; i < SYNC_ADDR_SIZE; i++) {
-		chip->sync.addr_wait[i] = kzalloc(sizeof(struct wait_queue_head), GFP_KERNEL);
-		if (!chip->sync.addr_wait[i])
-			goto err_sync_addr_wait;
-
-		init_waitqueue_head(chip->sync.addr_wait[i]);
-	}
-
-	for (i = 0; i < chip->conf.core_size; i++) {
-		if (chip->conf.product[i] == WAVE517_CODE) {
-			for (j = 0; j < INST_MAX_SIZE; j++) {
-				chip->sync.inst_wait[i][j] =
-					kzalloc(sizeof(struct wait_queue_head), GFP_KERNEL);
-				if (!chip->sync.inst_wait[i][j])
-					goto err_sync_inst_wait;
-
-				init_waitqueue_head(chip->sync.inst_wait[i][j]);
-			}
-		}
-	}
-
-	chip->sync.addr_idx = 0;
-	chip->sync.idx = 0;
-
-	for (i = 0; i < chip->conf.core_size; i++) {
+		if (is_native)
+			chip->core[i].queue_len = COMMAND_QUEUE_DEPTH;
+		else
+			chip->core[i].queue_len = 1;
 		chip->core[i].regs_lock = kzalloc(sizeof(*chip->core[i].regs_lock), GFP_KERNEL);
 		if (!chip->core[i].regs_lock)
 			goto err_lock;
@@ -241,7 +206,8 @@ static int vpu_component_bind(struct device *dev, struct device *master, void *d
 					goto err_lock;
 				mutex_init(chip->core[i].inst_lock[j]);
 			}
-		if (chip->conf.type == TYPE_PIHU1) {
+		if (chip->conf.type == TYPE_PIHU1 ||
+		    chip->conf.type == TYPE_PIHU1S) {
 			chip->core[i].mem_group_id = 1;
 			chip->core[i].mem_group_base = 0;
 		}
@@ -318,9 +284,10 @@ static int vpu_component_bind(struct device *dev, struct device *master, void *d
 		}
 		chip->core[i].idx = i;
 		chip->core[i].priv = chip;
-		for (j = 0; j < INST_MAX_SIZE; j++) {
-			INIT_LIST_HEAD(&chip->core[i].mm_head[j]);
-		}
+		chip->core[i].suspend = false;
+		chip->core[i].reload_flag = 0;
+		chip->core[i].log_read_pos = 0;
+		chip->core[i].reset_cnt = 0;
 	}
 
 	chip->jpu_core_sema = kzalloc(sizeof(*chip->jpu_core_sema), GFP_KERNEL);
@@ -344,28 +311,17 @@ static int vpu_component_bind(struct device *dev, struct device *master, void *d
 	}
 
 	if (chip->soc_mode) {
-		if (enable_reserved_memory)
-			chip->mem_group_cnt = 1;
-		else
-			chip->mem_group_cnt = 2;
-
-		vpu_smmu_init(chip);
-
 		chip->bar_base = 0;
-		for (i = 0; i < chip->conf.core_size; i++) {
-			chip->core[i].mem_group_id = chip->conf.core_group[chip->mem_group_cnt - 1][i];
-			if (chip->io_domain) {
-				if (chip->core[i].mem_group_id == 1)
-					chip->core[i].mem_group_base = VPU_SMMU_MEM_BASE1;
-				else if (chip->core[i].mem_group_id == 2)
-					chip->core[i].mem_group_base = VPU_SMMU_MEM_BASE2;
-			} else if (enable_reserved_memory) {
+		if (enable_reserved_memory) {
+			chip->mem_group_cnt = 1;
+			for (i = 0; i < chip->conf.core_size; i++) {
+				chip->core[i].mem_group_id = chip->conf.core_group[chip->mem_group_cnt - 1][i];
 				chip->core[i].mem_group_base = mtdev->gpu_mem.base & VPU_SMMU_MEM_BASE_MASK;
-			} else {
-				vpu_err("smmu must be enabled!\n");
-				goto err_lock;
+				vpu_info("core %d, mem base 0x%x\n", i, chip->core[i].mem_group_base >> 32);
 			}
-			vpu_info("core %d, mem base 0x%x\n", i, chip->core[i].mem_group_base >> 32);
+		} else {
+			chip->mem_group_cnt = 2;
+			vpu_smmu_init(chip);
 		}
 	} else {
 		chip->bar_base = pci_resource_start(pcid, 2);
@@ -374,7 +330,9 @@ static int vpu_component_bind(struct device *dev, struct device *master, void *d
 			goto err_lock;
 	}
 
-	if (is_guest_cmds)
+	chip->fixed_decode_core = 0xff;
+
+	if (is_guest)
 		vpu_init_guest_mem(chip);
 
 	ret = vpu_init_irq(chip, pdev);
@@ -387,10 +345,6 @@ static int vpu_component_bind(struct device *dev, struct device *master, void *d
 	if (ret)
 		goto err_lock;
 
-	sprintf(name, "mtvpu-sync/%d", chip->idx);
-	chip->sync_thread = kthread_create(vpu_sync_thread, chip, name);
-	wake_up_process(chip->sync_thread);
-
 	if (chip->conf.type == TYPE_QUYU2) {
 		if (is_host)
 			vpu_set_vm_core(chip);
@@ -399,11 +353,6 @@ static int vpu_component_bind(struct device *dev, struct device *master, void *d
 				if (chip->conf.product[i] != CODA980_CODE)
 					vpu_load_firmware(chip, i, NULL);
 			}
-		}
-	} else if (chip->conf.type == TYPE_PIHU1) {
-		for (i = 0; i < chip->conf.core_size; i++) {
-			if (chip->conf.product[i] == CORTEXA35_CODE)
-				vpu_load_firmware(chip, i, NULL);
 		}
 	} else if (is_host) {
 		/* wake up the group1 thread, it is the main thread */
@@ -414,30 +363,61 @@ static int vpu_component_bind(struct device *dev, struct device *master, void *d
 
 	vinfo = get_vinfo_fops();
 	fwinfo = get_fwinfo_fops();
+	vpulog = get_vpulog_fops();
+
 	sprintf(name, "mtvpu%d", chip->idx);
 	chip->debugfs = debugfs_create_dir(name, NULL);
 	if (chip->debugfs) {
 		debugfs_create_file("info", 0666, chip->debugfs, chip, vinfo);
 		debugfs_create_file("fw", 0444, chip->debugfs, chip, fwinfo);
+		for (i = 0; i < chip->conf.core_size; i++) {
+			sprintf(name, "logcore%d", i);
+			if (chip->conf.product[i] == WAVE517_CODE
+			    || chip->conf.product[i] == WAVE627_CODE
+			    || chip->conf.product[i] == CORTEXA35_CODE)
+				debugfs_create_file(name, 0444, chip->debugfs, &chip->core[i], vpulog);
+		}
 	}
 
-	os_set_timer_list_drvdata(chip->timer, chip);
-	timer_setup(chip->timer, vpu_monitor, 0);
-	mod_timer(chip->timer, jiffies + msecs_to_jiffies(1000));
+	os_set_timer_list_drvdata(chip->util_timer, chip);
+	timer_setup(chip->util_timer, vpu_util_monitor, 0);
+	mod_timer(chip->util_timer, jiffies + msecs_to_jiffies(VPU_UTIL_DURATION));
+
+	os_set_timer_list_drvdata(chip->stat_timer, chip);
+	timer_setup(chip->stat_timer, vpu_stat_monitor, 0);
+	mod_timer(chip->stat_timer, jiffies + msecs_to_jiffies(VPU_STAT_DURATION));
+
+	if (chip->soc_mode)
+		vpu_dvfs_init(chip);
+
+	vpu_report_power_state(chip, 1);
+	if (!chip->soc_mode && (is_native || is_host)) {
+		for (i = 0; i < chip->conf.core_size; i++) {
+			chip->core[i].core_max_freq = vpu_get_clk(chip, i);
+		}
+	}
+	vpu_report_power_state(chip, -1);
 
 	if (is_native || is_host) {
-		for (i = 0; i < chip->conf.core_size; i++) {
-			struct mt_core *core = &chip->core[i];
-
-			core->core_freq = vpu_get_clk(chip, i);
-		}
-
 		for (i = 0; i < chip->conf.core_size; i++)
 			if (chip->conf.product[i] == WAVE627_CODE)
 				vpu_slice_mode_config(chip, i);
 	}
 
-	vpu_report_power_state(chip, 0);
+	if (chip->soc_mode)
+		platform_driver_register(&vpu_rpm_core_driver);
+
+	for (i = 0; i < chip->conf.core_size; i++) {
+		struct mt_core *core = &chip->core[i];
+
+		core->que_lock[0] = kzalloc(INST_MAX_SIZE * sizeof(*core->que_lock[0]), GFP_KERNEL);
+		if (!core->que_lock[0])
+				goto err_lock;
+		for (j = 0; j < INST_MAX_SIZE; j++) {
+			core->que_lock[j] = core->que_lock[0] + j;
+			spin_lock_init(core->que_lock[j]);
+		}
+	}
 
 	return 0;
 
@@ -455,7 +435,6 @@ err_lock:
 		}
 	}
 
-	kfree(chip->sync.sema);
 	for (i = 0; i < chip->conf.core_size; i++) {
 		if (chip->core[i].open_lock) {
 			mutex_destroy(chip->core[i].open_lock);
@@ -466,36 +445,18 @@ err_lock:
 			kfree(chip->core[i].regs_lock);
 		}
 	}
-err_sync_inst_wait:
 	os_kfree(chip->jpu_core_sema);
 
-	for (i = 0; i < chip->conf.core_size; i++)
-		if (chip->conf.product[i] == WAVE517_CODE)
-			for (j = 0; j < INST_MAX_SIZE; j++)
-				if (chip->sync.inst_wait[i][j])
-					kfree(chip->sync.inst_wait[i][j]);
-err_sync_addr_wait:
-	for (i = 0; i < SYNC_ADDR_SIZE; i++)
-		if (chip->sync.addr_wait[i])
-			kfree(chip->sync.addr_wait[i]);
-err_core_lock:
 	kfree(chip->pool_lock);
-	for (i = 0; i < CORE_MAX_SIZE; i++)
-		if (chip->sync.core_lock[i])
-			kfree(chip->sync.core_lock[i]);
 err_pool_lock:
+	mutex_destroy(chip->reset_lock);
+	kfree(chip->reset_lock);
+err_reset_lock:
 	mutex_destroy(chip->inst_cnt_lock);
 	kfree(chip->inst_cnt_lock);
 err_inst_cnt_lock:
 	kfree(chip->mpc_lock);
 err_mpc_lock:
-	kfree(chip->sync.sync_lock);
-err_sync_lock:
-	kfree(chip->sync.intr_lock);
-err_intr_lock:
-	mutex_destroy(chip->mm_lock);
-	kfree(chip->mm_lock);
-err_mm_lock:
 	kfree(chip->shared_mem_lock);
 err_shared_mem_lock:
 	if (chip->mmu_ctx) {
@@ -512,7 +473,8 @@ err_create_mmu_ctx:
 			kfree(chip->host_thread_semas[i]);
 	}
 err_host_init:
-	kfree(chip->timer);
+	kfree(chip->util_timer);
+	kfree(chip->stat_timer);
 	vpu_deinit_conf(chip);
 err_timer:
 	kfree(chip);
@@ -528,20 +490,25 @@ static void vpu_component_unbind(struct device *dev, struct device *master, void
 
 	chip = dev_get_drvdata(dev);
 
-	del_timer_sync(chip->timer);
+	if (chip->soc_mode)
+		vpu_dvfs_deinit(chip);
 
-	kfree(chip->timer);
+	del_timer_sync(chip->util_timer);
+	del_timer_sync(chip->stat_timer);
+
+	kfree(chip->util_timer);
+	kfree(chip->stat_timer);
+
+	if (chip->soc_mode)
+		platform_driver_unregister(&vpu_rpm_core_driver);
 
 	if (chip->debugfs)
 		debugfs_remove_recursive(chip->debugfs);
 
-	for (i = 0; i < MAX_HOST_VPU_GROUPS_GEN1_GEN2; i++) {
+	for (i = MAX_HOST_VPU_GROUPS_GEN1_GEN2 - 1; i >= 0; i--) {
 		if (chip->host_threads[i])
 			kthread_stop(chip->host_threads[i]);
 	}
-
-	if (chip->sync_thread)
-		kthread_stop(chip->sync_thread);
 
 	for (idx = 0; idx < chip->conf.core_size; idx++) {
 		core = &chip->core[idx];
@@ -550,7 +517,9 @@ static void vpu_component_unbind(struct device *dev, struct device *master, void
 			core->bak_addr = NULL;
 		}
 		if (core->fw) {
-			vpu_hw_deinit(chip->conf.core_base + idx);
+			/* core has been powered off in soc mode */
+			if (!chip->soc_mode)
+				vpu_hw_deinit(chip->conf.core_base + idx);
 			release_firmware(core->fw);
 			core->inited = 0;
 			core->fw = NULL;
@@ -566,29 +535,24 @@ static void vpu_component_unbind(struct device *dev, struct device *master, void
 			kfree(core->regs_lock);
 			core->regs_lock = NULL;
 		}
+		if (core->que_lock[0]) {
+			kfree(core->que_lock[0]);
+			core->que_lock[0] = NULL;
+		}
 	}
 
 	for (i = 0; i < MEM_POOL_MAX_SIZE; i ++)
 		vpu_destroy_mem_pool(chip, i + 1);
 
 	vpu_free_irq(chip);
-	vpu_free_fw_mem(chip);
+	vpu_free_chip_fw_mem(chip);
 	kfree(chip->jpu_core_sema);
-	kfree(chip->sync.sema);
-	kfree(chip->sync.sync_lock);
 	kfree(chip->pool_lock);
 	mutex_destroy(chip->inst_cnt_lock);
 	kfree(chip->inst_cnt_lock);
+	mutex_destroy(chip->reset_lock);
+	kfree(chip->reset_lock);
 	kfree(chip->mpc_lock);
-
-	for (i = 0; i < SYNC_ADDR_SIZE; i++)
-		kfree(chip->sync.addr_wait[i]);
-	for (i = 0; i < chip->conf.core_size; i++) {
-		if (chip->conf.product[i] == WAVE517_CODE) {
-			for (j = 0; j < INST_MAX_SIZE; j++)
-				kfree(chip->sync.inst_wait[i][j]);
-		}
-	}
 
 	for (i = 0; i < chip->conf.core_size; i++) {
 		if (chip->conf.product[i] == WAVE517_CODE
@@ -603,14 +567,7 @@ static void vpu_component_unbind(struct device *dev, struct device *master, void
 		}
 	}
 
-	for (idx = 0; idx < CORE_MAX_SIZE; idx++)
-		if (chip->sync.core_lock[idx])
-			kfree(chip->sync.core_lock[idx]);
-
-	kfree(chip->sync.intr_lock);
 	kfree(chip->shared_mem_lock);
-	mutex_destroy(chip->mm_lock);
-	kfree(chip->mm_lock);
 
 	for (i = 0; i < MAX_HOST_VPU_GROUPS_GEN1_GEN2; i++) {
 		mutex_destroy(chip->vm_locks[i]);
@@ -630,6 +587,61 @@ static void vpu_component_unbind(struct device *dev, struct device *master, void
 	kfree(chip);
 }
 
+static int vpu_rpm_core_probe(struct platform_device *pdev)
+{
+	struct device *dev = &pdev->dev;
+	struct acpi_device *adev = ACPI_COMPANION(dev);
+	struct device *vpu_dev;
+	struct platform_device *vpu_pdev;
+	struct mt_chip *chip;
+	const char *core_name;
+	int core_idx = 0;
+
+#if defined(OS_FUNC_PLATFORM_FIND_DEVICE_BY_DRIVER_EXIST)
+	vpu_dev = platform_find_device_by_driver(NULL, &vpu_driver.driver);
+#else
+	vpu_dev = bus_find_device(&platform_bus_type, NULL, &vpu_driver.driver,
+							(void *)platform_bus_type.match);
+#endif
+	vpu_pdev = to_platform_device(vpu_dev);
+	chip = platform_get_drvdata(vpu_pdev);
+
+	vpu_info("acpi core probe, core name:%s\n", acpi_device_hid(adev));
+	core_name = acpi_device_hid(adev);
+
+	if (strncmp(core_name, "MSMD0000", 8) == 0) {
+		core_idx = 0;
+	} else if (strncmp(core_name, "MSMD0001", 8) == 0) {
+		core_idx = 1;
+	} else if (strncmp(core_name, "MSMJ0000", 8) == 0) {
+		/* boda and codaj12 use the same power control. */
+		core_idx = 2;
+	} else if (strncmp(core_name, "MSME0000", 8) == 0) {
+		core_idx = 4;
+	}
+	chip->core[core_idx].pm_dev = dev;
+	if (strncmp(core_name, "MSMJ0000", 8) == 0)
+		chip->core[3].pm_dev = dev;
+
+	platform_set_drvdata(pdev, &chip->core[core_idx]);
+	vpu_rpm_init(dev);
+
+	return 0;
+}
+
+static int vpu_rpm_core_remove(struct platform_device *pdev)
+{
+	struct mt_core *core = platform_get_drvdata(pdev);
+	struct mt_chip *chip = core->priv;
+
+	vpu_rpm_exit(&pdev->dev);
+
+	if (core->fw)
+		vpu_hw_deinit(chip->conf.core_base + core->idx);
+
+	return 0;
+}
+
 static const struct component_ops mtvpu_component_ops = {
 	.bind   = vpu_component_bind,
 	.unbind = vpu_component_unbind,
@@ -637,15 +649,17 @@ static const struct component_ops mtvpu_component_ops = {
 
 static struct platform_device_id vpu_id_tbl[] = {
 	{ .name = "mtgpu_vde" },
-	{}
+	{ }
 };
 
 static struct of_device_id vpu_of_id_tbl[] = {
-	{ .compatible = "mthreads,apollo-vpu"}
+	{ .compatible = "mthreads,vpu" },
+	{ }
 };
 
 static struct acpi_device_id vpu_acpi_id_tbl[] = {
-	{.id = "MVPU0001", .driver_data = 0}
+	{ .id = "MVPU0001", .driver_data = 0 },
+	{ }
 };
 
 static int vpu_probe(struct platform_device *pdev)
@@ -676,6 +690,31 @@ struct platform_driver vpu_driver = {
 	.probe = vpu_probe,
 	.remove = vpu_remove,
 	.id_table = vpu_id_tbl,
+};
+
+static struct dev_pm_ops vpu_core_pm_ops = {
+	.suspend = vpu_rpm_core_suspend,
+	.resume  = vpu_rpm_core_resume,
+	.runtime_suspend = vpu_rpm_core_suspend,
+	.runtime_resume  = vpu_rpm_core_resume,
+};
+
+static struct acpi_device_id vpu_pm_acpi_id_tbl[] = {
+	{.id = "MSMD0000", .driver_data = 0},
+	{.id = "MSMD0001", .driver_data = 0},
+	{.id = "MSME0000", .driver_data = 0},
+	{.id = "MSMJ0000", .driver_data = 0},
+	{}
+};
+
+static struct platform_driver vpu_rpm_core_driver = {
+	.driver = {
+		.name = "mtgpu_vde_pm",
+		.pm = &vpu_core_pm_ops,
+		.acpi_match_table = vpu_pm_acpi_id_tbl,
+	},
+	.probe = vpu_rpm_core_probe,
+	.remove = vpu_rpm_core_remove,
 };
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 16, 0))

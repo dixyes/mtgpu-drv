@@ -74,10 +74,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvr_drv.h"
 #include "pvr_bridge_k.h"
 
+#include "rgxstartstop.h"
+
 #include "pvr_fence.h"
 #include "mtgpu_sync.h"
 #include "mtgpu_csc.h"
 #include "mtgpu_gfx.h"
+#include "mtgpu_dm_kill.h"
+#include "mtgpu_ph1_cdm_patch.h"
+#include "mtgpu_drv_common.h"
 
 #if defined(SUPPORT_NATIVE_FENCE_SYNC)
 #include "pvr_sync.h"
@@ -104,7 +109,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "rgxdebug.h"
 #endif
 
+#include "rgxfwutils.h"
 #include "rgxshader.h"
+#include "mtgpu_module_param.h"
+#include "mtgpu_watchdog.h"
+#include "mtgpu_event_report.h"
+#include "mtgpu_sched.h"
+#include "mtgpu_fw.h"
+#include "mtgpu_buffer_sync_v2.h"
+#include "mtgpu_util.h"
 
 long vram_lower_limit = 0x10000000;
 module_param(vram_lower_limit, long, 0444);
@@ -215,6 +228,8 @@ EXPORT_SYMBOL(OSRemoveTimer);
 #if (RGX_NUM_OS_SUPPORTED > 1)
 EXPORT_SYMBOL(_RGXDumpRGXMMUFaultStatus);
 #endif
+
+#define MTGPU_SUSPEND_PENDING_RETRY_TIMES 5
 
 static int PVRSRVDeviceSyncOpen(struct _PVRSRV_DEVICE_NODE_ *psDeviceNode,
                                 struct drm_file *psDRMFile);
@@ -340,6 +355,20 @@ int PVRSRVDriverInit(void)
 #endif
 #endif
 
+#if !defined(NO_HARDWARE)
+	os_err = mtgpu_sched_fence_slab_init();
+	if (os_err != 0)
+	{
+		return os_err;
+	}
+
+	os_err = mtgpu_buffer_fence_ops_init();
+	if (os_err != 0)
+	{
+		return os_err;
+	}
+#endif
+
 	os_err = pvr_apphint_init();
 	if (os_err != 0)
 	{
@@ -395,6 +424,11 @@ void PVRSRVDriverDeinit(void)
 {
 	pvr_apphint_deinit();
 
+#if !defined(NO_HARDWARE)
+	mtgpu_buffer_fence_ops_deinit();
+	mtgpu_sched_fence_slab_fini();
+#endif
+
 #if defined(SUPPORT_NATIVE_FENCE_SYNC)
 	pvr_sync_deinit();
 #if !defined(NO_HARDWARE)
@@ -422,17 +456,38 @@ void PVRSRVDriverDeinit(void)
 */ /***************************************************************************/
 int PVRSRVDeviceInit(PVRSRV_DEVICE_NODE *psDeviceNode)
 {
+	int error = 0;
 
 #if !defined(NO_HARDWARE)
 	{
-		int error = mtgpu_csc_table_init(psDeviceNode);
+		struct mtgpu_device *mtdev =
+			OSGetMtgpuDevice(OSGetPlatformDevice(psDeviceNode->psDevConfig->pvOSDevice));
+		PVRSRV_RGXDEV_INFO *psDevInfo = psDeviceNode->pvDevice;
+
+		error = mtgpu_csc_table_init(psDeviceNode);
 		if (error)
 		{
-			PVR_DPF((PVR_DBG_ERROR, "%s: Failed to init csc table (%u)",
-				__func__, error));
+			PVR_DPF((PVR_DBG_ERROR, "Failed to init csc table (%u)", error));
 			return error;
 		}
+
+		error = mtgpu_dm_kill_init(psDeviceNode);
+		if (error)
+		{
+			PVR_DPF((PVR_DBG_ERROR, "Failed to init dm kill buffer (%u)", error));
+			goto err_dm_kill;
+		}
+
+		error = mtgpu_ph1_cdm_patch_init(psDeviceNode);
+		if (error)
+		{
+			PVR_DPF((PVR_DBG_ERROR, "Failed to init ph1 cdm patch (%u)", error));
+			goto err_ph1_cdm_patch;
+		}
+
+		mtgpu_device_get_mpx_map(mtdev, (void *)psDevInfo->pvRegsBaseKM);
 	}
+
 #endif
 
 #if defined(SUPPORT_NATIVE_FENCE_SYNC)
@@ -442,7 +497,8 @@ int PVRSRVDeviceInit(PVRSRV_DEVICE_NODE *psDeviceNode)
 		{
 			PVR_DPF((PVR_DBG_ERROR, "%s: unable to create sync (%d)",
 					 __func__, eError));
-			return -EBUSY;
+			error = -EBUSY;
+			goto err_pvr_sync_device_init;
 		}
 	}
 #endif
@@ -460,6 +516,16 @@ int PVRSRVDeviceInit(PVRSRV_DEVICE_NODE *psDeviceNode)
 #endif
 
 	return 0;
+
+err_pvr_sync_device_init:
+#if !defined(NO_HARDWARE)
+	mtgpu_ph1_cdm_patch_deinit(psDeviceNode);
+err_ph1_cdm_patch:
+	mtgpu_dm_kill_deinit(psDeviceNode);
+err_dm_kill:
+	mtgpu_csc_table_deinit(psDeviceNode);
+#endif
+	return error;
 }
 
 /**************************************************************************/ /*!
@@ -483,6 +549,8 @@ void PVRSRVDeviceDeinit(PVRSRV_DEVICE_NODE *psDeviceNode)
 
 #if !defined(NO_HARDWARE)
 	mtgpu_csc_table_deinit(psDeviceNode);
+	mtgpu_dm_kill_deinit(psDeviceNode);
+	mtgpu_ph1_cdm_patch_deinit(psDeviceNode);
 #endif
 
 #if !defined(NO_HARDWARE)
@@ -516,6 +584,13 @@ void PVRSRVDeviceShutdown(PVRSRV_DEVICE_NODE *psDeviceNode)
 {
 	PVRSRV_ERROR eError;
 
+#if !defined(NO_HARDWARE)
+	if (mtgpu_drm_major == 2)
+	{
+		mtgpu_watchdog_stop(psDeviceNode->pvDevice);
+	}
+#endif
+
 	/*
 	 * Disable the bridge to stop processes trying to use the driver
 	 * after it has been shut down.
@@ -544,6 +619,63 @@ void PVRSRVDeviceShutdown(PVRSRV_DEVICE_NODE *psDeviceNode)
 */ /***************************************************************************/
 int PVRSRVDeviceSuspend(PVRSRV_DEVICE_NODE *psDeviceNode)
 {
+
+#if !defined(NO_HARDWARE)
+	if (mtgpu_drm_major == 2)
+	{
+		PVRSRV_RGXDEV_INFO *psDevInfo = psDeviceNode->pvDevice;
+
+		mtgpu_watchdog_stop(psDeviceNode->pvDevice);
+
+		if (mtgpu_sched_on_host())
+		{
+			int max_queue_num = mtgpu_sched_on_nodeq() ? MTFW_NODE_TYPE_MAX_NUM : MTFW_CCB_TYPE_MAX_NUM;
+			int i, j, err;
+
+			if (psDevInfo->apsScheduler)
+			{
+				bool is_empty = true;
+
+				for (i = 0; i < MTGPU_SUSPEND_PENDING_RETRY_TIMES; i++)
+				{
+					is_empty = true;
+
+					for (j = 0; j < max_queue_num; j++)
+					{
+						if (list_empty(&psDevInfo->apsScheduler[j]->pending_list))
+							continue;
+
+						is_empty = false;
+						break;
+					}
+
+					if (is_empty)
+						break;
+
+					os_msleep(1000);
+				}
+
+				for (i = 0; i < max_queue_num; i++)
+					mtgpu_sched_stop(psDevInfo->apsScheduler[i], NULL);
+
+				if (!is_empty)
+				{
+					err = mtgpu_fw_reboot(psDevInfo);
+					if (err)
+					{
+						PVR_DPF((PVR_DBG_ERROR, "Failed to reboot fw when suspend (%d)", err));
+						return err;
+					}
+
+					for (i = 0; i < max_queue_num; i++)
+						mtgpu_sched_resubmit_jobs(psDevInfo->apsScheduler[i], true);
+				}
+			}
+		}
+
+		return 0;
+	}
+#endif
 	/*
 	 * LinuxBridgeBlockClientsAccess prevents processes from using the driver
 	 * while it's suspended (this is needed for Android). Acquire the bridge
@@ -577,11 +709,51 @@ int PVRSRVDeviceSuspend(PVRSRV_DEVICE_NODE *psDeviceNode)
 */ /***************************************************************************/
 int PVRSRVDeviceResume(PVRSRV_DEVICE_NODE *psDeviceNode)
 {
+#if !defined(NO_HARDWARE)
+	if (mtgpu_drm_major == 2)
+	{
+		mtgpu_util_info_reset(psDeviceNode);
+	
+		if (mtgpu_sched_on_host())
+		{
+			int max_queue_num = mtgpu_sched_on_nodeq() ? MTFW_NODE_TYPE_MAX_NUM : MTFW_CCB_TYPE_MAX_NUM;
+			PVRSRV_RGXDEV_INFO *psDevInfo = psDeviceNode->pvDevice;
+			PVRSRV_ERROR eError;
+			int i;
+
+			mtgpu_sched_suspend_unblock();
+
+			eError = RGXStart(&psDevInfo->sLayerParams);
+			if (eError != PVRSRV_OK)
+			{
+				PVR_DPF((PVR_DBG_ERROR, "Failed to RGXStart for resume (%d)", eError));
+				return eError;
+			}
+
+			if (psDevInfo->apsScheduler)
+			{
+				for (i = 0; i < max_queue_num; i++)
+				{
+					mtgpu_sched_start(psDevInfo->apsScheduler[i], true);
+				}
+			}
+		}
+
+		mtgpu_watchdog_start(psDeviceNode->pvDevice);
+
+		return 0;
+	}
+#endif
 	if (PVRSRVSetDeviceSystemPowerState(psDeviceNode,
 										PVRSRV_SYS_POWER_STATE_ON,
 										PVRSRV_POWER_FLAGS_SUSPEND) != PVRSRV_OK)
 	{
 		return -EINVAL;
+	}
+
+	if (!OSDeviceIsPCI(OSGetPcieDeviceFromDeviceNode(psDeviceNode)))
+	{
+		RGXHostReplay(psDeviceNode);
 	}
 
 	LinuxBridgeUnblockClientsAccess();
@@ -597,6 +769,8 @@ int PVRSRVDeviceResume(PVRSRV_DEVICE_NODE *psDeviceNode)
 
 	return 0;
 }
+
+static DEFINE_MUTEX(sConnectionInitMutex);
 
 /**************************************************************************/ /*!
 @Function     PVRSRVDeviceServicesOpen
@@ -631,9 +805,21 @@ int PVRSRVDeviceServicesOpen(PVRSRV_DEVICE_NODE *psDeviceNode,
 		{
 			PVR_DPF((PVR_DBG_WARNING, "%s: MT-Link initialization not completed.",
 				 __func__));
-			return -EAGAIN;
+			return -EPERM;
 		}
 	}
+
+#if !defined(NO_HARDWARE)
+	{
+		struct mtgpu_device *mtdev;
+		mtdev = OSGetMtgpuDevice(OSGetPlatformDevice(psDeviceNode->psDevConfig->pvOSDevice));
+		if (DEVICE_IS_PINGHU1(mtdev) && !mtgpu_d2d_check_linked(mtdev))
+		{
+			PVR_DPF((PVR_DBG_WARNING, "%s: d2d link timeout", __func__));
+			return -EPERM;
+		}
+	}
+#endif
 
 	if (!psPVRSRVData)
 	{
@@ -698,19 +884,38 @@ int PVRSRVDeviceServicesOpen(PVRSRV_DEVICE_NODE *psDeviceNode,
 	 * OSConnectionPrivateDataInit function where we can save it so
 	 * we can back reference the file structure from its connection
 	 */
-	eError = PVRSRVCommonConnectionConnect(&psConnectionPriv->pvConnectionData,
-	                                       (void *)&sPrivData);
-	if (eError != PVRSRV_OK)
+	mutex_lock(&sConnectionInitMutex);
+	if (!psConnectionPriv->pvConnectionData)
 	{
-		iErr = -ENOMEM;
-		goto fail_connect;
-	}
+		eError = PVRSRVCommonConnectionConnect(&psConnectionPriv->pvConnectionData,
+						       (void *)&sPrivData);
+		if (eError != PVRSRV_OK)
+		{
+			iErr = -ENOMEM;
+			mutex_unlock(&sConnectionInitMutex);
+			goto fail_connect;
+		}
 
 #if (PVRSRV_DEVICE_INIT_MODE == PVRSRV_LINUX_DEV_INIT_ON_CONNECT)
-	psConnectionPriv->pfDeviceRelease = PVRSRVCommonConnectionDisconnect;
+		psConnectionPriv->pfDeviceRelease = PVRSRVCommonConnectionDisconnect;
 #endif
-	psDRMFile->driver_priv = (void*)psConnectionPriv;
-	goto out;
+		psDRMFile->driver_priv = (void*)psConnectionPriv;
+		mutex_unlock(&sConnectionInitMutex);
+		goto out;
+	}
+	else
+	{
+		CONNECTION_DATA *psConnection = psConnectionPriv->pvConnectionData;
+		if (OSGetCurrentProcessID() != psConnection->pid)
+		{
+			PVR_DPF((PVR_DBG_WARNING,
+				 "%s: connection already initialised, old pid= %d, new pid= %d",
+				 __func__, psConnection->pid, OSGetCurrentProcessID()));
+		}
+		psDRMFile->driver_priv = (void*)psConnectionPriv;
+		mutex_unlock(&sConnectionInitMutex);
+		goto out;
+	}
 
 fail_connect:
 fail_device_init:
@@ -763,52 +968,73 @@ static int PVRSRVDeviceSyncOpen(PVRSRV_DEVICE_NODE *psDeviceNode,
 		psConnectionPriv = (PVRSRV_CONNECTION_PRIV*)psDRMFile->driver_priv;
 	}
 
-	/* Allocate connection data area, no stats since process not registered yet */
-	psConnection = kzalloc(sizeof(*psConnection), GFP_KERNEL);
-	if (!psConnection)
+	mutex_lock(&sConnectionInitMutex);
+	if (!psConnectionPriv->pvConnectionData)
 	{
-		PVR_DPF((PVR_DBG_ERROR, "%s: No memory to allocate connection data", __func__));
-		iErr = -ENOMEM;
-		goto fail_alloc_connection;
-	}
+		/* Allocate connection data area, no stats since process not registered yet */
+		psConnection = kzalloc(sizeof(*psConnection), GFP_KERNEL);
+		if (!psConnection)
+		{
+			PVR_DPF((PVR_DBG_ERROR, "%s: No memory to allocate connection data", __func__));
+			iErr = -ENOMEM;
+			mutex_lock(&sConnectionInitMutex);
+			goto fail_alloc_connection;
+		}
 #if (PVRSRV_DEVICE_INIT_MODE == PVRSRV_LINUX_DEV_INIT_ON_CONNECT)
-	psConnectionPriv->pvConnectionData = (void*)psConnection;
+		psConnectionPriv->pvConnectionData = (void*)psConnection;
 #else
-	psConnectionPriv->pvSyncConnectionData = (void*)psConnection;
+		psConnectionPriv->pvSyncConnectionData = (void*)psConnection;
 #endif
 
-	sPrivData.psDevNode = psDeviceNode;
+		sPrivData.psDevNode = psDeviceNode;
 
-	/* Call environment specific connection data init function */
-	eError = OSConnectionPrivateDataInit(&psConnection->hOsPrivateData, &sPrivData);
-	if (eError != PVRSRV_OK)
-	{
-		PVR_DPF((PVR_DBG_ERROR, "%s: OSConnectionPrivateDataInit() failed (%s)",
-		        __func__, PVRSRVGetErrorString(eError)));
-		goto fail_private_data_init;
-	}
+		/* Call environment specific connection data init function */
+		eError = OSConnectionPrivateDataInit(&psConnection->hOsPrivateData, &sPrivData);
+		if (eError != PVRSRV_OK)
+		{
+			PVR_DPF((PVR_DBG_ERROR, "%s: OSConnectionPrivateDataInit() failed (%s)",
+				__func__, PVRSRVGetErrorString(eError)));
+			mutex_lock(&sConnectionInitMutex);
+			goto fail_private_data_init;
+		}
 
 #if defined(SUPPORT_NATIVE_FENCE_SYNC) && !defined(USE_PVRSYNC_DEVNODE)
 #if (PVRSRV_DEVICE_INIT_MODE == PVRSRV_LINUX_DEV_INIT_ON_CONNECT)
-	iErr = pvr_sync_open(psConnectionPriv->pvConnectionData, psDRMFile);
+		iErr = pvr_sync_open(psConnectionPriv->pvConnectionData, psDRMFile);
 #else
-	iErr = pvr_sync_open(psConnectionPriv->pvSyncConnectionData, psDRMFile);
+		iErr = pvr_sync_open(psConnectionPriv->pvSyncConnectionData, psDRMFile);
 #endif
-	if (iErr)
-	{
-		PVR_DPF((PVR_DBG_ERROR, "%s: pvr_sync_open() failed(%d)",
-				__func__, iErr));
-		goto fail_pvr_sync_open;
-	}
+		if (iErr)
+		{
+			PVR_DPF((PVR_DBG_ERROR, "%s: pvr_sync_open() failed(%d)",
+					__func__, iErr));
+			mutex_unlock(&sConnectionInitMutex);
+			goto fail_pvr_sync_open;
+		}
 #endif
 
 #if defined(SUPPORT_NATIVE_FENCE_SYNC) && !defined(USE_PVRSYNC_DEVNODE)
 #if (PVRSRV_DEVICE_INIT_MODE == PVRSRV_LINUX_DEV_INIT_ON_CONNECT)
-	psConnectionPriv->pfDeviceRelease = PVRSRVDeviceSyncRelease;
+		psConnectionPriv->pfDeviceRelease = PVRSRVDeviceSyncRelease;
 #endif
 #endif
-	psDRMFile->driver_priv = psConnectionPriv;
-	goto out;
+		psDRMFile->driver_priv = psConnectionPriv;
+		mutex_unlock(&sConnectionInitMutex);
+		goto out;
+	}
+	else
+	{
+		psConnection = psConnectionPriv->pvConnectionData;
+		if (OSGetCurrentProcessID() != psConnection->pid)
+		{
+			PVR_DPF((PVR_DBG_WARNING,
+				 "%s: connection already initialised, old pid= %d, new pid= %d",
+				 __func__, psConnection->pid, OSGetCurrentProcessID()));
+		}
+		psDRMFile->driver_priv = psConnectionPriv;
+		mutex_unlock(&sConnectionInitMutex);
+		goto out;
+	}
 
 #if defined(SUPPORT_NATIVE_FENCE_SYNC) && !defined(USE_PVRSYNC_DEVNODE)
 fail_pvr_sync_open:
@@ -855,7 +1081,7 @@ void PVRSRVDeviceRelease(PVRSRV_DEVICE_NODE *psDeviceNode,
 	{
 		PVRSRV_CONNECTION_PRIV *psConnectionPriv = (PVRSRV_CONNECTION_PRIV*)psDRMFile->driver_priv;
 
-		if (psConnectionPriv->pvConnectionData)
+		if ((psConnectionPriv->pvConnectionData) || (psConnectionPriv->pvSyncConnectionData))
 		{
 #if (PVRSRV_DEVICE_INIT_MODE == PVRSRV_LINUX_DEV_INIT_ON_CONNECT)
 			if (psConnectionPriv->pfDeviceRelease)
@@ -884,22 +1110,16 @@ drm_pvr_srvkm_init(struct drm_device *dev, void *arg, struct drm_file *psDRMFile
 	int iErr = 0;
 	struct drm_pvr_srvkm_init_data *data = arg;
 	struct pvr_drm_private *priv = dev->dev_private;
-#if !defined(NO_HARDWARE)
 	PVRSRV_DEVICE_NODE *psDeviceNode = priv->dev_node;
 
-	/* The hardware must be powered on before accessing gpu's registers. */
-	if (psDeviceNode->psDevConfig->pfnSysPmRuntimeGet)
-	{
-		psDeviceNode->psDevConfig->pfnSysPmRuntimeGet(psDeviceNode->psDevConfig->hSysData);
-	}
-#endif
-
 #if (PVRSRV_DEVICE_INIT_MODE != PVRSRV_LINUX_DEV_INIT_ON_PROBE)
-	if (priv->dev_node->eDevState == PVRSRV_DEVICE_STATE_INIT)
+	PVRSRV_RGXDEV_INFO *psDevInfo = psDeviceNode->pvDevice;
+
+	if (!psDevInfo->hTQUSCSharedMem)
 	{
 		PVRSRV_ERROR eError;
 
-		eError = PVRSRVTQLoadShaders(priv->dev_node);
+		eError = PVRSRVTQLoadShaders(psDeviceNode);
 		if (eError != PVRSRV_OK)
 		{
 			return OSPVRSRVToNativeError(eError);
@@ -911,13 +1131,13 @@ drm_pvr_srvkm_init(struct drm_device *dev, void *arg, struct drm_file *psDRMFile
 	{
 		case PVR_SRVKM_SYNC_INIT:
 		{
-			iErr = PVRSRVDeviceSyncOpen(priv->dev_node, psDRMFile);
+			iErr = PVRSRVDeviceSyncOpen(psDeviceNode, psDRMFile);
 			break;
 		}
 		case PVR_SRVKM_SERVICES_INIT:
 		{
 #if (PVRSRV_DEVICE_INIT_MODE != PVRSRV_LINUX_DEV_INIT_ON_OPEN)
-			iErr = PVRSRVDeviceServicesOpen(priv->dev_node, psDRMFile);
+			iErr = PVRSRVDeviceServicesOpen(psDeviceNode, psDRMFile);
 #endif
 			break;
 		}
@@ -928,14 +1148,6 @@ drm_pvr_srvkm_init(struct drm_device *dev, void *arg, struct drm_file *psDRMFile
 			iErr = -EINVAL;
 		}
 	}
-
-#if !defined(NO_HARDWARE)
-	/* The hardware could be powered off after accessing gpu's registers. */
-	if (psDeviceNode->psDevConfig->pfnSysPmRuntimePut)
-	{
-		psDeviceNode->psDevConfig->pfnSysPmRuntimePut(psDeviceNode->psDevConfig->hSysData);
-	}
-#endif
 
 	return iErr;
 }

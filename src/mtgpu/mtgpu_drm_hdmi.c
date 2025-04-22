@@ -175,6 +175,7 @@ mtgpu_hdmi_connector_detect(struct drm_connector *connector, bool force)
 		return connector_status_disconnected;
 
 	hdmi->connected = hdmi->core->is_plugin(&hdmi->ctx);
+	DRM_INFO("HDMI: HPD state is %d\n", hdmi->connected);
 
 	mtgpu_hdmi_get_edid(connector);
 
@@ -204,6 +205,9 @@ static int mtgpu_hdmi_connector_get_modes(struct drm_connector *connector)
 	}
 
 	ret = drm_add_edid_modes(connector, hdmi->edid);
+
+	hdmi->ctx.is_dvi = !drm_detect_hdmi_monitor(hdmi->edid);
+	DRM_DEV_DEBUG(hdmi->dev, "Monitor type[0-HDMI,1->DVI]: %d.\n", hdmi->ctx.is_dvi);
 
 	return ret;
 }
@@ -1246,8 +1250,10 @@ static int mtgpu_hdmi_resume(struct device *dev)
 	if (hdmi->core->audio_enable && hdmi->audio_enabled)
 		hdmi->core->audio_enable(&hdmi->ctx);
 
-	if (hdmi->core->is_plugin)
+	if (hdmi->core->is_plugin) {
 		hdmi->connected = hdmi->core->is_plugin(&hdmi->ctx);
+		DRM_INFO("HDMI: HPD state is %d\n", hdmi->connected);
+	}
 
 	DRM_DEV_INFO(hdmi->dev, "mtgpu hdmi device resume early exit\n");
 

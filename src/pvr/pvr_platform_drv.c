@@ -106,11 +106,16 @@ static int pvr_remove(struct platform_device *pdev)
 
 static void pvr_shutdown(struct platform_device *pdev)
 {
-	struct drm_device *ddev = platform_get_drvdata(pdev);
-	struct pvr_drm_private *priv = ddev->dev_private;
+	struct drm_device *ddev;
+	struct pvr_drm_private *priv;
 
 	DRM_DEBUG_DRIVER("device %p\n", &pdev->dev);
 
+	ddev = platform_get_drvdata(pdev);
+	if (!ddev)
+		return;
+
+	priv = ddev->dev_private;
 	PVRSRVDeviceShutdown(priv->dev_node);
 }
 

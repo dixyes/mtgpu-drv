@@ -11,6 +11,7 @@
 #include <linux/pci.h>
 #include <linux/irq.h>
 #include <linux/msi.h>
+#include <linux/mutex.h>
 #include <linux/version.h>
 #include <linux/debugfs.h>
 
@@ -47,6 +48,9 @@ u32 snd_debug = 0x7;
 module_param(snd_debug, int, 0444);
 MODULE_PARM_DESC(snd_debug,
 		 "mtsnd audio debug print control");
+
+static int g_mtsnd_card_idx = 0;
+static DEFINE_MUTEX(g_mtsnd_data_mutex);
 
 static int mtsnd_dev_free(struct snd_device *device)
 {
@@ -354,29 +358,31 @@ static struct file_operations jack_fops = {
 
 static int mtsnd_probe(struct pci_dev *pci, const struct pci_device_id *pci_id)
 {
-	static int idx;
 	struct snd_card *card = NULL;
 	struct mtsnd_chip *chip = NULL;
 	char name[32];
 	int err;
 	int i;
 
-	if (idx >= SNDRV_CARDS)
-		return -ENODEV;
-
-	err = snd_card_new(&pci->dev, index[idx], id[idx], THIS_MODULE, 0, &card);
-	if (err < 0) {
-		dev_err(&pci->dev, "Error snd_card_new\n");
-		return err;
+	mutex_lock(&g_mtsnd_data_mutex);
+	if (g_mtsnd_card_idx >= SNDRV_CARDS) {
+		err = -ENODEV;
+		goto out_unlock;
 	}
 
-	err = mtsnd_create(card, pci, &chip, idx);
+	err = snd_card_new(&pci->dev, index[g_mtsnd_card_idx], id[g_mtsnd_card_idx], THIS_MODULE, 0, &card);
+	if (err < 0) {
+		dev_err(&pci->dev, "Error snd_card_new\n");
+		goto out_unlock;
+	}
+
+	err = mtsnd_create(card, pci, &chip, g_mtsnd_card_idx);
 	if (err < 0) {
 		dev_err(&pci->dev, "Error mtsnd_create\n");
 		goto out_free;
 	}
 
-	chip->idx = idx;
+	chip->idx = g_mtsnd_card_idx;
 	card->private_data = chip;
 	pci_set_drvdata(pci, card);
 
@@ -409,7 +415,7 @@ static int mtsnd_probe(struct pci_dev *pci, const struct pci_device_id *pci_id)
 
 	bind_pcm_codec(chip);
 
-	sprintf(name, "mtsnd%d", idx);
+	sprintf(name, "mtsnd%d", g_mtsnd_card_idx);
 	chip->debug = debugfs_create_dir(name, NULL);
 	if (chip->debug)
 		debugfs_create_file("jack", 0666, chip->debug, chip, &jack_fops);
@@ -420,17 +426,23 @@ static int mtsnd_probe(struct pci_dev *pci, const struct pci_device_id *pci_id)
 		goto out_free;
 	}
 
-	idx++;
+	g_mtsnd_card_idx++;
+	mutex_unlock(&g_mtsnd_data_mutex);
 	return 0;
 
 out_free:
 	snd_card_free(card);
+out_unlock:
+	mutex_unlock(&g_mtsnd_data_mutex);
 	return err;
 }
 
 static void mtsnd_remove(struct pci_dev *pci)
 {
+	mutex_lock(&g_mtsnd_data_mutex);
 	snd_card_free(pci_get_drvdata(pci));
+	g_mtsnd_card_idx--;
+	mutex_unlock(&g_mtsnd_data_mutex);
 }
 
 /* PCI IDs */

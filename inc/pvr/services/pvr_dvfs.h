@@ -61,19 +61,18 @@ typedef struct _IMG_OPP_
 
 typedef struct _IMG_DVFS_DEVICE_CFG_
 {
-	const IMG_OPP  *pasOPPTable;
+	IMG_OPP		*pasOPPTable;
 	IMG_UINT32      ui32OPPTableSize;
 #if defined(SUPPORT_LINUX_DVFS)
 	IMG_UINT32      ui32PollMs;
+	IMG_UINT64      ui64MaxFreq;
+	IMG_UINT64      ui64MinFreq;
+	struct _THERMAL_COOLING_DATA_  *psCoolingData;
 #endif
 	IMG_BOOL        bIdleReq;
 	IMG_BOOL	bSupportDVFS;
 	PFN_SYS_DEV_DVFS_SET_FREQUENCY  pfnSetFrequency;
 	PFN_SYS_DEV_DVFS_SET_VOLTAGE    pfnSetVoltage;
-
-#if defined(CONFIG_DEVFREQ_THERMAL) && defined(SUPPORT_LINUX_DVFS)
-	struct devfreq_cooling_power *psPowerOps;
-#endif
 } IMG_DVFS_DEVICE_CFG;
 
 #if defined(SUPPORT_LINUX_DVFS)
@@ -102,11 +101,12 @@ typedef struct _IMG_DVFS_DEVICE_
 	IMG_BOOL			bInitPending;
 	IMG_BOOL			bReady;
 	IMG_BOOL			bEnabled;
+	IMG_BOOL			bPerfMode; /* 0: Nomal mode, 1: Perf mode */
 	IMG_HANDLE			hGpuUtilUserDVFS;
-	struct devfreq_simple_ondemand_data *data;
-#if defined(CONFIG_DEVFREQ_THERMAL)
-	struct thermal_cooling_device	*psDevfreqCoolingDevice;
-#endif
+	IMG_UINT64			ui64PreBusyTime;
+	IMG_UINT64			ui64PreTotalTime;
+	struct devfreq_simple_ondemand_data *psOndemandData;
+	struct thermal_cooling_device	*psCoolingDevice;
 } IMG_DVFS_DEVICE;
 #endif
 

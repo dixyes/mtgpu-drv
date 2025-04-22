@@ -3,6 +3,8 @@
  * @License     Dual MIT/GPLv2
  */
 
+#include <linux/file.h>
+#include <linux/kthread.h>
 #include <drm/drm_device.h>
 #include <drm/drm_file.h>
 #include <drm/drm_print.h>
@@ -16,10 +18,14 @@
 #elif defined(OS_DRM_DISPLAY_DRM_DP_HELPER_H_EXIST)
 #include <drm/display/drm_dp_helper.h>
 #endif
+#include <drm/drm_edid.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_encoder.h>
 #include <drm/drm_crtc_helper.h>
+#include <drm/gpu_scheduler.h>
+#include <drm/spsc_queue.h>
 #include <uapi/drm/drm.h>
+#include <drm/drm_syncobj.h>
 #include <sound/hdmi-codec.h>
 #include <video/videomode.h>
 #if defined(OS_DRM_DRM_PROBE_HELPER_H_EXIST)
@@ -31,6 +37,64 @@
 #include "os-interface-drm.h"
 
 IMPLEMENT_OS_STRUCT_COMMON_FUNCS(drm_gem_object);
+
+struct mt_drm_sched_job {
+	struct drm_sched_job job;
+	void *data;
+};
+
+struct drm_file *os_get_drm_file_by_fd(int fd)
+{
+	struct file *file;
+	struct drm_file *drm_file = NULL;
+
+	file = fget(fd);
+	if (!file)
+		return NULL;
+
+	drm_file = file->private_data;
+	if (!drm_file) {
+		fput(file);
+		return NULL;
+	}
+
+	fput(file);
+
+	return drm_file;
+}
+
+struct drm_device *os_get_drm_device_by_fd(int fd)
+{
+	struct file *file;
+	struct drm_file *priv;
+	struct drm_device *dev = NULL;
+
+	file = fget(fd);
+	if (!file)
+		return NULL;
+
+	priv = file->private_data;
+	if (!priv) {
+		fput(file);
+		return NULL;
+	}
+
+	dev = priv->minor->dev;
+
+	fput(file);
+
+	return dev;
+}
+
+bool os_drm_dev_enter(struct drm_device *dev, int *idx)
+{
+	return drm_dev_enter(dev, idx);
+}
+
+void os_drm_dev_exit(int idx)
+{
+	drm_dev_exit(idx);
+}
 
 struct mutex *os_get_drm_device_mutex(struct drm_device *drm)
 {
@@ -74,6 +138,15 @@ IMPLEMENT_GET_OS_MEMBER_FUNC(drm_gem_object, dev);
 IMPLEMENT_GET_OS_MEMBER_FUNC(drm_gem_object, size);
 IMPLEMENT_GET_OS_MEMBER_FUNC(drm_gem_object, dma_buf);
 IMPLEMENT_GET_OS_MEMBER_FUNC(drm_gem_object, import_attach);
+
+void *os_get_drm_gem_object_resv(struct drm_gem_object *obj)
+{
+#if defined(OS_LINUX_DMA_RESV_H_EXIST)
+	return obj->resv;
+#else
+	return NULL;
+#endif
+}
 
 struct drm_gem_object *os_drm_gem_object_lookup(struct drm_file *filp, u32 handle)
 {
@@ -200,6 +273,11 @@ void os_set_drm_mode_create_dumb_args(struct drm_mode_create_dumb *args,
 struct file *os_get_drm_file_filp(struct drm_file *file)
 {
 	return file->filp;
+}
+
+void os_set_drm_file_event_space(struct drm_file *file, int event_space)
+{
+	file->event_space = event_space;
 }
 
 /* drm dp helper interface */
@@ -381,6 +459,59 @@ u32 os_get_videomode_flags(struct videomode *vm)
 IMPLEMENT_GET_OS_MEMBER_FUNC(hdmi_codec_params, sample_rate);
 IMPLEMENT_GET_OS_MEMBER_FUNC(hdmi_codec_params, sample_width);
 IMPLEMENT_GET_OS_MEMBER_FUNC(hdmi_codec_params, channels);
+
+/* spsc interface */
+int os_spsc_queue_create(struct spsc_queue **queue)
+{
+	*queue = kzalloc(sizeof(**queue), GFP_KERNEL);
+	if (!(*queue))
+		return -ENOMEM;
+
+	spsc_queue_init(*queue);
+
+	return 0;
+}
+
+void os_spsc_queue_destroy(struct spsc_queue *queue)
+{
+	kfree(queue);
+}
+
+struct spsc_node *os_spsc_queue_pop(struct spsc_queue *queue)
+{
+	return spsc_queue_pop(queue);
+}
+
+int os_spsc_queue_count(struct spsc_queue *queue)
+{
+	return spsc_queue_count(queue);
+}
+
+struct spsc_node *os_spsc_queue_peek(struct spsc_queue *queue)
+{
+	return spsc_queue_peek(queue);
+}
+
+bool os_spsc_queue_push(struct spsc_queue *queue, struct spsc_node *node)
+{
+	return spsc_queue_push(queue, node);
+}
+
+IMPLEMENT_OS_STRUCT_COMMON_FUNCS(spsc_node);
+
+/* drm syncobj interface */
+int os_drm_syncobj_find_fence(struct drm_file *file_private,
+			      u32 handle, u64 point, u64 flags,
+			      struct dma_fence **fence)
+{
+	return drm_syncobj_find_fence(file_private,
+				      handle,
+#if defined(OS_DRM_SYNCOBJ_FIND_FENCE_HAS_FIVE_ARGS)
+				      point,
+				      flags,
+#endif
+				      fence);
+}
 
 /* drm debug interface */
 void os_drm_dev_printk(const struct device *dev, const char *level, const char *format, ...)

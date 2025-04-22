@@ -58,6 +58,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define OS_FW_VERIFY_FUNCTION NULL
 #endif
 
+struct _RGX_SRVINIT_APPHINTS_;
+
 IMG_INT RGXGetHeapCount(PVRSRV_DEVICE_NODE *psDevNode, IMG_UINT32 *ui32HeapCount);
 IMG_INT RGXGetHeapIndexByVa(PVRSRV_DEVICE_NODE *psDevNode, IMG_UINT64 ui64DevAddr);
 
@@ -339,5 +341,7 @@ PVRSRV_ERROR RGXInitCreateFWKernelMemoryContext(PVRSRV_DEVICE_NODE *psDeviceNode
  @Input         psDeviceNode  device node
  ******************************************************************************/
 void RGXDeInitDestroyFWKernelMemoryContext(PVRSRV_DEVICE_NODE *psDeviceNode);
+
+void RGXGetAppHints(PVRSRV_RGXDEV_INFO *psDevInfo, struct _RGX_SRVINIT_APPHINTS_ *psHints);
 
 #endif /* RGXINIT_H */

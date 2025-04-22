@@ -142,6 +142,12 @@ typedef struct _PMR_OSPAGEARRAY_DATA_ {
 	IMG_PID uiPid;
 
 	/*
+	 * iNumPageArrayAllocated:
+	 * Number of page array allocated in this PMR.
+	 */
+	IMG_INT32 iNumPageArrayAllocated;
+
+	/*
 	 * iNumOSPagesAllocated:
 	 * Number of pages allocated in this PMR so far.
 	 * This allows for up to (2^31 - 1) pages. With 4KB pages, that's 8TB of memory for each PMR.
@@ -795,6 +801,9 @@ _FreePagesFromPoolUnlocked(IMG_UINT32 uiMaxPagesToFree,
 			/* Free the actual pages */
 			for (i = 0; i < uiItemsToFree; i++)
 			{
+#if defined(CONFIG_ARM64)
+				OSArchLinearMapAttrSetCached(page_to_phys(ppsPageArray[i]), PAGE_SIZE);
+#endif
 				__free_pages(ppsPageArray[i], 0);
 				ppsPageArray[i] = NULL;
 			}
@@ -1017,16 +1026,13 @@ _CleanupThread_CleanPages(void *pvData)
 {
 	LinuxCleanupData *psCleanupData = (LinuxCleanupData*) pvData;
 	LinuxPagePoolEntry *psPagePoolEntry = psCleanupData->psPoolEntry;
-	struct list_head *psPoolHead = NULL;
-	IMG_UINT32 *puiCounter = NULL;
+	IMG_UINT32 ui32PagesFreed;
+	IMG_UINT32 ui32Entries;
+	IMG_UINT32 i;
 #if defined(PVR_LINUX_PHYSMEM_ZERO_ALL_PAGES)
 	PVRSRV_ERROR eError;
 	pgprot_t pgprot;
-	IMG_UINT32 i;
 #endif /* defined(PVR_LINUX_PHYSMEM_ZERO_ALL_PAGES) */
-
-	/* Get the correct pool for this caching mode. */
-	_GetPoolListHead(psCleanupData->ui32CPUCacheMode , &psPoolHead, &puiCounter);
 
 #if defined(PVR_LINUX_PHYSMEM_ZERO_ALL_PAGES)
 	switch (PVRSRV_CPU_CACHE_MODE(psCleanupData->ui32CPUCacheMode))
@@ -1066,22 +1072,58 @@ _CleanupThread_CleanPages(void *pvData)
 	/* Lock down pool and add item */
 	_PagePoolLock();
 
-	/* Pool counters were already updated so don't do it here again*/
+	ui32Entries = _PagesInPoolUnlocked();
 
-	/* The pages are all zeroed so return them to the pool. */
-	list_add_tail(&psPagePoolEntry->sPagePoolItem, psPoolHead);
+	/* Check for number of current page pool entries and whether
+	 * we have other asynchronous tasks in-flight
+	 */
+	if ((ui32Entries < g_ui32PagePoolMaxEntries) &&
+	    ((ui32Entries + psPagePoolEntry->uiItemsRemaining) <
+	     (g_ui32PagePoolMaxEntries + g_ui32PagePoolMaxExcessEntries)))
+	{
+		IMG_UINT32 *puiCounter = NULL;
+		struct list_head *psPoolHead = NULL;
 
-	_DumpPoolStructure();
+		/* Get the correct pool for this caching mode. */
+		_GetPoolListHead(psCleanupData->ui32CPUCacheMode , &psPoolHead, &puiCounter);
+
+		/* The pages are all zeroed so return them to the pool. */
+		list_add_tail(&psPagePoolEntry->sPagePoolItem, psPoolHead);
+
+		*puiCounter = *puiCounter + psPagePoolEntry->uiItemsRemaining;
+
+		_DumpPoolStructure();
 
 #if defined(PVRSRV_ENABLE_PROCESS_STATS)
-	/* Calling PVRSRVStatsIncrMemAllocPoolStat and PVRSRVStatsDecrMemAllocPoolStat
-	 * inside page pool lock ensures that the stat reflects the state of the pool. */
-	PVRSRVStatsIncrMemAllocPoolStat(PAGE_SIZE * psPagePoolEntry->uiItemsRemaining);
+		/* Calling PVRSRVStatsIncrMemAllocPoolStat and PVRSRVStatsDecrMemAllocPoolStat
+		 * inside page pool lock ensures that the stat reflects the state of the pool. */
+		PVRSRVStatsIncrMemAllocPoolStat(PAGE_SIZE * psPagePoolEntry->uiItemsRemaining);
 #endif
+
+		_PagePoolUnlock();
+		goto FreeMem;
+	}
+	else if (ui32Entries > g_ui32PagePoolMaxEntries)
+	{
+		_FreePagesFromPoolUnlocked(ui32Entries - (g_ui32PagePoolMaxEntries >> 1), &ui32PagesFreed);
+	}
 
 	_PagePoolUnlock();
 
-	OSFreeMem(pvData);
+	for (i = 0; i < psCleanupData->psPoolEntry->uiItemsRemaining; i++)
+	{
+#ifdef CONFIG_ARM64
+		OSArchLinearMapAttrSetCached(page_to_phys(psPagePoolEntry->ppsPageArray[i]),
+					     PAGE_SIZE);
+#endif
+		_FreeOSPage(0, IMG_TRUE, psPagePoolEntry->ppsPageArray[i]);
+	}
+
+	OSFreeMemNoStats(psPagePoolEntry->ppsPageArray);
+	kmem_cache_free(g_psLinuxPagePoolCache, psPagePoolEntry);
+
+FreeMem:
+	OSFreeMem(psCleanupData);
 	OSAtomicDecrement(&g_iPoolCleanTasks);
 
 	return PVRSRV_OK;
@@ -1099,16 +1141,16 @@ eExit:
 	PVR_DPF((PVR_DBG_ERROR,
 			"%s: Deferred task error, freeing pages to OS.",
 			__func__));
-	_PagePoolLock();
-
-	*puiCounter -= psPagePoolEntry->uiItemsRemaining;
-
-	_PagePoolUnlock();
 
 	for (i = 0; i < psCleanupData->psPoolEntry->uiItemsRemaining; i++)
 	{
+#ifdef CONFIG_ARM64
+		OSArchLinearMapAttrSetCached(page_to_phys(psPagePoolEntry->ppsPageArray[i]),
+					     PAGE_SIZE);
+#endif
 		_FreeOSPage(0, IMG_TRUE, psPagePoolEntry->ppsPageArray[i]);
 	}
+
 	OSFreeMemNoStats(psPagePoolEntry->ppsPageArray);
 	kmem_cache_free(g_psLinuxPagePoolCache, psPagePoolEntry);
 	OSFreeMem(psCleanupData);
@@ -1140,92 +1182,51 @@ _PutPagesToPoolLocked(IMG_UINT32 ui32CPUCacheFlags,
 		!bUnpinned &&
 		!PVRSRV_CHECK_CPU_CACHED(ui32CPUCacheFlags))
 	{
-		IMG_UINT32 uiEntries;
-		IMG_UINT32 *puiCounter;
-		struct list_head *psPoolHead;
-
-
-		_PagePoolLock();
-
-		uiEntries = _PagesInPoolUnlocked();
-
-		/* Check for number of current page pool entries and whether
-		 * we have other asynchronous tasks in-flight */
-		if ( (uiEntries < g_ui32PagePoolMaxEntries) &&
-		     ((uiEntries + uiNumPages) <
-		      (g_ui32PagePoolMaxEntries + g_ui32PagePoolMaxExcessEntries) ))
+		if (OSAtomicIncrement(&g_iPoolCleanTasks) <=
+		    PVR_LINUX_PHYSMEM_MAX_ASYNC_CLEAN_TASKS)
 		{
-			if (OSAtomicIncrement(&g_iPoolCleanTasks) <=
-					PVR_LINUX_PHYSMEM_MAX_ASYNC_CLEAN_TASKS)
-			{
 #if defined(SUPPORT_PHYSMEM_TEST)
-				if (!psPVRSRVData->hCleanupThread)
-				{
-					goto eDecrement;
-				}
-#endif
-
-				psCleanupData = OSAllocMem(sizeof(*psCleanupData));
-
-				if (!psCleanupData)
-				{
-					PVR_DPF((PVR_DBG_ERROR,
-							 "%s: Failed to get memory for deferred page pool cleanup. "
-							 "Trying to free pages immediately",
-							 __func__));
-					goto eDecrement;
-				}
-
-				psCleanupThreadFn = &psCleanupData->sCleanupWork;
-				psCleanupData->ui32CPUCacheMode = ui32CPUCacheFlags;
-				psCleanupData->psPoolEntry = kmem_cache_alloc(g_psLinuxPagePoolCache, GFP_KERNEL);
-
-				if (!psCleanupData->psPoolEntry)
-				{
-					PVR_DPF((PVR_DBG_ERROR,
-							 "%s: Failed to get memory for deferred page pool cleanup. "
-							 "Trying to free pages immediately",
-							 __func__));
-					goto eFreeCleanupData;
-				}
-
-				if (!_GetPoolListHead(ui32CPUCacheFlags, &psPoolHead, &puiCounter))
-				{
-					PVR_DPF((PVR_DBG_ERROR,
-							 "%s: Failed to get correct page pool",
-							 __func__));
-					goto eFreePoolEntry;
-				}
-
-				/* Increase counter here to avoid deferred cleanup tasks piling up */
-				*puiCounter = *puiCounter + uiNumPages;
-
-				psCleanupData->psPoolEntry->ppsPageArray = ppsPageArray;
-				psCleanupData->psPoolEntry->uiItemsRemaining = uiNumPages;
-
-				psCleanupThreadFn->pfnFree = _CleanupThread_CleanPages;
-				psCleanupThreadFn->pvData = psCleanupData;
-				psCleanupThreadFn->bDependsOnHW = IMG_FALSE;
-				CLEANUP_THREAD_SET_RETRY_COUNT(psCleanupThreadFn,
-				                               CLEANUP_THREAD_RETRY_COUNT_DEFAULT);
-
-				/* We must not hold the pool lock when calling AddWork because it might call us back to
-				 * free pooled pages directly when unloading the driver	 */
-				_PagePoolUnlock();
-
-				PVRSRVCleanupThreadAddWork(psCleanupThreadFn);
-
-
-			}
-			else
+			if (!psPVRSRVData->hCleanupThread)
 			{
 				goto eDecrement;
 			}
+#endif
 
+			psCleanupData = OSAllocMem(sizeof(*psCleanupData));
+			if (!psCleanupData)
+			{
+				PVR_DPF((PVR_DBG_ERROR,
+					 "%s: Failed to get memory for deferred page pool cleanup. "
+					 "Trying to free pages immediately",
+					 __func__));
+				goto eDecrement;
+			}
+
+			psCleanupThreadFn = &psCleanupData->sCleanupWork;
+			psCleanupData->ui32CPUCacheMode = ui32CPUCacheFlags;
+			psCleanupData->psPoolEntry = kmem_cache_alloc(g_psLinuxPagePoolCache, GFP_KERNEL);
+			if (!psCleanupData->psPoolEntry)
+			{
+				PVR_DPF((PVR_DBG_ERROR,
+					 "%s: Failed to get memory for deferred page pool cleanup. "
+					 "Trying to free pages immediately",
+					  __func__));
+				goto eFreeCleanupData;
+			}
+
+			psCleanupData->psPoolEntry->ppsPageArray = ppsPageArray;
+			psCleanupData->psPoolEntry->uiItemsRemaining = uiNumPages;
+
+			psCleanupThreadFn->pfnFree = _CleanupThread_CleanPages;
+			psCleanupThreadFn->pvData = psCleanupData;
+			psCleanupThreadFn->bDependsOnHW = IMG_FALSE;
+			CLEANUP_THREAD_SET_RETRY_COUNT(psCleanupThreadFn, CLEANUP_THREAD_RETRY_COUNT_DEFAULT);
+
+			PVRSRVCleanupThreadAddWork(psCleanupThreadFn);
 		}
 		else
 		{
-			goto eUnlock;
+			goto eDecrement;
 		}
 	}
 	else
@@ -1235,14 +1236,10 @@ _PutPagesToPoolLocked(IMG_UINT32 ui32CPUCacheFlags,
 
 	return IMG_TRUE;
 
-eFreePoolEntry:
-	OSFreeMem(psCleanupData->psPoolEntry);
 eFreeCleanupData:
 	OSFreeMem(psCleanupData);
 eDecrement:
 	OSAtomicDecrement(&g_iPoolCleanTasks);
-eUnlock:
-	_PagePoolUnlock();
 eExitFalse:
 	return IMG_FALSE;
 }
@@ -1438,6 +1435,7 @@ _AllocOSPageArray(PVRSRV_DEVICE_NODE *psDevNode,
 	psPageArrayData->iNumOSPagesAllocated = 0;
 	psPageArrayData->uiTotalNumOSPages = uiNumOSPageSizeVirtPages;
 	psPageArrayData->uiLog2AllocPageSize = uiLog2AllocPageSize;
+	psPageArrayData->iNumPageArrayAllocated = uiNumDevPageSizeVirtPages;
 	psPageArrayData->ui64DmaMask = ui64DmaMask;
 	psPageArrayData->ui32AllocFlags = ui32AllocFlags;
 	psPageArrayData->ui32CPUCacheFlags = ui32CPUCacheFlags;
@@ -1866,10 +1864,10 @@ _AllocOSPages_Fast(PMR_OSPAGEARRAY_DATA *psPageArrayData)
 	IMG_UINT32 uiOSPagesToAlloc;
 	IMG_UINT32 uiDevPagesFromPool = 0;
 
-	gfp_t gfp_flags = _GetGFPFlags(ui32MinOrder ? BIT_ISSET(psPageArrayData->ui32AllocFlags, FLAG_ZERO) : IMG_FALSE, /* Zero all pages later as batch */
-	                                      psPageArrayData->psDevNode);
-	gfp_t ui32GfpFlags;
-	gfp_t ui32HighOrderGfpFlags = ((gfp_flags & ~__GFP_RECLAIM) | __GFP_NORETRY);
+	gfp_t ui32GfpFlags = _GetGFPFlags(ui32MinOrder ?
+					  BIT_ISSET(psPageArrayData->ui32AllocFlags, FLAG_ZERO) :
+					  IMG_FALSE, /* Zero all pages later as batch */
+					  psPageArrayData->psDevNode);
 
 	struct page **ppsPageArray = psPageArrayData->pagearray;
 	struct page **ppsPageAttributeArray = NULL;
@@ -1919,7 +1917,6 @@ _AllocOSPages_Fast(PMR_OSPAGEARRAY_DATA *psPageArrayData)
 	}
 
 	/* Only if asking for more contiguity than we actually need, let it fail */
-	ui32GfpFlags = (ui32Order > ui32MinOrder) ? ui32HighOrderGfpFlags : gfp_flags;
 	ui32NumPageReq = (1 << ui32Order);
 
 	while (uiArrayIndex < uiOSPagesToAlloc)
@@ -1940,7 +1937,6 @@ _AllocOSPages_Fast(PMR_OSPAGEARRAY_DATA *psPageArrayData)
 			PVR_ASSERT(ui32Order == ui32MinOrder);
 #endif
 			ui32NumPageReq = (1 << ui32Order);
-			ui32GfpFlags = (ui32Order > ui32MinOrder) ? ui32HighOrderGfpFlags : gfp_flags;
 		}
 
 		if (BIT_ISSET(psPageArrayData->ui32AllocFlags, FLAG_IS_CMA))
@@ -1978,7 +1974,6 @@ _AllocOSPages_Fast(PMR_OSPAGEARRAY_DATA *psPageArrayData)
 				ui32Order = MAX(ui32Order >> 1, ui32MinOrder);
 				bIncreaseMaxOrder = IMG_FALSE;
 				ui32NumPageReq = (1 << ui32Order);
-				ui32GfpFlags = (ui32Order > ui32MinOrder) ? ui32HighOrderGfpFlags : gfp_flags;
 				g_uiMaxOrder = ui32Order;
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0))
 				/* We should not trigger this code path in older kernels,
@@ -2007,7 +2002,8 @@ _AllocOSPages_Fast(PMR_OSPAGEARRAY_DATA *psPageArrayData)
 	if (PVRSRV_CHECK_CPU_UNCACHED(psPageArrayData->ui32CPUCacheFlags) ||
 	    PVRSRV_CHECK_CPU_WRITE_COMBINE(psPageArrayData->ui32CPUCacheFlags))
 	{
-		PhysmemSetCpuPagesMapAttrUncached(ppsPageArray, uiOSPagesToAlloc,
+		PhysmemSetCpuPagesMapAttrUncached(&ppsPageArray[uiDevPagesFromPool],
+						  psPageArrayData->iNumPageArrayAllocated - uiDevPagesFromPool,
 						  psPageArrayData->uiLog2AllocPageSize,
 						  NULL);
 	}
@@ -2025,7 +2021,7 @@ _AllocOSPages_Fast(PMR_OSPAGEARRAY_DATA *psPageArrayData)
 		IMG_UINT32 uiIdx, uiIdy, uiIdz;
 
 		ppsPageAttributeArray = OSAllocMem(sizeof(struct page *) * uiOSPagesToAlloc);
-		PVR_LOG_GOTO_IF_NOMEM(ppsPageAttributeArray, eError, e_free_pages);
+		PVR_LOG_GOTO_IF_NOMEM(ppsPageAttributeArray, eError, e_revert_attr);
 
 		for (uiIdx = 0; uiIdx < uiOSPagesToAlloc; uiIdx += ui32NumPageReq)
 		{
@@ -2046,7 +2042,7 @@ _AllocOSPages_Fast(PMR_OSPAGEARRAY_DATA *psPageArrayData)
 		if (eError != PVRSRV_OK)
 		{
 			PVR_DPF((PVR_DBG_ERROR, "Failed to zero pages (fast)"));
-			goto e_free_pages;
+			goto e_revert_attr;
 		}
 	}
 	else if (BIT_ISSET(psPageArrayData->ui32AllocFlags, FLAG_POISON_ON_ALLOC))
@@ -2084,7 +2080,7 @@ _AllocOSPages_Fast(PMR_OSPAGEARRAY_DATA *psPageArrayData)
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "Failed to set page attributes"));
-		goto e_free_pages;
+		goto e_revert_attr;
 	}
 	else
 	{
@@ -2124,6 +2120,17 @@ _AllocOSPages_Fast(PMR_OSPAGEARRAY_DATA *psPageArrayData)
 
 	return PVRSRV_OK;
 
+e_revert_attr:
+#ifdef CONFIG_ARM64
+	if (PVRSRV_CHECK_CPU_UNCACHED(psPageArrayData->ui32CPUCacheFlags) ||
+		PVRSRV_CHECK_CPU_WRITE_COMBINE(psPageArrayData->ui32CPUCacheFlags))
+	{
+		PhysmemSetCpuPagesMapAttrCached(ppsPageArray,
+						uiArrayIndex,
+						psPageArrayData->uiLog2AllocPageSize,
+						NULL);
+	}
+#endif
 /* Error path */
 e_free_pages:
 	{
@@ -2353,9 +2360,11 @@ _AllocOSPages_Sparse(PMR_OSPAGEARRAY_DATA *psPageArrayData,
 	if (PVRSRV_CHECK_CPU_UNCACHED(psPageArrayData->ui32CPUCacheFlags) ||
 	    PVRSRV_CHECK_CPU_WRITE_COMBINE(psPageArrayData->ui32CPUCacheFlags))
 	{
-		PhysmemSetCpuPagesMapAttrUncached(ppsPageArray, uiDevPagesToAlloc,
+		PhysmemSetCpuPagesMapAttrUncached(ppsPageArray,
+						  MIN(psPageArrayData->iNumPageArrayAllocated,
+						      uiDevPagesToAlloc) - uiDevPagesFromPool,
 						  psPageArrayData->uiLog2AllocPageSize,
-						  puiAllocIndices);
+						  &puiAllocIndices[uiDevPagesFromPool]);
 	}
 #endif
 
@@ -2375,7 +2384,7 @@ _AllocOSPages_Sparse(PMR_OSPAGEARRAY_DATA *psPageArrayData,
 		eError = _MemsetPageArray(uiTempPageArrayIndex - uiDevPagesFromPool,
 		                          &ppsTempPageArray[uiDevPagesFromPool],
 		                          PAGE_KERNEL, PVRSRV_ZERO_VALUE);
-		PVR_LOG_GOTO_IF_FALSE(eError == PVRSRV_OK, "failed to zero pages (sparse)", e_free_pages);
+		PVR_LOG_GOTO_IF_FALSE(eError == PVRSRV_OK, "failed to zero pages (sparse)", e_revert_attr);
 	}
 	else if (BIT_ISSET(ui32AllocFlags, FLAG_POISON_ON_ALLOC))
 	{
@@ -2402,7 +2411,7 @@ _AllocOSPages_Sparse(PMR_OSPAGEARRAY_DATA *psPageArrayData,
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "Failed to set page attributes"));
-		goto e_free_pages;
+		goto e_revert_attr;
 	}
 
 	/* Update metadata */
@@ -2426,6 +2435,17 @@ _AllocOSPages_Sparse(PMR_OSPAGEARRAY_DATA *psPageArrayData,
 
 	return PVRSRV_OK;
 
+e_revert_attr:
+#ifdef CONFIG_ARM64
+	if (PVRSRV_CHECK_CPU_UNCACHED(psPageArrayData->ui32CPUCacheFlags) ||
+		PVRSRV_CHECK_CPU_WRITE_COMBINE(psPageArrayData->ui32CPUCacheFlags))
+	{
+		PhysmemSetCpuPagesMapAttrCached(ppsPageArray,
+						i,
+						psPageArrayData->uiLog2AllocPageSize,
+						puiAllocIndices);
+	}
+#endif
 e_free_pages:
 	if (BIT_ISSET(ui32AllocFlags, FLAG_IS_CMA))
 	{
@@ -2689,20 +2709,21 @@ _FreeOSPages_Sparse(PMR_OSPAGEARRAY_DATA *psPageArrayData,
 		}
 	}
 
-#ifdef CONFIG_ARM64
-	if (PVRSRV_CHECK_CPU_UNCACHED(psPageArrayData->ui32CPUCacheFlags) ||
-	    PVRSRV_CHECK_CPU_WRITE_COMBINE(psPageArrayData->ui32CPUCacheFlags))
-	{
-		PhysmemSetCpuPagesMapAttrCached(ppsPageArray, uiNumPages,
-						psPageArrayData->uiLog2AllocPageSize,
-						pai32FreeIndices);
-	}
-#endif
-
 	if (BIT_ISSET(psPageArrayData->ui32AllocFlags, FLAG_IS_CMA))
 	{
 		IMG_UINT32 uiDevNumPages = uiNumPages;
 		IMG_UINT32 uiDevPageSize = 1<<psPageArrayData->uiLog2AllocPageSize;
+
+#ifdef CONFIG_ARM64
+		if (PVRSRV_CHECK_CPU_UNCACHED(psPageArrayData->ui32CPUCacheFlags) ||
+			PVRSRV_CHECK_CPU_WRITE_COMBINE(psPageArrayData->ui32CPUCacheFlags))
+		{
+			PhysmemSetCpuPagesMapAttrCached(ppsPageArray,
+							MIN(psPageArrayData->iNumPageArrayAllocated, uiNumPages),
+							psPageArrayData->uiLog2AllocPageSize,
+							pai32FreeIndices);
+		}
+#endif
 
 		for (i = 0; i < uiDevNumPages; i++)
 		{
@@ -2725,7 +2746,6 @@ _FreeOSPages_Sparse(PMR_OSPAGEARRAY_DATA *psPageArrayData,
 	}
 	else
 	{
-
 		/* OSAllocMemNoStats required because this code may be run without the bridge lock held */
 		ppsTempPageArray = OSAllocMemNoStats(sizeof(struct page*) * uiTempArraySize);
 		if (ppsTempPageArray == NULL)
@@ -2775,6 +2795,17 @@ _FreeOSPages_Sparse(PMR_OSPAGEARRAY_DATA *psPageArrayData,
 			{
 				PVR_DPF((PVR_DBG_ERROR, "%s: Failed to reset page attributes", __func__));
 			}
+		}
+#endif
+
+#ifdef CONFIG_ARM64
+		if (PVRSRV_CHECK_CPU_UNCACHED(psPageArrayData->ui32CPUCacheFlags) ||
+			PVRSRV_CHECK_CPU_WRITE_COMBINE(psPageArrayData->ui32CPUCacheFlags))
+		{
+			PhysmemSetCpuPagesMapAttrCached(ppsPageArray,
+							MIN(psPageArrayData->iNumPageArrayAllocated, uiNumPages),
+							psPageArrayData->uiLog2AllocPageSize,
+							pai32FreeIndices);
 		}
 #endif
 
@@ -2853,16 +2884,6 @@ _FreeOSPages_Fast(PMR_OSPAGEARRAY_DATA *psPageArrayData)
 		}
 	}
 
-#ifdef CONFIG_ARM64
-	if (PVRSRV_CHECK_CPU_UNCACHED(psPageArrayData->ui32CPUCacheFlags) ||
-	    PVRSRV_CHECK_CPU_WRITE_COMBINE(psPageArrayData->ui32CPUCacheFlags))
-	{
-		PhysmemSetCpuPagesMapAttrCached(ppsPageArray, uiNumPages,
-						psPageArrayData->uiLog2AllocPageSize,
-						NULL);
-	}
-#endif
-
 	/* Try to move the page array to the pool */
 	bSuccess = _PutPagesToPoolLocked(psPageArrayData->ui32CPUCacheFlags,
 									 ppsPageArray,
@@ -2874,6 +2895,17 @@ _FreeOSPages_Fast(PMR_OSPAGEARRAY_DATA *psPageArrayData)
 		psPageArrayData->pagearray = NULL;
 		goto exit_ok;
 	}
+
+#ifdef CONFIG_ARM64
+	if (PVRSRV_CHECK_CPU_UNCACHED(psPageArrayData->ui32CPUCacheFlags) ||
+		PVRSRV_CHECK_CPU_WRITE_COMBINE(psPageArrayData->ui32CPUCacheFlags))
+	{
+		PhysmemSetCpuPagesMapAttrCached(ppsPageArray,
+						psPageArrayData->iNumPageArrayAllocated,
+						psPageArrayData->uiLog2AllocPageSize,
+						NULL);
+	}
+#endif
 
 	if (BIT_ISSET(psPageArrayData->ui32AllocFlags, FLAG_IS_CMA))
 	{

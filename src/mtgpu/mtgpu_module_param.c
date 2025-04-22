@@ -14,6 +14,11 @@
 
 #include "mtgpu_defs.h"
 #include "mtgpu_igpu.h"
+#include "mtgpu_mdev.h"
+
+int mtgpu_cnt = 0;
+module_param(mtgpu_cnt, int, 0444);
+MODULE_PARM_DESC(mtgpu_cnt, "mtgpu card counter.");
 
 /* TODO: Currently assume the MTGPU default video ram size is 1G.
  * It should get the video ram size from SMC in the future for each
@@ -23,6 +28,11 @@ unsigned long mtgpu_vram_size_total = MTGPU_VRAM_DEFAULT_SIZE;
 module_param(mtgpu_vram_size_total, ulong, 0444);
 MODULE_PARM_DESC(mtgpu_vram_size_total,
 		 "mtgpu video memory total size, default to 1GB ");
+
+unsigned long mtgpu_pb_total_size = 0;
+module_param(mtgpu_pb_total_size, ulong, 0444);
+MODULE_PARM_DESC(mtgpu_pb_total_size,
+		 "mtgpu pb size, auto set based on gpu id, manual setting override auto config ");
 
 unsigned long mtgpu_smc_mem_size = MTGPU_SMC_MEM_SIZE;
 module_param(mtgpu_smc_mem_size, ulong, 0444);
@@ -43,28 +53,22 @@ module_param(mtgpu_resize_enable, int, 0444);
 MODULE_PARM_DESC(mtgpu_resize_enable,
 		 "mtgpu resize function enable(1)/disable(0) ");
 
-#if defined(CONFIG_VPS)
-char *display = "dummy";
-#elif (RGX_NUM_OS_SUPPORTED > 1)
-char *display = "none";
-#else
-char *display = "mt";
-#endif
+char *display = MTGPU_DISPLAY_MODE;
 module_param(display, charp, 0444);
 MODULE_PARM_DESC(display, " <dummy>, <mt> The default value is mt");
 
-bool enable_haps_display;
-module_param(enable_haps_display, bool, 0444);
-MODULE_PARM_DESC(enable_haps_display, "mtgpu haps+display verify, enable(1)/disable(0).");
+bool display_bringup_en;
+module_param(display_bringup_en, bool, 0444);
+MODULE_PARM_DESC(display_bringup_en, "mtgpu display bringup, enable(1)/disable(0).");
 
 unsigned long mtgpu_cursor_size = MTGPU_MAX_CURSOR_SIZE;
 module_param(mtgpu_cursor_size, ulong, 0444);
 MODULE_PARM_DESC(mtgpu_cursor_size, "max cursor size in pixel");
 
 /* Enable_sriov is used for the sriov capability. */
-int enable_sriov = MTGPU_DISABLE_SRIOV;
+int enable_sriov = MTGPU_ENABLE_SRIOV;
 module_param(enable_sriov, int, 0444);
-MODULE_PARM_DESC(enable_sriov, "enable sriov, default to 0 is disable ");
+MODULE_PARM_DESC(enable_sriov, "enable sriov, default to 1 is enable ");
 
 bool force_cpu_copy;
 module_param(force_cpu_copy, bool, 0644);
@@ -76,17 +80,76 @@ module_param(mtgpu_dma_debug, int, 0444);
 MODULE_PARM_DESC(mtgpu_dma_debug,
 		 "mtgpu udma and hdma debug information enable(1)/disable(0) ");
 
-#if (RGX_NUM_OS_SUPPORTED > 1)
+int dma_desc_sysmem_enable = 0;
+module_param(dma_desc_sysmem_enable, int, 0444);
+MODULE_PARM_DESC(dma_desc_sysmem_enable,
+		 "mtgpu dma descriptor location: 0: vram, 1: system. The default value is 0");
+
+#if (RGX_NUM_OS_SUPPORTED > 1) && defined(SUPPORT_LOAD_WINDOWS_FIRMWARE)
 int mtgpu_drm_major = 2;
+module_param(mtgpu_drm_major, int, 0444);
+MODULE_PARM_DESC(mtgpu_drm_major, "1 - ddk1.0, 2 - ddk2.0. The default value is 2");
 #else
 int mtgpu_drm_major = 1;
-#endif
 module_param(mtgpu_drm_major, int, 0444);
 MODULE_PARM_DESC(mtgpu_drm_major, "1 - ddk1.0, 2 - ddk2.0. The default value is 1");
+#endif
+
+int mtgpu_sched_mode = 2;
+module_param(mtgpu_sched_mode, int, 0444);
+MODULE_PARM_DESC(mtgpu_sched_mode, "gpu task scheduler, 0: meta-only, 1: host sched on nodeq, 2: host sched on ccbq, 3: fec");
+
+bool mtgpu_sched_ccbq_optimize;
+module_param(mtgpu_sched_ccbq_optimize, bool, 0644);
+MODULE_PARM_DESC(mtgpu_sched_ccbq_optimize,
+	         "0:default, enable meta update semaphore value when schedule mode is host sched on ccbq");
+
+bool mtgpu_sched_early_submit = 1;
+module_param(mtgpu_sched_early_submit, bool, 0444);
+MODULE_PARM_DESC(mtgpu_sched_early_submit,
+	         "0:default, enable accelerate job submit if there is dependency between jobs from same entity");
+
+unsigned int mtgpu_sched_job_hang_limit_ms = UINT_MAX;
+module_param(mtgpu_sched_job_hang_limit_ms, int, 0444);
+MODULE_PARM_DESC(mtgpu_sched_job_hang_limit_ms,
+		 "default UINT_MAX, delay time for mtgpu sched timeout delay work");
 
 int mtgpu_shadow_sem_sysmem_enable = 1;
 module_param(mtgpu_shadow_sem_sysmem_enable, int, 0444);
 MODULE_PARM_DESC(mtgpu_shadow_sem_sysmem_enable, "create mirror semaphore  block on sysmem(1)/vram(0)");
+
+bool mtgpu_enable_poison = 1;
+module_param(mtgpu_enable_poison, bool, 0444);
+MODULE_PARM_DESC(mtgpu_enable_poison, "ccb/resp/job item release with poison enable(1)/disable(0), default(1)");
+module_param_named(enable_poison, mtgpu_enable_poison, bool, 0444);
+
+int mtgpu_sched_host_policy = 1;
+module_param(mtgpu_sched_host_policy, int, 0444);
+MODULE_PARM_DESC(mtgpu_sched_host_policy, "Specify the scheduling policy for entities on a run-queue, 0 = Round Robin, 1 = FIFO (default).");
+
+bool mtgpu_enable_sysmem_stats = 0;
+module_param(mtgpu_enable_sysmem_stats, bool, 0444);
+MODULE_PARM_DESC(mtgpu_enable_sysmem_stats,"enable system memory stats record(0: disable, 1: enable)");
+module_param_named(enable_sysmem_stats, mtgpu_enable_sysmem_stats, bool, 0444);
+
+int rm_feature_level = 0;
+module_param(rm_feature_level, int, 0644);
+MODULE_PARM_DESC(rm_feature_level,
+		 "rm feature level enable(0: disable, 1: enable memory");
+
+unsigned long long mtgpu_hash_vec_array[] = {
+0x000372400721, 0x02208422324a, 0x01324ca10494, 0x0041808009c8, 0x002008091290, 0x000000911520,
+0x010008015040, 0x021004008080, 0x02200300a100, 0x010418830200, 0x008150480400, 0x004800102800,
+};
+int mtgpu_hash_vec_array_size = ARRAY_SIZE(mtgpu_hash_vec_array);
+
+module_param_array(mtgpu_hash_vec_array, ullong, &mtgpu_hash_vec_array_size, 0444);
+MODULE_PARM_DESC(mtgpu_hash_vec_array, "gpu hash vector, must contain 12 elements.");
+
+bool mtgpu_riscv_fw_enabled;
+module_param(mtgpu_riscv_fw_enabled, bool, 0444);
+MODULE_PARM_DESC(mtgpu_riscv_fw_enabled, "Use fw type 0: meta, 1: riscv");
+module_param_named(enable_riscv_fw, mtgpu_riscv_fw_enabled, bool, 0444);
 
 #if (RGX_NUM_OS_SUPPORTED > 1)
 long mtgpu_driver_mode = MTGPU_DRIVER_MODE_HOST;
@@ -148,19 +211,23 @@ module_param(mtgpu_ipc_debug, int, 0664);
 MODULE_PARM_DESC(mtgpu_ipc_debug,
 		 "mtgpu ipc debug information enable(1)/disable(0)");
 
-unsigned long mtgpu_ipc_timeout_ms = 1000 * 60;
+unsigned long mtgpu_ipc_timeout_ms = 5000;
 module_param(mtgpu_ipc_timeout_ms, ulong, 0664);
 MODULE_PARM_DESC(mtgpu_ipc_timeout_ms,
-		 "mtgpu ipc timeout(unit:ms, default:1 minute/60000 ms)");
+		 "mtgpu ipc timeout(unit:ms, default:5000 ms)");
 
 int mtgpu_ipc_tty_support;
 module_param(mtgpu_ipc_tty_support, int, 0444);
 MODULE_PARM_DESC(mtgpu_ipc_tty_support,
 		 "mtgpu ipc tty console enable(1)/disable(0)");
 
-bool mtgpu_fec_enable;
-module_param(mtgpu_fec_enable, bool, 0444);
-MODULE_PARM_DESC(mtgpu_fec_enable, "mtgpu fec enable(1)/disable(0)");
+int mtgpu_fec_enable = 0;
+module_param(mtgpu_fec_enable, int, 0444);
+MODULE_PARM_DESC(mtgpu_fec_enable, "mtgpu fec disable(0)/enable(1)");
+
+bool fec_display_enable;
+module_param(fec_display_enable, bool, 0444);
+MODULE_PARM_DESC(fec_display_enable, "mtgpu fec display enable(1)/disable(0)");
 
 char *fec_kernel_params;
 module_param(fec_kernel_params, charp, 0444);
@@ -189,10 +256,29 @@ module_param(mtlink_topo_type, int, 0444);
 MODULE_PARM_DESC(mtlink_topo_type,
 		 "0:default, normal topology, 1:eight-card fc topology, 2:two groups of four-card fc topology");
 
+bool mtlink_disable_hwr;
+module_param(mtlink_disable_hwr, bool, 0444);
+MODULE_PARM_DESC(mtlink_disable_hwr, "0:enable mtlink hwr, 1:disable mtlink hwr,default(0)");
+
 int enable_event_report = 1;
 module_param(enable_event_report, int, 0444);
 MODULE_PARM_DESC(enable_event_report,
 		 "1:default, enable mtgpu_event_report, 0:disable mtgpu_event_report");
+
+int rb_switch_enable;
+module_param(rb_switch_enable, int, 0444);
+MODULE_PARM_DESC(rb_switch_enable,
+		 "0:default, disable host rx ring buffer switch, 1:enable host rx ring buffer switch");
+
+unsigned int disable_ipc_bitmask;
+module_param(disable_ipc_bitmask, uint, 0444);
+MODULE_PARM_DESC(disable_ipc_bitmask,
+		 "0:default, enable ipc, others: disable ipc by setting a specific bit to 0");
+
+int mtgpu_d2d_wait_timeout = 2000;
+module_param(mtgpu_d2d_wait_timeout, int, 0444);
+MODULE_PARM_DESC(mtgpu_d2d_wait_timeout, "d2d link monitor wait timeout, default 2000ms");
+module_param_named(d2d_wait_timeout, mtgpu_d2d_wait_timeout, int, 0444);
 
 /**
  * pstate mode
@@ -223,6 +309,14 @@ MODULE_PARM_DESC(mtgpu_page_size, "gpu page size, default to 0.");
 bool disable_driver;
 module_param(disable_driver, bool, 0444);
 MODULE_PARM_DESC(disable_driver, "disable mtgpu driver, default 0.");
+
+bool disable_watchdog;
+module_param(disable_watchdog, bool, 0444);
+MODULE_PARM_DESC(disable_watchdog, "disable mtgpu watchdog, default 0.");
+
+unsigned int watchdog_timeout_ms = 1000 * 5;
+module_param(watchdog_timeout_ms, uint, 0444);
+MODULE_PARM_DESC(watchdog_timeout_ms, "watchdog timeout, default 5000ms.");
 
 int vpu_group_max;
 module_param(vpu_group_max, int, 0444);
@@ -256,6 +350,20 @@ unsigned long mtgpu_rpm_suspend_delay_ms = MTGPU_IGPU_SUSPEND_DELAY_MS;
 module_param(mtgpu_rpm_suspend_delay_ms, ulong, 0444);
 MODULE_PARM_DESC(mtgpu_rpm_suspend_delay_ms, "PM-Runtime delay suspend time, default 100 ms.");
 
+int ignore_mpc_config;
+module_param(ignore_mpc_config, int, 0444);
+MODULE_PARM_DESC(ignore_mpc_cfg,"ignore mpc configure infomation(0: not ignore, 1: ignore)");
+
+int mtgpu_hwperf_debug;
+module_param(mtgpu_hwperf_debug, int, 0444);
+MODULE_PARM_DESC(mtgpu_hwperf_debug, "mtgpu hwperf debug ("
+				     "0: default disable any debugging, use dma copy from l1 to l2 (ddk2.0), "
+				     "bit0: enable event sequence debugging, "
+				     "bit1: enable l1 copying debugging, "
+				     "bit2~bit3: reserved for other debugging purposes, "
+				     "bit4: use memcpy from l1 to l2 (ddk2.0), "
+				     "bit5~bit7: reserved for other l1 copy path. )");
+
 #if (RGX_NUM_OS_SUPPORTED > 1)
 int mtgpu_vgpu_scheduling_policy;
 module_param(mtgpu_vgpu_scheduling_policy, int, 0444);
@@ -277,10 +385,17 @@ module_param(mtgpu_vgpu_force_mmio_in_4g, bool, 0444);
 MODULE_PARM_DESC(mtgpu_vgpu_force_mmio_in_4g,
 		 "force mmio space allocated in 4g range (disable = 0, enable = 1 )");
 
+#ifdef SUPPORT_LOAD_WINDOWS_FIRMWARE
 bool mtgpu_load_windows_firmware = true;
 module_param(mtgpu_load_windows_firmware, bool, 0444);
 MODULE_PARM_DESC(mtgpu_load_windows_firmware,
 	"0 - load linux fw, 1 - load windows fw. The default value is 1");
+#else
+bool mtgpu_load_windows_firmware = false;
+module_param(mtgpu_load_windows_firmware, bool, 0444);
+MODULE_PARM_DESC(mtgpu_load_windows_firmware,
+	"0 - load linux fw, 1 - load windows fw. The default value is 0");
+#endif
 
 int vgpu_mm_mapping_mode = 2;
 module_param(vgpu_mm_mapping_mode, int, 0444);
@@ -319,6 +434,16 @@ bool vgpu_1g_support_4k = 1;
 module_param(vgpu_1g_support_4k, bool, 0444);
 MODULE_PARM_DESC(vgpu_1g_support_4k,"1G VGPU support 4K resolution(0: disable, 1: enable)");
 
+bool vgpu_types_tune = 0;
+module_param(vgpu_types_tune, bool, 0444);
+MODULE_PARM_DESC(vgpu_types_tune,
+		 "enable vgpu types tune, if 1st 1101 is tuned(0: disable, 1: enable)");
+
+bool vgpu_host_trigger_hwr = 1;
+module_param(vgpu_host_trigger_hwr, bool, 0444);
+MODULE_PARM_DESC(vgpu_host_trigger_hwr,
+		"Host OS checks whether GPU hardware is normal. If abnormal, host automatically triggers hwr(0: disable, 1: enable)");
+
 #if defined(VGPU_COMPAT_CHECK_MODE_VERSION_LIST_FORCED)
 /**
  * For CI release versions, this value is
@@ -328,10 +453,55 @@ MODULE_PARM_DESC(vgpu_1g_support_4k,"1G VGPU support 4K resolution(0: disable, 1
  */
 int vgpu_compat_check_mode = 1;
 #else
-int vgpu_compat_check_mode = 2;
+int vgpu_compat_check_mode = 0;
 module_param(vgpu_compat_check_mode, int, 0444);
 MODULE_PARM_DESC(vgpu_compat_check_mode,
 		 "vGPU compatibility check mode(0: disable, 1: version list, 2: strictly match)");
 #endif
 
+bool vgpu_time_corr = 1;
+module_param(vgpu_time_corr, bool, 0444);
+MODULE_PARM_DESC(vgpu_time_corr,"vGPU time correct(0: disable, 1: enable)");
+
+int vgpu_hotplug_upgrade_vram_mode = 1;
+module_param(vgpu_hotplug_upgrade_vram_mode, int, 0444);
+MODULE_PARM_DESC(
+	vgpu_hotplug_upgrade_vram_mode,
+	"VGPU hotplug supports upgrading to a VGPU with more vram(0: disable, 1: enable to upgrade to 16G(default), 2 :enable to upgrade to max vram)");
+
+int vgpu_upgrade_mode = 1;
+MODULE_PARM_DESC(vgpu_upgrade_mode,
+	"vGPU guest driver upgrade mode(0: disable, 1: user interactive)");
+
+bool vgpu_fw_hot_upgrade = 1;
+MODULE_PARM_DESC(vgpu_fw_hot_upgrade, "vGPU support fw hot upgrade(0: disable, 1: enable)");
+
+static int set_vgpu_upgrade_mode(const char *val, const struct kernel_param *kp)
+{
+    int ret;
+    int new_mode;
+
+    ret = kstrtoint(val, 10, &new_mode);
+    if (ret)
+        return ret;
+
+    if (new_mode != vgpu_upgrade_mode) {
+        vgpu_upgrade_mode = new_mode;
+        vgpu_update_upgrade_conf();
+    }
+
+    return 0;
+}
+module_param_call(vgpu_upgrade_mode, set_vgpu_upgrade_mode,
+		  param_get_int, &vgpu_upgrade_mode, 0644);
+
+bool vgpu_allow_pull_driver = 1;
+module_param(vgpu_allow_pull_driver, bool, 0644);
+MODULE_PARM_DESC(vgpu_allow_pull_driver,
+		 "vGPU allow guest to pull driver from host(0: disable, 1: enable");
+
+u64 vgpu_guest_pkg_tag = 0;
+module_param(vgpu_guest_pkg_tag, ullong, 0644);
+MODULE_PARM_DESC(vgpu_guest_pkg_tag,
+		 "vGPU tag info of guest driver in the upgrade package");
 #endif

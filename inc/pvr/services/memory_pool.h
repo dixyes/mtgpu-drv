@@ -68,7 +68,7 @@ void MemoryPoolDelete(MEMORY_POOL *psMemPool);
  *
  * Returns the virtual address of the memory on success, NULL if no free memory.
  */
-void *MemoryPoolAlloc(MEMORY_POOL *psMemPool, IMG_UINT64 ui64Size);
+void *MemoryPoolAlloc(MEMORY_POOL *psMemPool, IMG_UINT64 ui64Size, IMG_UINT64 uiAlign);
 
 /**
  * MemoryPoolFree - Free a memory area to the memory pool

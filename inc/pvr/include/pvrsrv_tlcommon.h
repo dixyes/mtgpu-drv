@@ -75,8 +75,8 @@ typedef IMG_HANDLE PVRSRVTL_SD;
  * Layout of uiTypeSize member is :
  *
  * |<---------------------------32-bits------------------------------>|
- * |<----8---->|<-----1----->|<----7--->|<------------16------------->|
- * |    Type   | Drop-Oldest |  UNUSED  |             Size            |
+ * |<----8---->|<-----1----->|<------------------23------------------>|
+ * |    Type   | Drop-Oldest |                  Size                  |
  *
  */
 typedef struct
@@ -99,9 +99,8 @@ static_assert((sizeof(PVRSRVTL_PACKETHDR) & (PVRSRVTL_PACKET_ALIGNMENT-1U)) == 0
 /*! Packet header mask used to extract the size from the uiTypeSize member.
  * Do not use directly, see GET macros.
  */
-#define PVRSRVTL_PACKETHDR_SIZE_MASK    0x0000FFFFU
+#define PVRSRVTL_PACKETHDR_SIZE_MASK    0x007FFFFFU
 #define PVRSRVTL_MAX_PACKET_SIZE        (PVRSRVTL_PACKETHDR_SIZE_MASK & ~0xFU)
-
 
 /*! Packet header mask used to extract the type from the uiTypeSize member.
  * Do not use directly, see GET macros.

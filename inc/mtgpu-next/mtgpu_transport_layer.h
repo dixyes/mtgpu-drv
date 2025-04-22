@@ -9,9 +9,11 @@
 struct drm_device;
 struct drm_file;
 
-int mtgpu_transport_layer_ioctl(struct drm_device *drm_dev,
-				void *data,
-				struct drm_file *file);
+int mtgpu_tl_stream_open_ioctl(struct drm_device *drm_dev, void *data, struct drm_file *file);
+int mtgpu_tl_stream_close_ioctl(struct drm_device *drm_dev, void *data, struct drm_file *file);
+int mtgpu_tl_data_acquire_ioctl(struct drm_device *drm_dev, void *data, struct drm_file *file);
+int mtgpu_tl_data_release_ioctl(struct drm_device *drm_dev, void *data, struct drm_file *file);
+int mtgpu_tl_stream_discover_ioctl(struct drm_device *drm_dev, void *data, struct drm_file *file);
 
 #endif /* _MTGPU_TRANSPORT_LAYER_H_ */
 

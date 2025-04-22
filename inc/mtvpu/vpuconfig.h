@@ -78,9 +78,9 @@
 //  Application specific configuration
 #define VPU_ENC_TIMEOUT                 (6000000)
 #define VPU_DEC_TIMEOUT                 (60000*10)
-#define VPU_BUSY_CHECK_TIMEOUT          (1000*2)        // 2 sec
+#define VPU_BUSY_CHECK_TIMEOUT          (1000*1)        // 1 sec
 #define ATOMIC_SYNC_TIMEOUT             (60000)         // 60 sec
-#define VPU_EMU_TIMEOUT_INFLATION       (10)            // timeout inflation for emu platform only
+#define VPU_EMU_TIMEOUT_INFLATION       (100)           // timeout inflation for emu platform only
 
 
 #define CBCR_INTERLEAVE			        1 //[default 1 for BW checking with CnMViedo Conformance] 0 (chroma separate mode), 1 (chroma interleave mode) // if the type of tiledmap uses the kind of MB_RASTER_MAP. must set to enable CBCR_INTERLEAVE
@@ -136,7 +136,7 @@
 #define W_REMAP_INDEX2                  2
 #define W_REMAP_MAX_SIZE                (1024*1024)
 
-#define CORTEXA35_MAX_CODE_BUF_SIZE     (4*1024*1024)
+#define CORTEXA35_MAX_CODE_BUF_SIZE     (8*1024*1024)
 
 #define WAVE5_MAX_CODE_BUF_SIZE         (2*1024*1024)
 #define WAVE5_TEMPBUF_OFFSET            WAVE5_MAX_CODE_BUF_SIZE
@@ -144,16 +144,16 @@
 
 #define WAVE6_MAX_CODE_BUF_SIZE         (1*1024*1024)
 #define WAVE6_TEMPBUF_OFFSET            WAVE6_MAX_CODE_BUF_SIZE
-#define WAVE6_TEMPBUF_SIZE              (2*1024*1024)
+#define WAVE6_TEMPBUF_SIZE              (3*1024*1024)
 
 #define FW_LOG_BUFFER_SIZE              (16 << 10) //Currently 16k, if not enough enlarge the size
 
 #define ONE_TASKBUF_SIZE_FOR_CQ         0
-#define SIZE_COMMON                     (WAVE5_MAX_CODE_BUF_SIZE + WAVE5_TEMPBUF_SIZE)
+#define SMD_SIZE_COMMON                 (WAVE5_MAX_CODE_BUF_SIZE + WAVE5_TEMPBUF_SIZE)
+#define SME_SIZE_COMMON                 (WAVE6_MAX_CODE_BUF_SIZE + WAVE6_TEMPBUF_SIZE)
 
 #define WAVE627ENC_WORKBUF_SIZE_PH      (1*1024*1024)
 #define WAVE627ENC_MAX_CODE_BUF_SIZE_PH (2*1024*1024)
-#define WAVE627ENC_TEMPBUF_SIZE_PH      (3*1024*1024)
 #define WAVE627ENC_ARTABLE_SIZE_PH      (4*1024)
 #define WAVE627ENC_SIZE_COMMON_PH       WAVE627ENC_MAX_CODE_BUF_SIZE_PH
 
@@ -204,5 +204,7 @@
 
 #define WAVE5_PERF_TICK_VCPU_COST   (300)
 
+#define VPU_PRE_ITCK_CLOCK_NUM      (256)
+#define VPU_BLOCK_TIMEOUT_TICK      (2 * 1000000000 / VPU_PRE_ITCK_CLOCK_NUM)  // About 2 seconds
 #endif  /* _VPU_CONFIG_H_ */
 

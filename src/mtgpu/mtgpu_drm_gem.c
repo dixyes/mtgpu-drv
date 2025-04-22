@@ -182,6 +182,15 @@ static void *mtgpu_gem_dmabuf_kmap(struct dma_buf *dma_buf,
 }
 #endif
 
+#if defined(OS_STRUCT_DRM_DRIVER_HAS_GEM_PRIME_MMAP)
+int mtgpu_gem_prime_mmap(struct drm_gem_object *obj, struct vm_area_struct *vma)
+{
+	struct mtgpu_gem_object *mtgpu_obj = os_get_drm_gem_object_drvdata(obj);
+
+	return PvrErrorToLinuxErrno(PMRMMapPMR(mtgpu_obj->handle, vma));
+}
+#endif
+
 const struct dma_buf_ops mtgpu_gem_dmabuf_ops = {
 	.attach		= mtgpu_gem_dmabuf_attach,
 	.map_dma_buf	= mtgpu_gem_dmabuf_map,

@@ -57,6 +57,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "hash.h"
 #endif
 #include "musapfm.h"
+#include "mtgpu_watchdog.h"
+
+struct mtgpu_gpu_util_stats;
 
 typedef struct _RGX_SERVER_COMMON_CONTEXT_ RGX_SERVER_COMMON_CONTEXT;
 
@@ -80,7 +83,7 @@ typedef struct {
  * GPU DVFS Table
  *****************************************************************************/
 
-#define RGX_GPU_DVFS_TABLE_SIZE                      32
+#define RGX_GPU_DVFS_TABLE_SIZE                      64
 #define RGX_GPU_DVFS_FIRST_CALIBRATION_TIME_US       25000     /* Time required to calibrate a clock frequency the first time */
 #define RGX_GPU_DVFS_TRANSITION_CALIBRATION_TIME_US  150000    /* Time required for a recalibration after a DVFS transition */
 #define RGX_GPU_DVFS_PERIODIC_CALIBRATION_TIME_US    10000000  /* Time before the next periodic calibration and correlation */
@@ -378,6 +381,7 @@ typedef struct _PB_DATA_
 {
 	PMR *psPbPMR;
 	PMR *psFreelistPMR;
+	void *psFreelistBackup;
 } PB_DATA;
 
 /*!
@@ -604,6 +608,18 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 	IMG_HANDLE  hHWPerfStream;    /*! TL Stream buffer (L2) for firmware event stream */
 	IMG_UINT32  ui32L2BufMaxPacketSize;/*!< Max allowed packet size in FW HWPerf TL (L2) buffer */
 	IMG_BOOL    bSuspendHWPerfL2DataCopy;  /*! Flag to indicate if copying HWPerf data is suspended */
+	struct {
+		/* Used to record the time taken by the copy action */
+		IMG_UINT64 ui64MinCopyTimePerEventInNs;
+		IMG_UINT64 ui64MaxCopyTimePerEventInNs;
+		IMG_UINT64 ui64AccumulatedCopyTimesInNs;
+		IMG_UINT64 ui64AccumulatedCopyNum;
+
+		/* Used to record the time taken by the events producing */
+		IMG_UINT64 ui64ProduceTimestampInNs;
+		IMG_UINT64 ui64MinProduceTimePerfEventInNs;
+		IMG_UINT64 ui64MaxProduceTimePerfEventInNs;
+	} sHWPerfDebugInfo;			/* Debug info for L1 buffer copying process */
 
 	IMG_UINT32  ui32HWPerfHostFilter;      /*! Event filter for HWPerfHost stream (settable by AppHint) */
 	POS_LOCK    hLockHWPerfHostStream;     /*! Lock guarding access to HWPerfHost stream from multiple threads */
@@ -837,13 +853,15 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 
 	IMG_UINT32              ui32Log2SVMPgSize; /* Page size of SVM heap in log2 form */
 
-#if (RGX_NUM_OS_SUPPORTED > 1)
+	IMG_UINT32              ui32HighSVMPgSizeBitMask; /* Page size bit mask of High SVM heap for ph1 or later*/
+
 	u32					mpc_id;
+	void					*priv_data;
+#if (RGX_NUM_OS_SUPPORTED > 1)
 	void                                    *psLinuxFwInfo;
 	void					*psWinFwInfo;
 	void					(*vgpu_int_cb)(u32 int_id, bool is_osid0,
 							       void *priv_data, u32 mpc_id);
-	void					*priv_data;
 #endif
 
 	IMG_UINT64			ui64DummyCpuPAddr;
@@ -853,16 +871,30 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 
 	PB_DATA                         sGlobalPBData;
 
-	/* RGXHWReset reset time of the last reset */
-	IMG_UINT64                      ui64OldTime;
-
 	/* DDK2.0 */
 	DEVMEM_MEMDESC			*psFWIFMemDesc;         /*!< memdesc for mtfw_fwif */
 	struct MTFW_FWIF_TAG		*psFWIF;                /*!< kernel mapping for mtfw_fwif */
 	POS_LOCK			hLockFWIF;
 	struct mtgpu_fw_info		*psMTFwInfo;
 	struct mtgpu_fec_work_data	*psFecWorkData;
+	struct wait_queue_head		*psCcbWQ;
 	struct wait_queue_head		*psSyncCmdWQ;
+	struct wait_queue_head		*psJobItemCleanupWQ;
+	int (*pfnGetGpuUtilStats2)	(PVRSRV_DEVICE_NODE *psDeviceNode,
+					 void *hGpuUtilUser,
+					 struct mtgpu_gpu_util_stats *psReturnStats);
+	IMG_UINT32			ui32GpuUtilConfig;
+	IMG_BOOL			bMetaHang;
+	struct wait_queue_head		*psSemUserWaitQ;
+	struct mtgpu_scheduler		**apsScheduler;
+	struct mtgpu_sched_entity	*psGpCmdEntity;
+	struct mtgpu_watchdog_info	*psWatchdogInfo;
+	atomic64_t			iIRQOrdinal;
+	POS_LOCK			hMetaRegLock;
+	bool				bIdle;
+	POS_SPINLOCK 			hDoorbellLock;
+	IMG_UINT64 			ui64DoorbellPoolBitmap;
+	IMG_UINT32 			ui32DoorbellPoolSize;
 } PVRSRV_RGXDEV_INFO;
 
 

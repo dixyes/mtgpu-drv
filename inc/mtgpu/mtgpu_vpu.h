@@ -20,16 +20,6 @@ static inline void mtvpu_drm_release(void *arg1, void *arg2)
 {
 }
 
-static inline int mtvpu_gem_mmap_obj(void *arg1, void *arg2)
-{
-	return 0;
-}
-
-static inline int mtvpu_gem_dmabuf_map(void *arg1, void *arg2)
-{
-	return 0;
-}
-
 static inline void mtvpu_gem_free_obj(void *arg1)
 {
 }

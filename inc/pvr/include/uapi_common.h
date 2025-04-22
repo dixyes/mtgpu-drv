@@ -11,6 +11,7 @@
 #define UAPI_COMMON_H
 
 #include "device.h"
+#include "mtfw_fwif_utilization.h"
 
 struct mtgpu_device;
 
@@ -64,7 +65,7 @@ typedef struct _DEVICE_STATUS_INFO_
     IMG_UINT32                   ui32TRPErrorCount;                                   /*!< count of the number of TRP checksum errors */
     IMG_UINT32                   ui32FWFaults;                                        /*!< Firmware faults count */
     IMG_UINT32                   ui32ActivePMReqTotal;                                /*!< APM Event Count */
-    IMG_UINT32                   aui32GpuUtil[RGXFWIF_GPU_UTIL_ITEM_COUNT];           /*!< GPU Utilisation */
+    IMG_UINT32                   aui32GpuUtil[GPU_UTIL_ITEM_IDX_MAX];                 /*!< GPU Utilisation */
 } DEVICE_STATUS_INFO;
 
 /* @Brief driver stats structure with the caller */
@@ -142,6 +143,7 @@ typedef enum _GPU_UTIL_TYPE_ {
 	GPU_UTIL_TA = 0x2,
 	GPU_UTIL_3D = 0x3,
 	GPU_UTIL_CDM = 0x4,
+	GPU_UTIL_CE  = 0x5,
 	GPU_UTIL_TDM = 0x7,
 
 	GPU_UTIL_LAST

@@ -19,8 +19,9 @@
 #define FEC_FW_CTRL_STANDBY	((__force int __bitwise)1)	/* fec suspend to ram */
 #define FEC_FW_CTRL_L_IDLE	((__force int __bitwise)2)	/* fec long idle */
 #define FEC_FW_CTRL_WAKEUP	((__force int __bitwise)3)	/* fec wake from suspend/idle */
+#define FEC_FW_CTRL_PANIC	((__force int __bitwise)4)	/* fec trigger kernel panic */
 #define FEC_FW_CTRL_MIN		FEC_FW_CTRL_REBOOT
-#define FEC_FW_CTRL_MAX		((__force int __bitwise)4)
+#define FEC_FW_CTRL_MAX		((__force int __bitwise)5)
 
 struct mtgpu_ipc_info;
 
@@ -29,6 +30,7 @@ static const char * const fec_ctrl_labels[] = {
 	[FEC_FW_CTRL_STANDBY] = "standby",
 	[FEC_FW_CTRL_L_IDLE] = "idle",
 	[FEC_FW_CTRL_WAKEUP] = "wakeup",
+	[FEC_FW_CTRL_PANIC] = "panic",
 };
 #define FEC_FW_CTRL_DEFAULT_STATE	FEC_FW_CTRL_WAKEUP
 
@@ -52,7 +54,7 @@ void mtgpu_fec_dump_handler(struct device *dev, struct fec_dbg_info *dbg_info, v
 
 	switch (event->sub_cmd) {
 	case FEC_DUMP_START:
-		fname = kasprintf(GFP_KERNEL, "/var/log/mtgpu-fe.%s-%08lld.dump",
+		fname = kasprintf(GFP_KERNEL, "/var/log/mtgpu/fec-%s-%08lld.dump",
 				  dev_name(dev), ktime_get_mono_fast_ns());
 		if (!fname)
 			goto file_err_exit;
@@ -123,7 +125,7 @@ static ssize_t debugfs_fec_dbg_enable_write(struct file *file, const char __user
 		return ret;
 	dbg_info->dump_enable = enable;
 	req = enable ? FEC_REQUEST_COREDUMP_EN : FEC_REQUEST_COREDUMP_DIS;
-	ret = mtgpu_fec_dbg_do_request(dbg_info->dev, req, NULL, 0);
+	ret = mtgpu_fec_dbg_do_request(dbg_info->dev, req, NULL, 0, true);
 
 	if (ret)
 		return -EFAULT;
@@ -215,6 +217,9 @@ static ssize_t debugfs_fec_fw_ctrl_write(struct file *file, const char __user *b
 		else
 			ret = -EINVAL;
 		break;
+	case FEC_FW_CTRL_PANIC:
+		ret = mtgpu_fec_request_panic(dbg_info->dev);
+		break;
 	default:
 		ret = -EINVAL;
 		break;
@@ -268,7 +273,7 @@ void mtgpu_fec_dbg_write_umd_log(struct device *dev, int size, u8 *data)
 		if (dbg_info->umd_log_file)
 			filp_close(dbg_info->umd_log_file, 0);
 
-		ret = sprintf(fname, "/var/log/mtgpu-fec-%s-%s.log",
+		ret = sprintf(fname, "/var/log/mtgpu/fec-%s-%s.log",
 			      dev_name(dev), utc_time);
 		if (ret < 0)
 			return;
@@ -280,6 +285,13 @@ void mtgpu_fec_dbg_write_umd_log(struct device *dev, int size, u8 *data)
 			return;
 		}
 	}
+}
+
+void mtgpu_fec_dbg_reset_state(struct mtgpu_device *mtdev)
+{
+	struct fec_dbg_info *dbg_info = mtgpu_fec_get_dbg_info_from_mtdev(mtdev);
+
+	dbg_info->current_fw_ctrl_state = FEC_FW_CTRL_DEFAULT_STATE;
 }
 
 int mtgpu_fec_dbg_init(struct device *dev, struct fec_dbg_info **dbg_info)

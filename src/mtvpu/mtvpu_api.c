@@ -9,6 +9,9 @@
 #include <linux/io.h>
 #include <linux/fs.h>
 #include <linux/uaccess.h>
+#include <linux/devfreq.h>
+#include <linux/pm_opp.h>
+#include <linux/acpi.h>
 #include <drm/drm_device.h>
 #include <drm/drm_gem.h>
 #if defined(OS_DRM_DRMP_H_EXIST)
@@ -31,7 +34,7 @@
 #include "mtvpu_mem.h"
 #include "misc.h"
 
-bool is_guest_cmds = false;
+static u64 vdi_guest_mem_usage = 0;
 
 struct file_operations vinfo_fops = {
 	.owner = THIS_MODULE,
@@ -44,6 +47,11 @@ struct file_operations fwinfo_fops = {
 	.read = fw_info_read,
 };
 
+struct file_operations vpulog_fops = {
+	.owner = THIS_MODULE,
+	.read = vpu_log_read,
+};
+
 struct file_operations *get_vinfo_fops(void)
 {
 	return &vinfo_fops;
@@ -52,6 +60,11 @@ struct file_operations *get_vinfo_fops(void)
 struct file_operations *get_fwinfo_fops(void)
 {
 	return &fwinfo_fops;
+}
+
+struct file_operations *get_vpulog_fops(void)
+{
+	return &vpulog_fops;
 }
 
 struct mt_chip *to_chip(struct drm_device *drm)
@@ -171,29 +184,6 @@ int mtvpu_vram_alloc(struct drm_device *drm, u32 group_id, size_t size,
 	return 0;
 }
 
-void *vpu_gem_vmap_internal(void *handle, u64 size, u64 *private_data)
-{
-	void *kaddr;
-	int err;
-
-	if (!handle) {
-		vpu_err("handle is NULL\n");
-		return NULL;
-	}
-	err = mtgpu_vram_vmap(handle, size, private_data, &kaddr);
-	if (err) {
-		vpu_err("failed to acquire cpu kernel address for handle 0x%llx\n", (u64)handle);
-		return NULL;
-	}
-	//vpu_info("map gem handle %llx to cpu kernel addr 0x%llx\n", (u64)handle, (u64)kaddr);
-	return kaddr;
-}
-
-void vpu_gem_vunmap_internal(void *handle, u64 private_data)
-{
-	mtgpu_vram_vunmap(handle, private_data);
-}
-
 struct sg_table *vpu_gem_map_internal(void *handle, size_t size)
 {
 	struct sg_table *sgt;
@@ -260,36 +250,27 @@ int vpu_vram_alloc(struct drm_device *drm, u32 group_id, u32 pool_id, u32 type, 
 		   struct mtgpu_gem_object *mtgpu_obj)
 {
 	struct mt_chip *chip = to_chip(drm);
-	struct mtvpu_gem_priv *priv = (struct mtvpu_gem_priv *)mtgpu_obj->private_data;
-	struct mtvpu_mmu_ctx *mmu_ctx = priv->mmu_ctx;
 	int err = 0;
 
 	if (vpu_fixed_mem_qy2(chip, type)) {
-		err = vpu_mem_pool_alloc(chip, mmu_ctx, pool_id, size, &mtgpu_obj->dev_addr);
+		err = vpu_mem_pool_alloc(chip, pool_id, size, &mtgpu_obj->dev_addr);
 
 		set_mtgpu_obj_type(mtgpu_obj, group_id, pool_id);
 		set_mtgpu_obj_addr(mtgpu_obj, chip->bar_base, mtgpu_obj->dev_addr);
 	} else {
-		if (mmu_ctx && mmu_ctx->mmu_enable) {
-			err = mtvpu_vm_pmr_create_and_map(OSGetDeviceNodeFromDrm(drm),
-						      mmu_ctx->vpu_ctx,
-						      size,
-						      PVRSRV_MEMALLOCFLAG_GPU_WRITEABLE |
-						      PVRSRV_MEMALLOCFLAG_GPU_READABLE |
-						      PVRSRV_MEMALLOCFLAG_CPU_WRITEABLE |
-						      PVRSRV_MEMALLOCFLAG_CPU_READABLE,
-						      &mtgpu_obj->handle,
-						      &mtgpu_obj->dev_addr,
-						      &priv->dev_phy_addr,
-						      (void **)&mtgpu_obj->cpu_addr);
-			/* Set mtgpu_obj type to use memory management function provided by kmd */
-			mtgpu_obj->type = 0;
-		} else if (chip->soc_mode) {
+		if (chip->soc_mode)
 			err = mtvpu_vram_alloc(drm, group_id, size, &mtgpu_obj->dev_addr, &mtgpu_obj->handle);
-		} else {
+		else
 			err = mtgpu_vram_alloc(drm, group_id, size, &mtgpu_obj->dev_addr, &mtgpu_obj->handle);
-		}
-
+		if(!err) {
+			vdi_guest_mem_usage += size;
+			VLOG(MTDEBUG, "guest alloc vram succ, pid:%4d, group:%d, type:%d, addr:0x%08llx,"
+			     "size:0x%08llx, vdi_guest_mem_usage:0x%08llx\n", current->pid, group_id,
+			     type, mtgpu_obj->dev_addr, size, vdi_guest_mem_usage += size);
+		} else
+			VLOG(MTDEBUG, "guest alloc vram fail, pid:%4d, group:%d, type:%d, addr:0x%08llx,"
+			     "size:0x%08llx, vdi_guest_mem_usage:0x%08llx\n", current->pid, group_id,
+			     type, mtgpu_obj->dev_addr, size, vdi_guest_mem_usage);
 		set_mtgpu_obj_type(mtgpu_obj, group_id, 0);
 		set_mtgpu_obj_addr(mtgpu_obj, chip->bar_base, mtgpu_obj->dev_addr);
 	}
@@ -302,18 +283,16 @@ void vpu_vram_free(struct mtgpu_gem_object *mtgpu_obj)
 	struct mt_chip *chip;
 	struct mtvpu_gem_priv *priv;
 
-	if (mtgpu_obj) {
+	if (mtgpu_obj && mtgpu_obj->obj) {
 		chip = to_chip(mtgpu_obj->obj->dev);
 		priv = (struct mtvpu_gem_priv *)mtgpu_obj->private_data;
 
 		if (mtgpu_obj->handle) {
-			if (priv && priv->mmu_ctx && priv->mmu_ctx->mmu_enable) {
-				mtvpu_vm_pmr_unmap_and_destroy(priv->mmu_ctx->vpu_ctx, mtgpu_obj->handle, mtgpu_obj->dev_addr, (void *)mtgpu_obj->cpu_addr);
-			} else if (chip->soc_mode) {
+			if (chip->soc_mode) {
 				if (chip->io_domain) {
 					vpu_smmu_unmap(chip, mtgpu_obj->dev_addr);
 					if (priv && priv->priv_data)
-						vpu_gem_vunmap_internal(mtgpu_obj->handle, priv->priv_data);
+						mtgpu_vram_vunmap(mtgpu_obj->handle, priv->priv_data);
 				}
 				mtgpu_vram_free(mtgpu_obj->handle);
 			} else {
@@ -321,6 +300,10 @@ void vpu_vram_free(struct mtgpu_gem_object *mtgpu_obj)
 			}
 		}
 
+		vdi_guest_mem_usage -= mtgpu_obj->obj->size;
+		VLOG(MTDEBUG, "guest free vram, pid:%4d, addr:0x%08llx, size:0x%08llx,"
+		     "vdi_guest_mem_usage:0x%08llx\n", current->pid, mtgpu_obj->dev_addr,
+		     mtgpu_obj->obj->size, vdi_guest_mem_usage -= mtgpu_obj->obj->size);
 		if (mtgpu_obj->obj) {
 			os_drm_gem_object_release(mtgpu_obj->obj);
 			kfree(mtgpu_obj->obj);
@@ -384,85 +367,36 @@ void *vpu_get_pvr_node(struct drm_device *drm)
 	return drm_private->pvr_private.dev_node;
 }
 
-static void copy_phys_addr(u64 dst, u64 src, u64 size, bool soc_mode)
-{
-	void *datnew, *datold;
-
-	if (soc_mode) {
-		datnew = (void *)dst;
-		datold = (void *)src;
-	} else {
-		datnew = memremap(dst, size, MEMREMAP_WC);
-		datold = memremap(src, size, MEMREMAP_WC);
-	}
-	if (datnew && datold)
-		memcpy(datnew, datold, size);
-
-	if (soc_mode)
-		dcache_flush(datnew, size);
-
-	if (datnew)
-		memunmap(datnew);
-	if (datold)
-		memunmap(datold);
-}
-
-int vpu_gem_modify(struct drm_device *drm, struct mtgpu_gem_object *mtgpu_obj, u32 group_id, u32 inc_size, u32 copy)
+/* only used for group change in soc mode */
+int vpu_gem_modify(struct drm_device *drm, struct mtgpu_gem_object *mtgpu_obj, u32 group_id)
 {
 	struct mt_chip *chip = to_chip(drm);
-	struct mtgpu_gem_object *mtgpu_new = alloc_mtgpu_obj();
-	struct mtvpu_gem_priv *priv = (struct mtvpu_gem_priv *)mtgpu_obj->private_data;
-	struct mtvpu_mmu_ctx *mmu_ctx = priv->mmu_ctx;
-	struct vm_area_struct *vma;
-	u64 pfn;
-	int err;
+	struct sg_table *sgt;
+	int ret, size;
 
-	if (!mtgpu_new)
-		return -ENOMEM;
+	if (!chip || !mtgpu_obj)
+		return -1;
 
-	if (mmu_ctx && mmu_ctx->mmu_enable) {
-		return -EPERM;
-	} else if (chip->soc_mode)
-		err = mtvpu_vram_alloc(drm, group_id, mtgpu_obj->obj->size + inc_size, &mtgpu_new->dev_addr, &mtgpu_new->handle);
-	else
-		err = mtgpu_vram_alloc(drm, group_id, mtgpu_obj->obj->size + inc_size, &mtgpu_new->dev_addr, &mtgpu_new->handle);
-	if (err) {
-		kfree(mtgpu_new);
-		return -ENOMEM;
-	}
+	if (!chip->soc_mode)
+		return -1;
 
-	set_mtgpu_obj_type(mtgpu_new, group_id, 0);
-	set_mtgpu_obj_addr(mtgpu_new, chip->bar_base, mtgpu_new->dev_addr);
-
-	if (copy)
-		copy_phys_addr(mtgpu_new->cpu_addr, mtgpu_obj->cpu_addr, mtgpu_obj->obj->size, chip->soc_mode);
-
-	if (chip->soc_mode && chip->io_domain)
+	if (chip->io_domain)
 		vpu_smmu_unmap(chip, mtgpu_obj->dev_addr);
-	mtgpu_vram_free(mtgpu_obj->handle);
+	else
+		return -1;
 
-	/* obj copy */
-	mtgpu_obj->handle = mtgpu_new->handle;
-	mtgpu_obj->dev_addr = mtgpu_new->dev_addr;
-	mtgpu_obj->cpu_addr = mtgpu_new->cpu_addr;
-	mtgpu_obj->type = mtgpu_new->type;
+	mtgpu_obj->dev_addr = 0;
+	size = os_get_drm_gem_object_size(mtgpu_obj->obj);
+	sgt = vpu_gem_map_internal(mtgpu_obj->handle, size);
+	ret = vpu_smmu_map_sg(chip, sgt, size, group_id, &mtgpu_obj->dev_addr);
+	vpu_gem_unmap_internal(sgt);
 
-	mtgpu_obj->obj->size += inc_size;
+	if (ret)
+		return ret;
+	set_mtgpu_obj_type(mtgpu_obj, group_id, 0);
+	set_mtgpu_obj_addr(mtgpu_obj, chip->bar_base, mtgpu_obj->dev_addr);
 
-	if (!priv || !priv->vma)
-		goto exit;
-
-	vma = priv->vma;
-	pfn = mtgpu_new->cpu_addr >> PAGE_SHIFT;
-
-	zap_vma_ptes(vma, vma->vm_start, vma->vm_end - vma->vm_start);
-
-	vma->vm_end += inc_size;
-	remap_pfn_range(vma, vma->vm_start, pfn, vma->vm_end - vma->vm_start, vma->vm_page_prot);
-
-exit:
-	kfree(mtgpu_new);
-	return 0;
+	return ret;
 }
 
 void mtvpu_gem_free_obj(struct drm_gem_object *obj)
@@ -470,34 +404,6 @@ void mtvpu_gem_free_obj(struct drm_gem_object *obj)
 	struct mtgpu_gem_object *mtgpu_obj = os_get_drm_gem_object_drvdata(obj);
 
 	vpu_vram_free(mtgpu_obj);
-}
-
-int mtvpu_gem_mmap_obj(struct drm_gem_object *obj, struct vm_area_struct *vma)
-{
-	struct mt_chip *chip = to_chip(obj->dev);
-	struct mtgpu_gem_object *mtgpu_obj = os_get_drm_gem_object_drvdata(obj);
-	struct mtvpu_gem_priv *priv = (struct mtvpu_gem_priv *)mtgpu_obj->private_data;
-	u64 pfn;
-
-	if (!chip->soc_mode) {
-		/* only do this in pcie mode for performance reason; remove this later */
-		pfn = PHYS_PFN(mtgpu_obj->cpu_addr);
-		if (priv)
-			priv->vma = vma;
-		return remap_pfn_range(vma, vma->vm_start, pfn, vma->vm_end - vma->vm_start, vma->vm_page_prot);
-	}
-	return -1;
-}
-
-int mtvpu_gem_dmabuf_map(struct sg_table *sgt, struct mtgpu_gem_object *mtgpu_obj)
-{
-	/* remove this later */
-	return -1;
-}
-
-long os_vfs_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
-{
-	return vfs_ioctl(file, cmd, arg);
 }
 
 #ifdef __aarch64__
@@ -513,3 +419,386 @@ void dcache_flush(void *addr, size_t len)
 {
 }
 #endif
+
+static int acpi_dev_pm_explicit_get(struct acpi_device *device, int *state)
+{
+	unsigned long long psc;
+	acpi_status status;
+
+	status = acpi_evaluate_integer(device->handle, "_PSC", NULL, &psc);
+	if (ACPI_FAILURE(status))
+		return -ENODEV;
+
+	*state = psc;
+	return 0;
+}
+
+static int acpi_dev_pm_explicit_set(struct acpi_device *adev, int state)
+{
+	acpi_status status;
+	if (adev->power.states[state].flags.explicit_set) {
+		char method[5] = { '_', 'P', 'S', '0' + state, '\0' };
+
+		status = acpi_evaluate_object(adev->handle, method, NULL, NULL);
+		if (ACPI_FAILURE(status))
+			return -ENODEV;
+	}
+	return 0;
+}
+
+/* for M1000 power acquire */
+int vpu_get_core_power(struct device *dev, int *power)
+{
+	int ret = -1;
+	struct acpi_device *adev = ACPI_COMPANION(dev);
+
+	if (adev) {
+		ret = acpi_dev_pm_explicit_get(adev, power);
+	}
+	return ret;
+}
+
+/* for M1000 power control */
+int vpu_set_core_power(struct device *dev, int power)
+{
+	int ret = -1;
+	struct acpi_device *adev = ACPI_COMPANION(dev);
+
+	if (adev) {
+		if (power == 0)
+			ret = acpi_dev_pm_explicit_set(adev, ACPI_STATE_D3_HOT);
+		else if (power == 1)
+			ret = acpi_dev_pm_explicit_set(adev, ACPI_STATE_D0);
+		else
+			vpu_err("set invalid power state %d\n", power);
+	}
+	return ret;
+}
+
+struct devfreq *os_devfreq_add_device(struct device *dev,
+				   struct devfreq_dev_profile *profile,
+				   const char *governor_name,
+				   void *data)
+{
+	return devm_devfreq_add_device(dev, profile, governor_name, data);
+}
+
+void os_devfreq_remove_device(struct device *dev, struct devfreq *devfreq)
+{
+	devm_devfreq_remove_device(dev, devfreq);
+}
+
+int os_dev_pm_opp_add(struct device *dev, unsigned long freq, unsigned long u_volt)
+{
+	return dev_pm_opp_add(dev, freq, u_volt);
+}
+
+void os_dev_pm_opp_remove(struct device *dev, unsigned long freq)
+{
+	dev_pm_opp_remove(dev, freq);
+}
+
+unsigned long os_dev_pm_opp_get_freq(struct dev_pm_opp *opp)
+{
+	return dev_pm_opp_get_freq(opp);
+}
+
+void os_dev_pm_opp_put(struct dev_pm_opp *opp)
+{
+	dev_pm_opp_put(opp);
+}
+
+int os_devfreq_register_opp_notifier(struct device *dev, struct devfreq *devfreq)
+{
+	return devfreq_register_opp_notifier(dev, devfreq);
+}
+
+int os_devfreq_unregister_opp_notifier(struct device *dev,
+				struct devfreq *devfreq)
+{
+	return devfreq_unregister_opp_notifier(dev, devfreq);
+}
+
+struct dev_pm_opp *os_devfreq_recommended_opp(struct device *dev,
+					   unsigned long *freq,
+					   u32 flags)
+{
+	return devfreq_recommended_opp(dev, freq, flags);
+}
+
+struct devfreq_dev_profile vpu_devfreq_dev_profile =
+{
+	.target             = vpu_devfreq_target,
+	.get_dev_status     = vpu_devfreq_get_dev_status,
+	.get_cur_freq       = vpu_devfreq_cur_freq,
+};
+
+void vpu_init_devfreq_profile(u64 freq, u32 poll_ms)
+{
+	vpu_devfreq_dev_profile.initial_freq = freq;
+	vpu_devfreq_dev_profile.polling_ms = poll_ms;
+}
+
+int	vpu_init_devfreq_data(struct mt_chip *chip)
+{
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 10))
+	chip->devfreq_data = os_kzalloc(sizeof(struct devfreq_simple_ondemand_data));
+	if (!chip->devfreq_data)
+		return -OS_VAL(ENOMEM);
+
+	chip->devfreq_data->upthreshold = 90;
+	chip->devfreq_data->downdifferential = 50;
+#endif
+	return 0;
+}
+
+void vpu_init_devfreq_freq(struct mt_chip *chip, u64 min_freq, u64 max_freq)
+{
+	if (!chip->dev_freq)
+		return;
+	chip->dev_freq->scaling_min_freq = min_freq;
+	chip->dev_freq->scaling_max_freq = max_freq;
+}
+
+void vpu_devfreq_set_dev_status(struct mt_chip *chip, struct devfreq_dev_status *stat)
+{
+	struct mt_core *core;
+	int drm_idx, i;
+	int max_index = 0;
+	u64 cycle, max_cycle = 0;
+
+	if (!chip || !stat)
+		return;
+
+	for (i = 0; i < chip->conf.core_size; i++) {
+		if (chip->conf.product[i] == WAVE517_CODE) {
+			core = &chip->core[i];
+			cycle = 0;
+			for (drm_idx = 0; drm_idx < chip->mpc_drm_cnt; drm_idx++)
+				cycle += core->core_drm_cycle[drm_idx];
+			if (cycle > max_cycle) {
+				max_cycle = cycle;
+				max_index = i;
+			}
+		}
+	}
+
+	stat->current_frequency = chip->curr_freq;
+	stat->busy_time = max_cycle;
+	stat->total_time = chip->core[max_index].core_freq / 1000 * VPU_UTIL_DURATION;
+}
+
+enum {
+	MT_VPU_CREATE_SEMA = 0,
+	MT_VPU_DESTROY_SEMA,
+	MT_VPU_WAIT_SEMA,
+};
+
+int vpu_sema_cmd_proc(u64 type, u64 *data, struct drm_file *file)
+{
+	struct mt_file *priv = os_get_drm_file_private_data(file);
+	struct mtvpu_sema_list *cur, *next;
+	int ret = -1;
+	switch (type)
+	{
+	case MT_VPU_CREATE_SEMA:
+		cur = kzalloc(sizeof(*cur), GFP_KERNEL);
+		if (!cur)
+			return -ENOMEM;
+		cur->sema = kzalloc(sizeof(*(cur->sema)), GFP_KERNEL);
+		if (!cur->sema) {
+			kfree(cur);
+			return -ENOMEM;
+		}
+		sema_init(cur->sema, 0);
+		os_mutex_lock(priv->file_lock);
+		list_add_tail(&cur->list, &priv->sema_head);
+		os_mutex_unlock(priv->file_lock);
+		*data = (u64)cur->sema;
+		ret = 0;
+		break;
+	case MT_VPU_DESTROY_SEMA:
+		os_mutex_lock(priv->file_lock);
+		list_for_each_entry_safe(cur, next, &priv->sema_head, list) {
+			if (*data == (u64)cur->sema) {
+				list_del(&cur->list);
+				kfree(cur->sema);
+				kfree(cur);
+				ret = 0;
+				break;
+			}
+		}
+		os_mutex_unlock(priv->file_lock);
+		break;
+
+	default:
+		vpu_err("wrong sema cmd in vpu: %d\n", (u32)type);
+		return -1;
+	}
+	return ret;
+}
+
+void vpu_sema_release(struct drm_file *file)
+{
+	struct mt_file *priv = os_get_drm_file_private_data(file);
+	struct mtvpu_sema_list *cur, *next;
+	os_mutex_lock(priv->file_lock);
+	list_for_each_entry_safe(cur, next, &priv->sema_head, list) {
+		list_del(&cur->list);
+		vpu_warn("maybe need to destroy the sema %p in user space.", cur->sema);
+		kfree(cur->sema);
+		kfree(cur);
+	}
+	os_mutex_unlock(priv->file_lock);
+}
+
+static inline int vpu_create_cmd(struct mt_vpu_cmd *cmd)
+{
+	int ret = 0;
+
+	cmd->addr_wait = kzalloc(sizeof(struct wait_queue_head), GFP_KERNEL);
+	if (likely(cmd->addr_wait))
+		init_waitqueue_head(cmd->addr_wait);
+	else
+		ret = -1;
+	return ret;
+}
+
+static inline void vpu_destroy_cmd(struct mt_vpu_cmd *cmd)
+{
+	if (cmd->addr_wait)
+		kfree(cmd->addr_wait);
+}
+
+static inline void vpu_init_cmd(struct mt_vpu_cmd *cmd)
+{
+	init_waitqueue_head(cmd->addr_wait);
+	cmd->addr_blocked = FALSE;
+	cmd->status = 0;
+	cmd->sur_addr = 0;
+	cmd->sem = 0;
+}
+
+static void vpu_init_que(struct mt_vpu_cmd_que *que, struct CodecInst *handle, struct mt_virm *vm)
+{
+	int i;
+
+	spin_lock(que->lock);
+	init_waitqueue_head(que->inst_wait);
+	que->pid = vm ? 0xFF000000 + vm->vm_id : current->tgid;
+
+	for (i = 0; i < INST_Q_DEPTH; i++)
+		vpu_init_cmd(que->cmd + i);
+
+	que->vm = vm;
+	que->handle = handle;
+	que->rd_idx = 0;
+	que->wr_idx = 0;
+	que->count = 0;
+	que->inst_blocked = FALSE;
+	spin_unlock(que->lock);
+}
+
+int vpu_create_que(struct mt_vpu_cmd_que *que, struct spinlock *lock, struct CodecInst *handle, struct mt_virm *vm)
+{
+	int ret = 0, i;
+
+	que->lock = lock;
+	que->inst_wait = kzalloc(sizeof(struct wait_queue_head), GFP_KERNEL);
+	que->pid = current->tgid;
+
+	if (likely(que->inst_wait)) {
+		for (i = 0; i < INST_Q_DEPTH; i++) {
+			ret = vpu_create_cmd(que->cmd + i);
+			if (unlikely(ret))
+				goto err;
+		}
+		vpu_init_que(que, handle, vm);
+	} else
+		ret = -1;
+	return ret;
+err:
+	for(i = i - 1; i >= 0; i--)
+		vpu_destroy_cmd(que->cmd + i);
+	kfree(que->inst_wait);
+	return ret;
+}
+
+static void vpu_deinit_que(struct mt_vpu_cmd_que *que)
+{
+	spin_lock(que->lock);
+	que->count = 0;
+	que->rd_idx = 0;
+	que->wr_idx = 0;
+	que->vm = NULL;
+	que->handle = NULL;
+	spin_unlock(que->lock);
+}
+
+void vpu_destroy_que(struct mt_vpu_cmd_que *que)
+{
+	int i;
+
+	vpu_deinit_que(que);
+	for(i = 0; i < INST_Q_DEPTH; i++)
+		vpu_destroy_cmd(que->cmd + i);
+	if (que->inst_wait)
+		kfree(que->inst_wait);
+}
+
+struct mt_vpu_irq_worker {
+	struct work_struct work;
+	struct mt_intr_map map;
+	void *ctx;
+};
+
+void* vpu_create_irq_works(int num, void *ctx)
+{
+	struct mt_vpu_irq_worker *worker;
+	int i;
+
+	worker = kzalloc(sizeof(*worker) * num, GFP_KERNEL);
+	if (!worker)
+		return NULL;
+
+	for (i = 0; i < num; i++) {
+		INIT_WORK(&worker[i].work, vpu_irq_work);
+		worker[i].ctx = ctx;
+	}
+
+	return worker;
+}
+
+void vpu_destroy_irq_works(void *works, int num)
+{
+	struct mt_vpu_irq_worker *worker = works;
+	int i;
+
+	for (i = 0; i < num; i++)
+		cancel_work_sync(&worker[i].work);
+
+	kfree(worker);
+}
+
+struct work_struct* vpu_irq_work_get_work(void *works, int idx)
+{
+	struct mt_vpu_irq_worker *worker = works;
+
+	return &worker[idx].work;
+}
+
+void* vpu_irq_work_get_ctx(struct work_struct *work)
+{
+	struct mt_vpu_irq_worker *worker =
+		container_of(work, struct mt_vpu_irq_worker, work);
+
+	return worker->ctx;
+}
+
+struct mt_intr_map* vpu_irq_work_get_map(struct work_struct *work)
+{
+	struct mt_vpu_irq_worker *worker =
+		container_of(work, struct mt_vpu_irq_worker, work);
+
+	return &worker->map;
+}

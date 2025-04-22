@@ -653,9 +653,9 @@ typedef IMG_UINT64 PVRSRV_MEMALLOCFLAGS_T;
 /*!
  * Flag to alloc memory only on vram
  */
-#define PVRSRV_MEMALLOCFLAG_VARM_ONLY   (1ULL << 36)
-#define PVRSRV_CHECK_VARM_ONLY(uiFlags) (((uiFlags)& \
-			PVRSRV_MEMALLOCFLAG_VARM_ONLY) == PVRSRV_MEMALLOCFLAG_VARM_ONLY)
+#define PVRSRV_MEMALLOCFLAG_VRAM_ONLY   (1ULL << 36)
+#define PVRSRV_CHECK_VRAM_ONLY(uiFlags) (((uiFlags)& \
+			PVRSRV_MEMALLOCFLAG_VRAM_ONLY) == PVRSRV_MEMALLOCFLAG_VRAM_ONLY)
 
 /*!
  * @Description  Flag to choice pcie

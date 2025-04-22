@@ -91,6 +91,7 @@ typedef struct _SYNC_CHECKPOINT_BLOCK_
 	PPVRSRV_DEVICE_NODE       psDevNode;
 	IMG_UINT32                ui32SyncBlockSize;          /*!< Size of the sync checkpoint block */
 	IMG_UINT32                ui32FirmwareAddr;           /*!< Firmware address */
+	IMG_DEV_VIRTADDR          sDevVirtAddr;               /*!< Dev virtual address */
 	DEVMEM_MEMDESC            *hMemDesc;                  /*!< DevMem allocation for block */
 	volatile IMG_UINT32       *pui32LinAddr;              /*!< Server-code CPU mapping */
 	IMG_UINT64                uiSpanBase;                 /*!< Base of this import (FW DevMem) in the span RA */
@@ -122,6 +123,7 @@ typedef struct SYNC_CHECKPOINT_TAG
 	DLLIST_NODE                     sListNode;              /*!< List node for the global sync chkpt list */
 	DLLIST_NODE                     sDeferredFreeListNode;  /*!< List node for the deferred free sync chkpt list */
 	IMG_UINT32                      ui32FWAddr;             /*!< FWAddr stored at sync checkpoint alloc time */
+	IMG_DEV_VIRTADDR                sDevVirtAddr;           /*!< Dev virtual address stored at sync checkpoint alloc time */
 	PDUMP_FLAGS_T                   ui32PDumpFlags;         /*!< Pdump Capture mode to be used for POL*/
 } SYNC_CHECKPOINT;
 
@@ -160,6 +162,21 @@ SyncCheckpointGetState(PSYNC_CHECKPOINT psSyncCheckpoint);
 /*****************************************************************************/
 IMG_UINT32
 SyncCheckpointGetFirmwareAddr(PSYNC_CHECKPOINT psSyncCheckpoint);
+
+/*************************************************************************/ /*!
+@Function       SyncCheckpointGetDevVirtAddr
+
+@Description    .
+
+@Input          psSyncCheckpoint        Synchronisation checkpoint to get
+                                        the dev virtual address of
+
+@Return         The dev virtual address of the sync checkpoint
+
+*/
+/*****************************************************************************/
+IMG_UINT64
+SyncCheckpointGetDevVirtAddr(PSYNC_CHECKPOINT psSyncCheckpoint);
 
 /*************************************************************************/ /*!
 @Function       SyncCheckpointCCBEnqueued

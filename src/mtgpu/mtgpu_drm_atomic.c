@@ -28,7 +28,7 @@ static bool mtgpu_crtc_needs_disable(struct drm_crtc_state *old_state,
 	 * it's in self refresh mode and needs to be fully disabled.
 	 */
 	return old_state->active ||
-	       (old_state->self_refresh_active && !new_state->enable) ||
+	       (old_state->self_refresh_active && !new_state->active) ||
 	       new_state->self_refresh_active;
 #else
 	return old_state->active;
@@ -48,7 +48,12 @@ static void mtgpu_disable_outputs(struct drm_device *dev, struct drm_atomic_stat
 		int ret;
 
 		/* Shut down everything that needs a full modeset. */
+#if defined(OS_STRUCT_DRM_CRTC_STATE_HAS_SELF_REFRESH_ACTIVE)
+		if (!drm_atomic_crtc_needs_modeset(new_crtc_state) &&
+		    !(old_crtc_state->self_refresh_active && !new_crtc_state->self_refresh_active))
+#else
 		if (!drm_atomic_crtc_needs_modeset(new_crtc_state))
+#endif
 			continue;
 
 		if (!mtgpu_crtc_needs_disable(old_crtc_state, new_crtc_state))
@@ -106,7 +111,13 @@ static void mtgpu_disable_outputs(struct drm_device *dev, struct drm_atomic_stat
 			new_crtc_state = NULL;
 
 		if (!mtgpu_crtc_needs_disable(old_crtc_state, new_crtc_state) ||
-		    !drm_atomic_crtc_needs_modeset(old_conn_state->crtc->state))
+
+#if defined(OS_STRUCT_DRM_CRTC_STATE_HAS_SELF_REFRESH_ACTIVE)
+		    (!drm_atomic_crtc_needs_modeset(old_conn_state->crtc->state) &&
+		    !(old_crtc_state->self_refresh_active && (new_crtc_state &&  !new_crtc_state->self_refresh_active))))
+#else
+		    (!drm_atomic_crtc_needs_modeset(old_conn_state->crtc->state)))
+#endif
 			continue;
 
 		encoder = old_conn_state->best_encoder;
@@ -252,8 +263,11 @@ void mtgpu_atomic_helper_encoder_detect(struct drm_device *dev,
 
 		original_state = connector->state->state;
 		connector->state->state = old_state;
-		if (funcs && funcs->detect)
+		if (funcs && funcs->detect) {
 			funcs->detect(encoder, connector);
+			connector->state->state = original_state;
+			break;
+		}
 		connector->state->state = original_state;
 	}
 

@@ -71,7 +71,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PVRSRV_BRIDGE_SYNC_SYNCPRIMCPUSIGNAL			PVRSRV_BRIDGE_SYNC_CMD_FIRST+10
 #define PVRSRV_BRIDGE_SYNC_SYNCPRIMEXPORTFD			PVRSRV_BRIDGE_SYNC_CMD_FIRST+11
 #define PVRSRV_BRIDGE_SYNC_SYNCPRIMIMPORTFD			PVRSRV_BRIDGE_SYNC_CMD_FIRST+12
-#define PVRSRV_BRIDGE_SYNC_CMD_LAST				(PVRSRV_BRIDGE_SYNC_CMD_FIRST+12)
+#define PVRSRV_BRIDGE_SYNC_SYNCPRIMCPUSIGNAL2			PVRSRV_BRIDGE_SYNC_CMD_FIRST+13
+#define PVRSRV_BRIDGE_SYNC_SYNCPRIMEXPORTFD2			PVRSRV_BRIDGE_SYNC_CMD_FIRST+14
+#define PVRSRV_BRIDGE_SYNC_CMD_LAST				(PVRSRV_BRIDGE_SYNC_CMD_FIRST+14)
 
 /*******************************************
             AllocSyncPrimitiveBlock
@@ -281,7 +283,7 @@ typedef struct PVRSRV_BRIDGE_IN_SYNCPRIMEXPORTFD_TAG
 {
 	IMG_HANDLE hSyncBlock;
 	IMG_UINT32 ui32Offset;
-	IMG_UINT32 ui32Value;
+	IMG_UINT64 ui64Value;
 } __packed PVRSRV_BRIDGE_IN_SYNCPRIMEXPORTFD;
 
 /* Bridge out structure for PVRSRVSyncPrimExportFD */
@@ -290,6 +292,26 @@ typedef struct PVRSRV_BRIDGE_OUT_SYNCPRIMEXPORTFD_TAG
 	IMG_UINT32 ui32Fd;
 	PVRSRV_ERROR eError;
 } __packed PVRSRV_BRIDGE_OUT_SYNCPRIMEXPORTFD;
+
+/*******************************************
+		PVRSRVSyncPrimExportFD2
+ *******************************************/
+
+/* Bridge in structure for PVRSRVSyncPrimExportFD2 */
+typedef struct PVRSRV_BRIDGE_IN_SYNCPRIMEXPORTFD2_TAG
+{
+	IMG_UINT32 ui32Count;
+	IMG_HANDLE *hSyncBlock;
+	IMG_UINT32 *ui32Offset;
+	IMG_UINT64 *ui64Value;
+} __packed PVRSRV_BRIDGE_IN_SYNCPRIMEXPORTFD2;
+
+/* Bridge out structure for PVRSRVSyncPrimExportFD2 */
+typedef struct PVRSRV_BRIDGE_OUT_SYNCPRIMEXPORTFD2_TAG
+{
+	IMG_UINT32 ui32Fd;
+	PVRSRV_ERROR eError;
+} __packed PVRSRV_BRIDGE_OUT_SYNCPRIMEXPORTFD2;
 
 /*******************************************
 		PVRSRVSyncPrimImportFD
@@ -307,8 +329,27 @@ typedef struct PVRSRV_BRIDGE_IN_SYNCPRIMIMPORTFD_TAG
 /* Bridge out structure for PVRSRVSyncPrimImportFD */
 typedef struct PVRSRV_BRIDGE_OUT_SYNCPRIMIMPORTFD_TAG
 {
-	IMG_UINT32 ui32Value;
+	IMG_UINT64 ui64Value;
 	PVRSRV_ERROR eError;
 } __packed PVRSRV_BRIDGE_OUT_SYNCPRIMIMPORTFD;
+
+/*******************************************
+            SyncPrimCpuSignal2
+ *******************************************/
+
+/* Bridge in structure for SyncPrimCpuSignal2 */
+typedef struct PVRSRV_BRIDGE_IN_SYNCPRIMCPUSIGNAL2_TAG
+{
+	IMG_HANDLE hDevmemCtx;
+	IMG_HANDLE hSyncBlock;
+	IMG_UINT32 ui32Index;
+	IMG_UINT64 ui64Value;
+} __packed PVRSRV_BRIDGE_IN_SYNCPRIMCPUSIGNAL2;
+
+/* Bridge out structure for SyncPrimCpuSignal2 */
+typedef struct PVRSRV_BRIDGE_OUT_SYNCPRIMCPUSIGNAL2_TAG
+{
+	PVRSRV_ERROR eError;
+} __packed PVRSRV_BRIDGE_OUT_SYNCPRIMCPUSIGNAL2;
 
 #endif /* COMMON_SYNC_BRIDGE_H */

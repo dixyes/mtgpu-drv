@@ -9,7 +9,7 @@
 #include "mtgpu_defs.h"
 #include "vpuapi.h"
 #include "jdi.h"
-
+#include "osfunc.h"
 #include "mtvpu_conf.h"
 #include "mtvpu_mon.h"
 
@@ -19,16 +19,17 @@
 
 #define MAX_HOST_VPU_GROUPS_GEN1_GEN2 3	//For SUDI and QY1 in VDI case, host only has groups <=3
 
-#define SYNC_INTR_SIZE (WAV5_MAX_CORE * INST_MAX_SIZE)
-#define SYNC_ADDR_SIZE (WAV5_MAX_CORE * INST_MAX_SIZE * INST_Q_DEPTH)
-
-
 #define MTVPU_SEGMENT_NUM       16
 #define MTVPU_SEGMENT_VM       -1
 
-#define VPU_SMMU_MEM_BASE1 0xFF00000000
-#define VPU_SMMU_MEM_BASE2 0xFE00000000
 #define VPU_SMMU_MEM_BASE_MASK 0xFF00000000
+
+/* modify duration with caution! */
+#define VPU_UTIL_DURATION 300 /* ms */
+#define VPU_STAT_DURATION 1000 /* ms */
+
+/* return 1GHz(meaningless) to prevent a division zero exception when get clock failed */
+#define MTVPU_GET_CLK_FAIL_FREQ  (1*1000*1000*1000)
 
 #ifdef SUPPORT_ION
 #define ion_phys_addr_t phys_addr_t
@@ -55,6 +56,9 @@ struct dma_buf;
 struct iommu_group;
 struct iommu_domain;
 struct iova_domain;
+struct devfreq;
+struct devfreq_simple_ondemand_data;
+struct devfreq_dev_profile;
 
 struct mt_chip;
 
@@ -69,60 +73,38 @@ struct mt_intr_map {
 	u32 core_idx;
 	u32 intr_inst;
 	u32 intr_reason;
+	u32 err_reason;
+	u32 tick_frame;
 	union {
 		struct {  // 517 result
 			u32 linear_y_addr;
 			u32 linear_y_addr_ext;
-			u32 tick_frame;
-			u32 err_reason;
 		};
 		struct {  // 627 result
-			u32 reserved;
+			u32 stream_size;
 		};
 	};
 };
 
-struct mt_sync {
-	int idx;
-	struct mt_intr_map map[SYNC_INTR_SIZE];
-
-	struct spinlock *intr_lock;
-	struct semaphore *sema;
-
-	VpuHandle handle[CORE_MAX_SIZE][INST_MAX_SIZE];
-	struct mt_virm *vm[CORE_MAX_SIZE][INST_MAX_SIZE];
-
-	struct spinlock *sync_lock;
-	struct spinlock *core_lock[CORE_MAX_SIZE];
-
-	struct wait_queue_head *addr_wait[SYNC_ADDR_SIZE];
-	bool addr_blocked[SYNC_ADDR_SIZE];
-	u64 addr_phys[SYNC_ADDR_SIZE];
-	int addr_idx;
-
-	struct wait_queue_head *inst_wait[CORE_MAX_SIZE][INST_MAX_SIZE];
-	bool inst_blocked[CORE_MAX_SIZE][INST_MAX_SIZE];
-	u32 inst_cmds[CORE_MAX_SIZE][INST_MAX_SIZE];
+struct mt_vpu_irq_ctx {
+	struct mt_chip *chip;
+	struct spinlock *irq_lock;
+	/* now the FW queue depth is 4, so we can use work_idx&511 to get
+	   the ring worker buffer idx.*/
+	void *works;
+	int work_idx;
+	int work_cnt;
 };
 
 struct mt_node {
 	struct drm_gem_object *obj;
-	struct mtvpu_mmu_ctx *mmu_ctx;
-	struct list_head list;
 	u64 dev_phys_addr;
-	u64 dev_virt_addr;
 	u64 size;
-	void *cpu_addr;
-	void *bak_cpu_addr;
 	void *handle;
-	void *mem_desc;
-	void *pmr;
 #ifdef SUPPORT_ION
 	struct dma_buf *ion_buf;
 #endif
 	u32 pool_id;
-	int vram_belonger;
-	u64 *cpu_pa_array;
 	u64 private_data;
 };
 
@@ -140,11 +122,36 @@ struct umd_alloc_buffer_union{
 	u32 used_size;
 };
 
+/* the instance mutex can guaranty safe. so we don't use lock. */
+struct mt_vpu_cmd {
+	u64 sur_addr;
+	u64 sem;
+
+	/* Todo remove it later*/
+	bool addr_blocked;
+	struct wait_queue_head *addr_wait;
+	int status;
+};
+
+struct mt_vpu_cmd_que {
+	struct mt_vpu_cmd cmd[INST_Q_DEPTH];
+	int rd_idx;
+	int wr_idx;
+	int count;
+	u64 pid;
+	bool inst_blocked;
+	struct wait_queue_head *inst_wait;
+	VpuHandle handle;
+	struct mt_virm *vm;
+	struct spinlock *lock;
+};
+
 struct mt_core {
 	int idx;
 	int irq;
 	int available;
 	int inited;
+	int reload_flag;  // bit0 set means hang need reload, bit1 set: means reset ok, can reload fw
 	int product_id;
 
 	void *regs;
@@ -153,6 +160,9 @@ struct mt_core {
 	struct mt_node *common_node; /* common mem */
 	struct vpu_instance_pool pool; /* vdi mem */
 	struct jpu_instance_pool jpu_pool;
+
+	struct device *pm_dev;
+	bool suspend;
 
 	int mem_group_id;
 	u64 mem_group_base;
@@ -170,11 +180,11 @@ struct mt_core {
 	int core_wait_reason;
 	int inst_intr_reason[INST_MAX_SIZE];
 	int inst_wait_reason[INST_MAX_SIZE];
+	int inst_bs_size_ret[INST_MAX_SIZE];    /* > 0: bs size; < 0: enc pic failed; == 0: needs query get result */
 	Uint32 fw_version;
 
 	struct mutex *open_lock;
 	struct mutex *regs_lock;
-	struct list_head mm_head[INST_MAX_SIZE]; /* mm list */
 
 	int drm_ids[INST_MAX_SIZE];
 	u32 pool_ids[INST_MAX_SIZE];
@@ -183,35 +193,39 @@ struct mt_core {
 	struct mt_chip *priv;
 	void *bak_addr;
 
-	u64 core_freq;
+	u64 core_freq;      /* for soc_mode use */
+	u64 core_max_freq;  /* for none soc_mode use */
 	/* The number of ticks used by the enc pic on the VPU within one second */
 	/* In MPC mode, one core may serve multiple drm nodes; */
 	/* Thus we should calculate cycles for each drm node */
 	u64 core_drm_cycle[MTGPU_CORE_COUNT_MAX];
 
 	u32 inst_cnt;
-	u32 fbc_used_count[INST_MAX_SIZE];
-	u32 open_vram[INST_MAX_SIZE];	//calculate the vram size in open cmd
 	struct mt_inst_info inst_info[INST_MAX_SIZE];
 	struct mt_inst_extra inst_extra[INST_MAX_SIZE];
-	/* these handles are alloced from guest, fbctbl + fbc buffers */
-	struct umd_alloc_buffer_union fbc_tbl[INST_MAX_SIZE];
-	struct umd_alloc_buffer_single fbc_buffers[INST_MAX_SIZE][FBC_COUNT_MAX];
-	struct umd_alloc_buffer_single work_buffers[INST_MAX_SIZE];
-	struct umd_alloc_buffer_union mv_buffers[INST_MAX_SIZE];
-	struct umd_alloc_buffer_single task_buffers[INST_MAX_SIZE];
-	struct umd_alloc_buffer_single etc_buffers[INST_MAX_SIZE][DEC_ETC_NUM];
-	struct umd_alloc_buffer_single def_cdf_buffers[INST_MAX_SIZE];
-	struct umd_alloc_buffer_single va_param[INST_MAX_SIZE];
 
-	struct mt_node *fwlog_node;
 	struct mutex *inst_lock[INST_MAX_SIZE];
+	u32 log_read_pos;
+	u32 dump_flag;
+	u32 reset_cnt;
+	void *fp_log;
+	u64 log_offset;
+	u32 queue_len;
+
+	struct workqueue_struct *irq_workqueue;
+	int (*pfn_irq)(struct mt_chip *chip, struct mt_core *core);
+	struct mt_vpu_irq_ctx *work_ctx;
+	struct mt_vpu_cmd_que que[INST_MAX_SIZE];
+	struct spinlock *que_lock[INST_MAX_SIZE];
+	u64 vpu_time_per_sec;
+	int inst_failed[INST_MAX_SIZE];
 };
 
 struct mt_file {
 	struct list_head head; /* opened list */
 	struct mutex *file_lock;
 	struct mtvpu_mmu_ctx *mmu_ctx;
+	struct list_head sema_head;
 };
 
 struct mt_host_pool {
@@ -228,22 +242,22 @@ struct mt_host_pool {
 #define BASIC_DEC_CNT		6
 #define BASIC_ENC_CNT		6
 
-struct mt_host_mdev {
-	struct mt_host_pool dec_map[HOST_POOL_SIZE];
-	struct mt_host_pool enc_map[HOST_POOL_SIZE];
-};
+#define VCORE_INDEX 0
+#define VCPU_INDEX  1
 
 struct mt_codec_limit {
-    u32 width;
-    u32 height;
-    u32 max_enc_num;
-    u32 max_dec_num;
+	u32 dec_max_width;
+	u32 dec_max_height;
+	u32 enc_max_width;
+	u32 enc_max_height;
+	u32 max_enc_num;
+	u32 max_dec_num;
 };
 
 struct mt_virm {
 	int vm_id;
-	u32 scheduled_cap;	/* represents the scheduled codec capacity for this VM */
-	u32 max_schedule_cap;	/* represents the total available schedule codec capacity for this VM */
+	u32 sched_step;	/* represents the scheduled codec capacity for this VM */
+	u32 sched_max;	/* represents the total available schedule codec capacity for this VM */
 
 	u32 dec_index;
 	u32 enc_index;
@@ -260,11 +274,15 @@ struct mt_virm {
 	u32 vm_group;
 
 	u64 vcore_base;
+	u64 vcpu_base;
 	u32 vcpu_multiplier;
 
 	u32 used_dec_cnt;
 	u32 used_enc_cnt;
 	u32 used_vcpu_buffer;
+
+	uintptr_t dec_close_record;
+	uintptr_t enc_close_record;
 };
 
 struct mt_chip {
@@ -303,18 +321,13 @@ struct mt_chip {
 	struct spinlock *mpc_lock;
 	int core_group_inst_cnt[MTVPU_SEGMENT_NUM];
 
-	struct mutex *mm_lock;
 	void *vaddr;
 	u64 bar_base;
 
 	struct mt_core core[CORE_MAX_SIZE];
 	int start_core_idx; /* for debug purpose */
 	struct semaphore *host_thread_semas[MAX_HOST_VPU_GROUPS_GEN1_GEN2];
-
-	struct mt_sync sync;
-
 	struct task_struct *host_threads[MAX_HOST_VPU_GROUPS_GEN1_GEN2];
-	struct task_struct *sync_thread;
 
 	struct list_head vm_heads[MAX_HOST_VPU_GROUPS_GEN1_GEN2]; /* vm list */
 	int vm_count;
@@ -334,7 +347,8 @@ struct mt_chip {
 
 	struct dentry *debugfs;
 
-	struct timer_list *timer;
+	struct timer_list *util_timer; /* for utilization calculation */
+	struct timer_list *stat_timer; /* for frame_rate/bitrate statistics */
 
 	struct semaphore *jpu_core_sema;
 
@@ -343,6 +357,22 @@ struct mt_chip {
 	struct iommu_group *io_group;
 	struct iommu_domain *io_domain;
 	struct iova_domain *iova_domain[CORE_MAX_SIZE];
+
+	/* devfs for soc */
+	struct devfreq *dev_freq;
+	struct devfreq_simple_ondemand_data *devfreq_data;
+	u64 curr_freq;
+	u32 freq_min;		/* MHz */
+	u32 freq_max;		/* MHz */
+	void __iomem *freq_share_mem; /* Write frequency into shared memory,
+				 * actual configuration will be completed
+				 * by scp-firmware.
+				 */
+	atomic_t perf_mode;	   /* perf mode indicator */
+
+	u32 fixed_decode_core; /* for soc transcode use */
+	int auto_reset_en;     /* Internal testing scenarios do not allow automatic reset, which may result in missing critical issues */
+	struct mutex *reset_lock;
 };
 
 struct mt_open {
@@ -363,6 +393,12 @@ struct mtvpu_gem_priv {
 	void *virt_addr;
 };
 
+struct mtvpu_sema_list
+{
+	struct list_head list;
+	struct semaphore *sema;
+};
+
 int get_mtvpu_log_level(void);
 void set_mtvpu_log_level(int log_level);
 
@@ -380,7 +416,8 @@ int vpu_check_fw_version(struct mt_chip *chip, int idx);
 int vpu_host_thread1(void *arg);
 int vpu_host_thread2(void *arg);
 int vpu_host_thread3(void *arg);
-int vpu_sync_thread(void *arg);
+void vpu_irq_work(struct work_struct *work);
+int vpu_reset_thread(void *arg);
 int vpu_fill_drm_ioctls(struct drm_ioctl_desc *dst, int num);
 int vpu_host_run_ioctl(int ioctl, struct drm_device *drm, void *data, struct mt_virm *vm);
 int vpu_sleep_wake(Uint32 core_idx, int is_sleep_wake);
@@ -389,6 +426,12 @@ int vpu_hw_reset(Uint32 core_idx);
 int vpu_hw_deinit(Uint32 core_idx);
 int vpu_suspend(struct device *dev);
 int vpu_resume(struct device *dev);
+int vpu_dvfs_init(struct mt_chip *chip);
+int vpu_dvfs_deinit(struct mt_chip *chip);
+int vpu_rpm_init(struct device *dev);
+void vpu_rpm_exit(struct device *dev);
+int vpu_rpm_core_suspend(struct device *dev);
+int vpu_rpm_core_resume(struct device *dev);
 
 s64 vpu_get_clk(struct mt_chip *chip, int idx);
 s64 vpu_get_max_clk(struct mt_chip *chip, int idx);
