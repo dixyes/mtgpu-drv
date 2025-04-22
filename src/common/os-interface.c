@@ -2158,10 +2158,12 @@ uint64_t os_untagged_addr(u64 addr)
 	return untagged_addr(addr);
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 10, 0)
 int os_follow_pfn(struct vm_area_struct *vma, unsigned long address, unsigned long *pfn)
 {
 	return follow_pfn(vma, address, pfn);
 }
+#endif // LINUX_VERSION
 
 int os_fixup_user_fault(struct task_struct *tsk, struct mm_struct *mm, unsigned long address,
 			unsigned int fault_flags, bool *unlocked)
