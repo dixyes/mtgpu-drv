@@ -714,7 +714,11 @@ static int find_dp_phy_pdev_fn(struct device *dev, void *data)
 	return 0;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0)
+static int dsc_dev_match(struct device *dev, const void *name)
+#else
 static int dsc_dev_match(struct device *dev, void *name)
+#endif
 {
 	return !strncmp(dev_name(dev), (const char *)name, strlen((const char *)name));
 }
